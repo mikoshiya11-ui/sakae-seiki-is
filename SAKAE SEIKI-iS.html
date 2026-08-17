@@ -28,10 +28,23 @@
   .hero.compact{ padding:32px 20px 6px; }
 
   .logo{
-    margin:0 0 6px; display:flex; align-items:center; justify-content:center; user-select:none;
+    width:100%; margin:0 0 6px; display:flex; align-items:center; justify-content:center; user-select:none;
   }
-  .logo img{ height:320px; width:auto; display:block; transition:height .25s ease; }
-  .hero.compact .logo img{ height:130px; }
+  /* 幅基準にすることで、狭い画面でもはみ出さず、
+     縦横比も崩れないようにする。
+     aspect-ratio は画像の原寸比（1200x654）。読み込み前から高さが決まり
+     読み込み時のガタつきが出ない。 */
+  .logo img{
+    width:100%;
+    max-width:600px;
+    height:auto;
+    aspect-ratio:1200 / 654;
+    object-fit:contain;
+    display:block;
+    margin:0 auto;
+    transition:max-width .25s ease;
+  }
+  .hero.compact .logo img{ max-width:260px; }
 
   .tagline{ font-size:13px; color:#8592a6; margin:0 0 28px; letter-spacing:.02em; }
   .hero.compact .tagline{ display:none; }
@@ -354,7 +367,9 @@
   <div class="topbar"><span id="lastUpdatedLabel"></span><span id="changePwLink" style="cursor:pointer; text-decoration:underline;" title="ログインパスワードを変更します">🔑 パスワード変更</span><span>榮製機㈱社内システム</span></div>
 
   <div class="hero" id="hero">
-    <div class="logo"><img src="システムファイル/logo2.png" alt="SAKAE SEIKI-iS"></div>
+    <div class="logo"><img src="システムファイル/sakae_seiki_os_top2.jpg"
+         alt="SAKAE SEIKI-OS 榮製機株式会社 基本ソフトウェア"
+         width="1200" height="654" decoding="async"></div>
     <div class="tagline">社内No.・受注案件をここから検索／新規作成</div>
     <div class="searchWrap">
       <div class="searchBox">
