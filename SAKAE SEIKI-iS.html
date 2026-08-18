@@ -677,7 +677,8 @@
       </div>
       <div class="mBody">
         <div style="font-size:12px;color:#7a879c;margin-bottom:14px;line-height:1.6;">
-          「⭐ ひな形に登録」した過去の案件から選ぶと、その内容を引き継いだ状態で新規作成フォームが開きます。社内No.・納期など新しい案件用に変わる項目だけ入力し直してください。ひな形側に作業票（部品一覧・工程ルート）が入力済みの場合は、それも新しい案件の作業票へコピーされます（工程の日付は空の状態から始まります）。
+          「⭐ ひな形に登録」した過去の案件から選ぶと、その内容を引き継いだ状態で新規作成フォームが開きます。社内No.・納期など新しい案件用に変わる項目だけ入力し直してください。ひな形側に作業票（部品一覧・工程ルート）が入力済みの場合は、それも新しい案件の作業票へコピーされます。<br>
+          ひな形の工程順・日程間隔・作業期間を引き継ぎ、<br>作成時の受注日を基準に日程を自動配置します。
         </div>
         <div class="resultGrid" id="templateGrid"></div>
         <div class="emptyState" id="templateEmptyState" style="display:none;">ひな形として登録された案件がまだありません。案件の詳細画面（カードをクリック）から「⭐ ひな形に登録」で登録できます。</div>
@@ -746,6 +747,18 @@
   function formatYmd(d){
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   }
+  // ---- ひな形の受注日（T0）。ひな形の日程展開は、この日を「0日目」として行う ----
+  function templateOrderDateOf(productNo){
+    const tplRec = records.find(r=>r.productNo===productNo);
+    return (tplRec && tplRec.orderDate) ? tplRec.orderDate : '';
+  }
+  const TEMPLATE_ORDER_DATE_MISSING_MSG =
+    'ひな形の日程を展開できません。\n元ひな形と新しい案件の受注日を確認してください。';
+  // ---- ひな形展開の前提が揃っているか（元ひな形の受注日・新案件の受注日が両方あるか）----
+  // 揃っていない場合は展開せず中止する。最古工程日や今日で代用したり、日付を空にして続行したりはしない。
+  function canExpandTemplate(fromProductNo, orderDate){
+    return !!(parseYmd(templateOrderDateOf(fromProductNo)) && parseYmd(orderDate));
+  }
   function copyBuhinPartsFromTemplate(fromProductNo, rec){
     if(!fromProductNo || !rec.productNo) return;
     const raw = localStorage.getItem('sakaeIS_buhinhyoMock_v1_' + fromProductNo);
@@ -753,27 +766,50 @@
     let src;
     try{ src = JSON.parse(raw); }catch(e){ return; }
     // note（「ウラ」「オモテ」等の備考）・hours（工数）・days（バー幅の日数）は工程ルートの一部なのでそのまま引き継ぐ。
-    // date（実際のカレンダー日付）は、そのままコピーすると個別日程表のガントバーが真っ白になってしまう
-    // （工程に日付が無いとバーとして表示されない仕様のため）。かといって単純に全部空にすると工程間の間隔が
-    // わからなくなるので、一番早い工程の日付が「今日」になるよう全工程を同じ日数だけ後ろ倒し（または前倒し）にして、
-    // 工程どうしの間隔（何日後にNC、何日後に仕上げ…）はそのまま保つ。
-    let earliest = null;
-    (src.parts||[]).forEach(p=> (p.processes||[]).forEach(pr=>{
-      const d = parseYmd(pr.date);
-      if(d && (!earliest || d < earliest)) earliest = d;
-    }));
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    const shiftMs = earliest ? (today - earliest) : 0;
+    // date（実際のカレンダー日付）は、ひな形を「受注日を0日目とした標準工程パターン」として扱い、
+    //   相対差分 = 元工程日 − 元ひな形の受注日(T0)
+    //   新工程日 = 新案件の受注日(N0) + 相対差分
+    // として全工程を平行移動する。工程どうしの間隔（何日後にNC、何日後に仕上げ…）はそのまま保たれる。
+    // ★ T0 / N0 のどちらかが未入力のときは展開しない（最古工程日や今日で代用しない）。呼び出し側で中止させる。
+    const t0 = parseYmd(templateOrderDateOf(fromProductNo));
+    const n0 = parseYmd(rec.orderDate);
+    if(!t0 || !n0) return;
+    const shiftMs = n0 - t0;
     function shiftedDate(dateStr){
       const d = parseYmd(dateStr);
-      if(!d) return dateStr || '';
+      if(!d) return dateStr || '';   // 日付が未入力の工程は未入力のまま
       return formatYmd(new Date(d.getTime() + shiftMs));
     }
+    // 工程は新しいIDで作り直す。元IDと新IDの対応表は、個別日程表のバーの段（レーン）配置を移すのに使う。
+    const procIdMap = {};
     const parts = (src.parts||[]).map(p=> Object.assign({}, p, {
       id: uid(),
-      processes: (p.processes||[]).map(pr=> Object.assign({}, pr, { id: uid(), date: shiftedDate(pr.date) }))
+      processes: (p.processes||[]).map(pr=>{
+        const newProcId = uid();
+        procIdMap[pr.id] = newProcId;
+        return Object.assign({}, pr, { id: newProcId, date: shiftedDate(pr.date) });
+      })
     }));
+    // ---- 個別日程表の見た目（バーの段配置・行の段数）もひな形として引き継ぐ ----
+    // レーンは工程IDが変わるため、対応表で新しいIDへ付け替える（元IDを参照し続けない）。
+    // 段数は行の位置がキーで、部品の並び順はそのまま引き継ぐため、位置の対応は崩れない。
+    try{
+      const laneRaw = localStorage.getItem('sakaeIS_kobetsuMock_laneassign_v1_' + fromProductNo);
+      if(laneRaw){
+        const srcLane = JSON.parse(laneRaw) || {};
+        const newLane = {};
+        Object.keys(srcLane).forEach(oldProcId=>{
+          if(procIdMap[oldProcId] !== undefined) newLane[procIdMap[oldProcId]] = srcLane[oldProcId];
+        });
+        if(Object.keys(newLane).length){
+          localStorage.setItem('sakaeIS_kobetsuMock_laneassign_v1_' + rec.productNo, JSON.stringify(newLane));
+        }
+      }
+      const rowRaw = localStorage.getItem('sakaeIS_kobetsuMock_rowcounts_v1_' + fromProductNo);
+      if(rowRaw){
+        localStorage.setItem('sakaeIS_kobetsuMock_rowcounts_v1_' + rec.productNo, rowRaw);
+      }
+    }catch(e){ /* 見た目の引き継ぎに失敗しても、部品・工程の複製自体は成立させる */ }
     const bs = {
       order: {
         productNo: rec.productNo, orderNo: rec.orderNo||'', orderDate: rec.orderDate||'',
@@ -1516,6 +1552,14 @@
         }
       }
     }else{
+      // ---- ひな形から作成する場合だけ、日程を展開できるかを先に確認する ----
+      // ひな形は「受注日を0日目とした標準工程パターン」として展開するため、
+      // 元ひな形の受注日と新しい案件の受注日が両方そろっていないと展開できない。
+      // 揃っていない場合はここで中止し、案件そのものも作らない（元ひな形・既存データは変更しない）。
+      if(templateSourceProductNo && !canExpandTemplate(templateSourceProductNo, rec.orderDate)){
+        alert(TEMPLATE_ORDER_DATE_MISSING_MSG);
+        return null;
+      }
       rec.id = uid();
       rec.status = 'inprogress';
       records.unshift(rec);
