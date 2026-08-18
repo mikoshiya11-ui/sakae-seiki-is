@@ -660,6 +660,10 @@
   function currentUnitCount(){
     return Math.max(1, Math.round((viewEnd - viewStart)/86400000) + 1);
   }
+  function trackViewEndHalf(trackEl){
+    const dayCount = Number(trackEl.dataset.unitCount) || currentUnitCount();
+    return viewStartHalf() + dayCount * 2 - 1;
+  }
   // 表示期間内を暦月ごとに区切って月ラベルを出す（月の途中から始まっても・終わっても正しい日数になる）
   function getMonthSegments(){
     const segs = [];
@@ -685,6 +689,11 @@
     'FIN':2,'FIN1':2,'FIN2':2,'3D':2,'合せ有':2,'ダミー有':2,'SA-FIN':2,'WEL-FIN':2
   };
   function phaseOf(label){ return PHASE_MAP.hasOwnProperty(label) ? PHASE_MAP[label] : 1; }
+
+  // ---- 左のミニ表（コード＋日付のBOX）に出す工程 ----
+  // 元帳票（作業票印刷の実物）の固定ボックスが DE / SU / PN の3行であるため、それに合わせる。
+  // ※ 工程の分類（PHASE_MAP）や保存データは変更しない。この欄の表示対象だけを絞るための定義。
+  const SIDE_BOX_CODES = ['DE','SU','PN'];
 
   // ---- 担当コード別カラー ----
   const CODE_COLORS = {
@@ -824,14 +833,18 @@
       (p.processes||[]).forEach(proc=>{
         const d = parseDateStr(proc.date);
         const isPrep = phaseOf(proc.code) === 0;
-        if(!isPrep && d){
+        if(SIDE_BOX_CODES.indexOf(proc.code) >= 0){
+          // 左のミニ表（コード＋日付のBOX）は、元帳票の固定ボックスに合わせて DE / SU / PN の3工程専用。
+          // 日付が未入力でもここに出す（記入欄として使うため）。
+          dateTags.push({ procId: proc.id, code: proc.code, date: proc.date||'', ampm: proc.ampm||'AM', note: proc.note||'' });
+        }else if(!isPrep && d){
           // バーの表示・編集欄には「工程コード＋備考」をまとめて出す（例：NC1＋ウラ→「NC1 ウラ」）。
           // 同じ設備でも加工方法（ウラ／オモテ等）が違うパターンを備考側で区別できるようにするため。
           const dispCode = proc.code + (proc.note ? ' '+proc.note : '');
           events.push({ procId: proc.id, code: dispCode, half: halfIdxForDate(d, proc.ampm==='PM'), days: proc.days||3 });
-        }else{
-          dateTags.push({ procId: proc.id, code: proc.code, date: proc.date||'', ampm: proc.ampm||'AM', note: proc.note||'' });
         }
+        // 日付が未入力の加工／仕上げ工程（ASSなど phase0 以外）は、バーとして描けないためこの画面には出さない。
+        // 以前は左のBOXへ落ちていたが、そこは準備工程専用のため混在させない。日付は作業票側で入力する。
       });
       return { partId: p.id, no: p.subNo || '', name: p.name || '', qty: (p.qty!=null ? String(p.qty) : ''), dateTags, events };
     });
@@ -840,16 +853,19 @@
 
   // ---- dateTags（DE/SU/PNなど）を「コード：日付」のミニ表として組み立てる（現物の作業票印刷にある固定ボックスと同じ見た目） ----
   function buildDateTagsHtml(part){
-    if(!part.dateTags || !part.dateTags.length){
-      return '<div class="dateTagEmpty">－</div>';
-    }
-    return part.dateTags.map(t=>{
-      const titleParts = [];
-      if(t.note) titleParts.push(t.note);
-      const titleAttr = titleParts.length ? ' title="'+esc(titleParts.join(' '))+'"' : '';
+    // 元帳票の固定ボックスに合わせ、DE / SU / PN の3行を常に表示する。
+    // 該当の工程がまだ無い部品でも行そのものは出し、空の日付入力欄として使えるようにする（「－」表示はしない）。
+    const byCode = {};
+    (part.dateTags||[]).forEach(t=>{ if(!byCode[t.code]) byCode[t.code] = t; });
+    return SIDE_BOX_CODES.map(code=>{
+      const t = byCode[code];
+      const titleAttr = (t && t.note) ? ' title="'+esc(t.note)+'"' : '';
+      // 工程が既にあるときだけ procid を持たせる。無いときは code だけを持たせ、
+      // 日付が入力された時点で作業票と同じ形の工程を新規作成する（下の change ハンドラ）。
+      const procIdAttr = t ? ' data-procid="'+esc(t.procId)+'"' : '';
       return '<div class="dateTagRow"'+titleAttr+'>'
-        + '<span class="dateTagCode">'+esc(t.code)+'</span>'
-        + '<input type="date" class="dateTagInput" data-role="dateTagInput" data-procid="'+esc(t.procId)+'" value="'+esc(t.date||'')+'">'
+        + '<span class="dateTagCode">'+esc(code)+'</span>'
+        + '<input type="date" class="dateTagInput" data-role="dateTagInput" data-code="'+esc(code)+'"'+procIdAttr+' value="'+esc(t && t.date ? t.date : '')+'">'
         + '</div>';
     }).join('');
   }
@@ -1345,7 +1361,7 @@
 
     let dayRow = '<div class="ganttHeaderRow">';
     dayRow += '<div class="ganttSideHead">部品（連番・品名・数量）</div>';
-    if(handoff) dayRow += '<div class="ganttDatesHead">納期（DE/SU/PN等）</div>';
+    if(handoff) dayRow += '<div class="ganttDatesHead">DE / SU / PN</div>';
     for(let i=0;i<total;i++){
       const absIdx = baseIdx+i;
       const date = dateForIdx(absIdx);
@@ -1413,7 +1429,7 @@
       const pNameAttrs = handoff ? ' data-role="editPartName" data-part="'+pIdx+'" title="クリックで部品名を変更" style="cursor:pointer;"' : '';
       const sideCellAttrs = handoff ? ' data-role="partSideCell" data-part="'+pIdx+'" title="右クリックでこの部品の行を複製"' : '';
       html += '<div class="ganttSideCell"'+sideCellAttrs+'><div class="pNo">'+esc(part.no)+'</div><div class="pName"'+pNameAttrs+'>'+esc(part.name||'（部品名未設定）')+'</div><div class="pQty">数量：'+esc(part.qty)+'</div>'+prefixLine+rowCtrl+'</div>';
-      if(handoff) html += '<div class="ganttDatesCell">'+buildDateTagsHtml(part)+'</div>';
+      if(handoff) html += '<div class="ganttDatesCell" data-part="'+pIdx+'">'+buildDateTagsHtml(part)+'</div>';
       html += '<div class="ganttRows">';
       const rowCount = partRowCount(pIdx);
       for(let rIdx=0; rIdx<rowCount; rIdx++){
@@ -1807,27 +1823,72 @@
   window.addEventListener('scroll', closePartRowCtxMenu, true);
   ctxDuplicatePartRow.addEventListener('click', ()=>{
     if(ctxPartRowIdx === null) return;
+    const sourceRowIdx = ctxPartRowIdx;
     closePartRowCtxMenu();
     if(!checkEditable()) return;
-    const part = PARTS[ctxPartRowIdx];
+    const part = PARTS[sourceRowIdx];
     const src = part && buhinState.parts.find(p=>p.id===part.partId);
     if(!src) return;
     const nums = buhinState.parts.map(p=> parseInt(p.subNo, 10)).filter(n=> !isNaN(n));
     const next = nums.length ? Math.max.apply(null, nums) + 1 : 0;
     const nextSubNo = String(next).padStart(3,'0');
+    // 工程は新しいIDで作り直す。元IDと新IDの対応表を残しておき、ガントバーの段（レーン）配置を移すのに使う。
+    // ※ 新しい工程が元の工程IDを参照し続けることはしない（元行を編集しても複製行に影響しないようにするため）。
+    const procIdMap = {};
+    const clonedProcesses = (src.processes||[]).map(p=>{
+      const newProcId = uid();
+      procIdMap[p.id] = newProcId;
+      return Object.assign({}, p, { id: newProcId });
+    });
     const clone = Object.assign({}, src, {
       id: uid(),
       subNo: nextSubNo,
-      processes: (src.processes||[]).map(p=> Object.assign({}, p, { id: uid() }))
+      processes: clonedProcesses
     });
     const srcIdx = buhinState.parts.indexOf(src);
-    buhinState.parts.splice(srcIdx + 1, 0, clone);
+    const insertRowIdx = srcIdx + 1;
+    buhinState.parts.splice(insertRowIdx, 0, clone);
+
+    // ---- ガントバーの段（レーン）配置を引き継ぐ ----
+    const addedLaneIds = [];
+    Object.keys(procIdMap).forEach(oldProcId=>{
+      if(Object.prototype.hasOwnProperty.call(laneAssign, oldProcId)){
+        const newProcId = procIdMap[oldProcId];
+        laneAssign[newProcId] = laneAssign[oldProcId];
+        addedLaneIds.push(newProcId);
+      }
+    });
+
+    // ---- 行の段数を引き継ぐ ----
+    // rowCounts は「行の位置」をキーにしているため、行を挿入した分だけ後ろの行の設定をずらさないと
+    // 複製した行より下の部品の段数が1行ぶん食い違ってしまう。
+    const rowCountsBefore = JSON.parse(JSON.stringify(rowCounts));
+    const totalRowsAfter = buhinState.parts.length;
+    for(let i = totalRowsAfter - 1; i > insertRowIdx; i--){
+      if(Object.prototype.hasOwnProperty.call(rowCountsBefore, String(i-1))){
+        rowCounts[i] = rowCountsBefore[i-1];
+      }else{
+        delete rowCounts[i];
+      }
+    }
+    if(Object.prototype.hasOwnProperty.call(rowCountsBefore, String(srcIdx))){
+      rowCounts[insertRowIdx] = rowCountsBefore[srcIdx];   // 元行と同じ段数にする
+    }else{
+      delete rowCounts[insertRowIdx];                      // 元行が既定のままなら複製行も既定
+    }
+
+    saveLaneAssign();
+    saveRowCounts();
     saveBuhinState();
     refreshFromBuhin();
     render();
     showUndo('社内No'+(src.subNo||'')+'の行を複製しました', ()=>{
       const idx2 = buhinState.parts.findIndex(p=>p.id===clone.id);
       if(idx2>-1) buhinState.parts.splice(idx2,1);
+      addedLaneIds.forEach(id=> delete laneAssign[id]);    // 引き継いだ段の設定も取り消す
+      rowCounts = rowCountsBefore;                         // 段数は複製前の状態へ戻す
+      saveLaneAssign();
+      saveRowCounts();
       saveBuhinState();
       refreshFromBuhin();
       render();
@@ -1890,8 +1951,7 @@
     const { key, trackEl, startUnit } = ctxBarTarget;
     const newId = uid();
     // 幅が狭いと工程記号が読めないので初期幅は3コマ（1.5日分）にしておく
-    const unitCountNow = (Number(trackEl.dataset.unitCount) || currentUnitCount()) * 2;
-    const initEnd = Math.min(startUnit+2, unitCountNow);
+    const initEnd = Math.min(startUnit+2, trackViewEndHalf(trackEl));
     barsData[key] = barsData[key] || [];
     barsData[key].push({ id:newId, start:startUnit, end:initEnd, label:'' });
     render();
@@ -1936,9 +1996,9 @@
       const { key, trackEl, startUnit } = ctxBarTarget;
       closeBarCtxMenu();
       const newId = uid();
-      const unitCountNow = (Number(trackEl.dataset.unitCount) || currentUnitCount()) * 2;
       let newEnd = startUnit + copiedBarData.days - 1;
-      if(newEnd > unitCountNow) newEnd = unitCountNow;
+      const maxEnd = trackViewEndHalf(trackEl);
+      if(newEnd > maxEnd) newEnd = maxEnd;
       barsData[key] = barsData[key] || [];
       barsData[key].push({ id:newId, start:startUnit, end:newEnd, label:'' });
       // 工程名は既にコピー済みなので、工程名ピッカーを開かずそのまま確定する（新規作成時と同じcommitLabelPickerの流れを再利用）
@@ -1959,9 +2019,9 @@
     const bar = (barsData[key]||[]).find(b=>b.id===rangeId);
     if(!bar || !copiedBarData) return;
     const trackEl = barEl.closest('[data-role="track"]');
-    const unitCountNow = (Number(trackEl.dataset.unitCount) || currentUnitCount()) * 2;
     let newEnd = bar.start + copiedBarData.days - 1;
-    if(newEnd > unitCountNow) newEnd = unitCountNow;
+    const maxEnd = trackViewEndHalf(trackEl);
+    if(newEnd > maxEnd) newEnd = maxEnd;
     if(newEnd < bar.start) newEnd = bar.start;
     const procId = barEl.dataset.procid;
     if(handoff && procId){
@@ -2053,11 +2113,12 @@
       working.start = Math.min(drag.startUnit, unit);
       working.end = Math.max(drag.startUnit, unit);
     }else if(mode==='move'){
-      const unitCount = (Number(trackEl.dataset.unitCount) || currentUnitCount()) * 2;
       const len = orig.end - orig.start;
       let newStart = orig.start + (unit - drag.startUnit);
-      if(newStart < 1) newStart = 1;
-      if(newStart + len > unitCount) newStart = unitCount - len;
+      const minStart = viewStartHalf();
+      const maxStart = Math.max(minStart, trackViewEndHalf(trackEl) - len);
+      if(newStart < minStart) newStart = minStart;
+      if(newStart > maxStart) newStart = maxStart;
       working.start = newStart;
       working.end = newStart + len;
     }else if(mode==='resize-left'){
@@ -2353,13 +2414,28 @@
     const inputEl = e.target.closest('[data-role="dateTagInput"]');
     if(!inputEl || !handoff) return;
     const procId = inputEl.dataset.procid;
-    if(!procId) return;
     let found = false;
-    (buhinState.parts||[]).forEach(p=>{
-      (p.processes||[]).forEach(proc=>{
-        if(proc.id === procId){ proc.date = inputEl.value; found = true; }
+    if(procId){
+      (buhinState.parts||[]).forEach(p=>{
+        (p.processes||[]).forEach(proc=>{
+          if(proc.id === procId){ proc.date = inputEl.value; found = true; }
+        });
       });
-    });
+    }else if(inputEl.value){
+      // その工程がまだ無い部品で日付が入力された場合は、作業票の工程追加と同じ形で新しい工程を作る。
+      // （id / code / date / note / ampm / hours / days の持ち方を作業票側の仕様に合わせる。独自形式は作らない）
+      // 空欄のまま離れたときは工程を作らない。
+      const code = inputEl.dataset.code;
+      const cellEl = inputEl.closest('.ganttDatesCell');
+      const pIdx = cellEl ? Number(cellEl.dataset.part) : -1;
+      const part = PARTS[pIdx];
+      const bs = part && buhinState.parts.find(p=>p.id===part.partId);
+      if(code && bs){
+        bs.processes = bs.processes || [];
+        bs.processes.push({ id: uid(), code: code, date: inputEl.value, note: '', ampm: 'AM', hours: '', days: 3 });
+        found = true;
+      }
+    }
     if(found){
       saveBuhinState();
       refreshFromBuhin();
