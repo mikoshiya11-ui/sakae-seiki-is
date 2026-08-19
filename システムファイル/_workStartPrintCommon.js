@@ -41,7 +41,9 @@ window.sakaeWorkStartPrint = (function(){
     bs.arrangementCheck = bs.arrangementCheck || { category:'新作', inputDate:'', items:{}, approvedBy:'', createdBy:'' };
     bs.arrangementCheck.items = bs.arrangementCheck.items || {};
     ARRANGEMENT_CHECK_ITEMS.forEach(def=>{
-      if(!bs.arrangementCheck.items[def.key]) bs.arrangementCheck.items[def.key] = { deadline:'', completedDate:'', checkedBy:'' };
+      if(!bs.arrangementCheck.items[def.key]) bs.arrangementCheck.items[def.key] = { deadline:'', completedDate:'', checkedBy:'', procedure:'' };
+      // procedure（手順）は後から追加した項目。既存データには無いため、ここで補う（既存の値は触らない）
+      if(bs.arrangementCheck.items[def.key].procedure == null) bs.arrangementCheck.items[def.key].procedure = '';
     });
     return bs.arrangementCheck;
   }

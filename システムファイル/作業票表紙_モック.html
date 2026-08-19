@@ -35,25 +35,54 @@
   .sideTitle{
     writing-mode:vertical-rl; text-orientation:upright; font-size:20px; font-weight:700; letter-spacing:2px;
   }
+  /* 原本と同じく NO. は縦書きで大きめ・赤字（値は自動入力しないので空欄） */
   .sideNoLabel{
-    writing-mode:vertical-rl; text-orientation:upright; font-size:11px; font-weight:700; color:#5b6b84; margin-top:10mm;
+    writing-mode:vertical-rl; text-orientation:upright; font-size:14px; font-weight:700; color:#1a2233; margin-top:12mm;
   }
   .sideNoVal{
-    writing-mode:vertical-rl; text-orientation:upright; font-size:14px; font-weight:700; margin-top:3mm; letter-spacing:1px;
+    writing-mode:vertical-rl; text-orientation:upright; font-size:18px; font-weight:700; margin-top:3mm; letter-spacing:1px;
+    color:#c0392b; flex:1 1 auto;
   }
 
-  .mainCol{ flex:1 1 auto; display:flex; flex-direction:column; padding:5mm 6mm; min-width:0; }
-  .headRow{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:3mm; }
-  .headRow .customer{ font-size:15px; font-weight:700; }
-  .headRow .issueDate{ font-size:10.5px; color:#5b6b84; }
+  /* ---- 原本「作業票」の様式に合わせた構成（2026-08-19 現場要望）----
+     上段：略図欄＋工程を手書きする12行の表（すべて空欄）
+     下段：発行／型式／客先・受注日・納期・数量（自動入力するのはこの6項目だけ）
+     それ以外の欄（社内No.・機械名／外注人名・NO./工程・着手・完成・実働H/見積H・備考）は
+     原本どおり欄を残したうえで空欄にする（印刷後に手書きするため）---- */
+  .mainCol{ flex:1 1 auto; display:flex; flex-direction:column; padding:3mm 3mm; min-width:0; }
 
-  table.infoTable{ border-collapse:collapse; width:100%; font-size:10.5px; table-layout:fixed; }
+  /* 上段：略図＋工程表（原本と同じ列幅・黒の実線） */
+  .topRow{ display:flex; flex:1 1 auto; min-height:0; border:1px solid #222; border-bottom:none; }
+  .sketchBox{ flex:0 0 42mm; border-right:1px solid #222; position:relative; }
+  .sketchLabel{ position:absolute; top:1.2mm; left:1.2mm; font-size:8px; color:#98a2b3; }
+  .procWrap{ flex:1 1 auto; display:flex; flex-direction:column; min-width:0; }
+  table.procTable{ border-collapse:collapse; width:100%; height:100%; table-layout:fixed; font-size:9px; }
+  /* 原本は1行の中央に点線が入る（上段＝手書き用／下段＝記入欄）。背景で細い点線を1本描く */
+  table.procTable td{
+    border:1px solid #222; height:6.2mm; padding:0 1mm;
+    background-image:repeating-linear-gradient(to right,#9aa3b2 0 1.2px,transparent 1.2px 3px);
+    background-size:100% 1px; background-position:0 50%; background-repeat:no-repeat;
+  }
+  table.procTable td.noDot{ background-image:none; }
+
+  /* 見出し行：原本では「発行」と同じ段にあり、発行欄は略図の下（＝左端）に来る */
+  table.headTable{ border-collapse:collapse; width:100%; table-layout:fixed; font-size:8.5px; }
+  table.headTable th, table.headTable td{
+    border:1px solid #222; padding:0.8mm 1mm; text-align:center; line-height:1.2;
+  }
+  table.headTable th{ font-weight:700; color:#1a2233; }
+  table.headTable td.issueVal{ text-align:left; font-weight:700; font-size:10px; }
+
+  /* 下段：情報帯 */
+  table.infoTable{ border-collapse:collapse; width:100%; font-size:10px; table-layout:fixed; margin-top:0; }
   table.infoTable th, table.infoTable td{
-    border:1px solid #7c8494; padding:2.6mm 2mm; text-align:left; vertical-align:top;
+    border:1px solid #222; padding:1.6mm 1.5mm; text-align:left; vertical-align:middle; line-height:1.3;
   }
-  table.infoTable th{ background:#f2f4f8; font-weight:700; color:#3a4a63; white-space:nowrap; width:20mm; }
+  table.infoTable th{ background:#f2f4f8; font-weight:700; color:#3a4a63; white-space:nowrap; text-align:center; }
   table.infoTable td{ font-weight:600; }
-  .noteCell{ height:14mm; }
+  /* 客先は途中で改行させない。ラベル欄を13mmにしたので全角15字までは全部出る。
+     それより長い場合は末尾が「…」で切れる（枠の高さを変えないことを優先した現状の挙動） */
+  table.infoTable td.custCell{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
   @media print{
     body{ background:#fff; }
@@ -90,23 +119,43 @@
     return;
   }
 
-  // ---- 工程コード・着手日・完成日は部品データから実際に集計する（実在するデータのため推測にあたらない）。
-  // 実働Hは工程の「見積工数」ではなく、実績入力_モック.html に記録された実際の作業実績時間
-  // （sakaeIS_jissekiLog_v1／段取・有人・無人・夜間の合計）をこの品番分だけ集計する。
-  // 実績が1件も無ければ空欄のまま表示する（見積工数を実績として誤表示しないため）----
-  function collectProcessSummary(parts, productNo){
-    let earliest = null, latest = null;
-    const codes = new Set();
-    (parts||[]).forEach(p=>{
-      (p.processes||[]).forEach(pr=>{
-        if(pr.code) codes.add(pr.code);
-        if(pr.date){
-          if(!earliest || pr.date < earliest) earliest = pr.date;
-          if(!latest || pr.date > latest) latest = pr.date;
-        }
-      });
-    });
-    return { codes: Array.from(codes), earliest, latest, hoursSum: P.sumActualHours(productNo) };
+  // ---- 原本に合わせ、工程・着手・完成・実働H などは自動入力しない（印刷後に手書きするため）。
+  // 自動入力するのは 発行日（印刷当日）／型式／客先／受注日／納期／数量 の6項目だけ。----
+  const PROC_ROW_COUNT = 12;   // 原本・作業票印刷上段と同じ行数
+
+  // 納期は原本の書式に合わせて月日のみで出す（例 9/18）
+  function fmtMonthDay(dateStr){
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr || '');
+    if(!m) return '';
+    return Number(m[2]) + '/' + Number(m[3]);
+  }
+  // 発行日は保存値ではなく印刷した当日を出す（原本の「発行」欄と同じ扱い）
+  function todayJp(){
+    const d = new Date();
+    return d.getFullYear() + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0');
+  }
+  // 工程を書く12行はすべて空欄。列は原本の見出しと同じ並びにしておく
+  // 工程表の列幅（mm）。見出し行と1mmもずれないよう、ここの値を両方で使う
+  const COLS = { machine:20, proc:16, start:10, end:10, hour:12, note:68 };
+  const SKETCH_W = 42;   // 略図欄の幅
+  // 「発行」「型式」「客先」のラベル欄の幅（mm）。見出し行と情報帯で同じ値を使い、
+  // 原本どおり左端で縦に揃える（2026-08-19 現場要望：型式・客先のラベル欄が広すぎて値が右へ寄っていたため）
+  const LABEL_W = 13;
+
+  function procColGroup(){
+    return '<colgroup>'
+      + '<col style="width:'+COLS.machine+'mm;"><col style="width:'+COLS.proc+'mm;">'
+      + '<col style="width:'+COLS.start+'mm;"><col style="width:'+COLS.end+'mm;">'
+      + '<col style="width:'+COLS.hour+'mm;"><col>'
+      + '</colgroup>';
+  }
+  // 工程を書く12行はすべて空欄。備考欄は点線を入れない（原本と同じ）
+  function procRowsHtml(){
+    let html = '';
+    for(let i=0; i<PROC_ROW_COUNT; i++){
+      html += '<tr><td></td><td></td><td></td><td></td><td></td><td class="noDot"></td></tr>';
+    }
+    return html;
   }
 
   function render(){
@@ -116,28 +165,53 @@
       return;
     }
     const o = bs.order || {};
-    const notice = bs.orderNotice || {};
-    const summary = collectProcessSummary(bs.parts, productNo);
 
     sheetOuter.innerHTML =
       '<div class="sheet">'
+      // 左端の縦帯：原本どおり「作業票」と NO. 欄を置く。NO. の値は自動入力しない（空欄）
       + '<div class="sideCol">'
       +   '<div class="sideTitle">作業票</div>'
       +   '<div class="sideNoLabel">NO．</div>'
-      +   '<div class="sideNoVal">'+P.esc(o.orderNo||o.productNo||'')+'</div>'
+      +   '<div class="sideNoVal"></div>'
       + '</div>'
       + '<div class="mainCol">'
-      +   '<div class="headRow"><div class="customer">'+P.esc(o.customer||'（客先未入力）')+'　様</div><div class="issueDate">発行日：'+P.esc(P.fmtDateJp(o.issueDate))+'</div></div>'
+      // 上段：略図欄（空欄）＋工程を手書きする12行（空欄）
+      +   '<div class="topRow">'
+      +     '<div class="sketchBox" style="flex:0 0 '+SKETCH_W+'mm;"><span class="sketchLabel">略図</span></div>'
+      +     '<div class="procWrap"><table class="procTable">'+procColGroup()+'<tbody>'+procRowsHtml()+'</tbody></table></div>'
+      +   '</div>'
+      // 見出し行：原本と同じく左端が「発行」、その右に工程表の見出しが並ぶ
+      +   '<table class="headTable">'
+      +     '<colgroup>'
+      +       '<col style="width:'+LABEL_W+'mm;"><col style="width:'+(SKETCH_W-LABEL_W)+'mm;">'
+      +       '<col style="width:'+COLS.machine+'mm;"><col style="width:'+COLS.proc+'mm;">'
+      +       '<col style="width:'+COLS.start+'mm;"><col style="width:'+COLS.end+'mm;">'
+      +       '<col style="width:'+COLS.hour+'mm;"><col>'
+      +     '</colgroup>'
+      +     '<tr>'
+      +       '<th>発　行</th><td class="issueVal">'+P.esc(todayJp())+'</td>'
+      +       '<th>機械名<br>外注／人名</th><th>NO.<br>工程</th>'
+      +       '<th>着手<br>日程</th><th>完成<br>日程</th>'
+      +       '<th>実働H<br>見積H</th><th>備　考</th>'
+      +     '</tr>'
+      +   '</table>'
+      // 下段：自動入力する6項目
+      // ※ table-layout:fixed の表では列幅は colgroup（または1行目）だけで決まる。
+      //    行の途中に width を書いても効かないため、必ずここで指定する。
       +   '<table class="infoTable">'
-      +     '<tr><th>社内No.</th><td>'+P.esc(o.orderNo||'')+'</td><th>品番</th><td>'+P.esc(o.productNo||'')+'</td></tr>'
-      +     '<tr><th>品名</th><td>'+P.esc(o.itemName||'')+'</td><th>型番</th><td>'+P.esc(o.model||'')+'</td></tr>'
-      +     '<tr><th>数量</th><td>'+P.esc(o.qty||'')+'</td><th>受注日</th><td>'+P.esc(P.fmtDateJp(o.orderDate))+'</td></tr>'
-      +     '<tr><th>納期</th><td>'+P.esc(P.fmtDateJp(o.dueDate))+'</td><th>機械名</th><td></td></tr>'
-      +     '<tr><th>作業No.</th><td></td><th>外注／担当者</th><td></td></tr>'
-      +     '<tr><th>工程</th><td colspan="3">'+P.esc(summary.codes.join('　'))+'</td></tr>'
-      +     '<tr><th>着手</th><td>'+P.esc(P.fmtDateJp(summary.earliest))+'</td><th>完成</th><td>'+P.esc(P.fmtDateJp(summary.latest))+'</td></tr>'
-      +     '<tr><th>実働Ｈ</th><td>'+P.esc(summary.hoursSum!=null ? summary.hoursSum : '')+'</td><th>見積Ｈ</th><td></td></tr>'
-      +     '<tr><th>備考</th><td colspan="3" class="noteCell">'+P.esc(notice.note||'')+'</td></tr>'
+      +     '<colgroup>'
+      +       '<col style="width:'+LABEL_W+'mm;"><col>'               // ラベル（発行欄と同じ幅）／ 型式・客先の値
+      +       '<col style="width:18mm;"><col style="width:26mm;">'    // 受注日
+      +       '<col style="width:14mm;"><col style="width:18mm;">'    // 納期
+      +       '<col style="width:14mm;"><col style="width:20mm;">'    // 数量
+      +     '</colgroup>'
+      +     '<tr><th>型式</th><td colspan="7">'+P.esc(o.model||'')+'</td></tr>'
+      +     '<tr>'
+      +       '<th>客先</th><td class="custCell">'+P.esc(o.customer||'')+'</td>'
+      +       '<th>受注日</th><td>'+P.esc(P.fmtDateJp(o.orderDate))+'</td>'
+      +       '<th>納期</th><td>'+P.esc(fmtMonthDay(o.dueDate))+'</td>'
+      +       '<th>数量</th><td>'+P.esc(o.qty||'')+'</td>'
+      +     '</tr>'
       +   '</table>'
       + '</div>'
       + '</div>';

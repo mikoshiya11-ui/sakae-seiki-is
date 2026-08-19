@@ -49,12 +49,22 @@
   }
   table.checkTable th{ background:#f2f4f8; font-weight:700; color:#3a4a63; }
   table.checkTable td.itemCell{ text-align:left; font-weight:700; }
-  table.checkTable col.cItem{ width:19%; }
-  table.checkTable col.cDays{ width:8%; }
-  table.checkTable col.cDeadline{ width:12%; }
-  table.checkTable col.cDone{ width:14%; }
-  table.checkTable col.cCheck{ width:14%; }
-  table.checkTable col.cProc{ width:33%; }
+  /* 原本に合わせ、目安・期限・完了日・確認は狭く、手順を広く取る（2026-08-19 現場要望） */
+  table.checkTable col.cItem{ width:20%; }
+  table.checkTable col.cDays{ width:6%; }
+  table.checkTable col.cDeadline{ width:7%; }
+  table.checkTable col.cDone{ width:7%; }
+  table.checkTable col.cCheck{ width:6%; }
+  table.checkTable col.cProc{ width:54%; }
+  /* 完了日・確認は印刷後に手書きするため、入力欄を置かない空欄 */
+  table.checkTable td.handwriteCell{ }
+  /* 手順欄：枠線を出さず、セル全体を使って入力できるようにする */
+  table.checkTable td.procCell{ padding:0; }
+  table.checkTable td.procCell input{
+    width:100%; border:none; background:transparent; padding:4px 6px;
+    font-size:inherit; font-family:inherit; color:inherit;
+  }
+  table.checkTable td.procCell input:focus{ outline:none; background:#f4f8ff; }
   table.checkTable td.procCell{ text-align:left; font-size:10px; color:#5b6b84; }
   table.checkTable input[type="date"], table.checkTable input[type="text"]{
     border:none; background:transparent; font-size:11px; font-family:inherit; width:100%; text-align:center;
@@ -115,12 +125,15 @@
     return P.ARRANGEMENT_CHECK_ITEMS.map(def=>{
       const it = ac.items[def.key];
       const deadline = it.deadline || (def.days!=null ? P.addBusinessDays(ac.inputDate, def.days) : '');
+      // 完了日・確認は、印刷後に現場で手書きするため入力欄を置かず空欄にする（2026-08-19 現場要望）。
+      // 手順は原本にある品質管理項目。初期値は空で、この画面で自由に入力できるようにする。
       return '<tr data-key="'+def.key+'">'
         + '<td class="itemCell">'+esc(def.label)+'</td>'
         + '<td>'+(def.days!=null ? def.days+'日' : '－')+'</td>'
         + '<td>'+esc(P.fmtDateJp(deadline))+'</td>'
-        + '<td><input type="date" data-field="completedDate" value="'+esc(it.completedDate)+'"></td>'
-        + '<td><input type="text" data-field="checkedBy" value="'+esc(it.checkedBy)+'" placeholder="確認者"></td>'
+        + '<td class="handwriteCell"></td>'
+        + '<td class="handwriteCell"></td>'
+        + '<td class="procCell"><input type="text" data-field="procedure" value="'+esc(it.procedure||'')+'"></td>'
         + '</tr>';
     }).join('');
   }
@@ -148,8 +161,8 @@
       +   '</select></div>'
       + '</div>'
       + '<table class="checkTable">'
-      +   '<colgroup><col class="cItem"><col class="cDays"><col class="cDeadline"><col class="cDone"><col class="cCheck"></colgroup>'
-      +   '<thead><tr><th>項　目</th><th>目安</th><th>期限</th><th>完了日</th><th>確認</th></tr></thead>'
+      +   '<colgroup><col class="cItem"><col class="cDays"><col class="cDeadline"><col class="cDone"><col class="cCheck"><col class="cProc"></colgroup>'
+      +   '<thead><tr><th>項　目</th><th>目安</th><th>期限</th><th>完了日</th><th>確認</th><th>手　順</th></tr></thead>'
       +   '<tbody id="checkBody">'+buildRows()+'</tbody>'
       + '</table>'
       + '<div class="footRow">'
