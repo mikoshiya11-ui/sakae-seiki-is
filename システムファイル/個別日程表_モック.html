@@ -268,13 +268,25 @@
     font-size:12.5px; color:#5c4a1a; padding:0 8px 8px; box-sizing:border-box; line-height:1.5; outline:none;
   }
   /* 縦書き・細幅メモ（右クリックメニューの「縦書きにする」で切り替え。横幅を狭くしても文字が縦に流れて入る） */
-  .memoNote.vertical{ min-width:34px; }
+  /* 縦書きは細くできる。ここは「本文12.5px＋左右padding8px＋枠5px」が入る下限だけを守り、
+     操作上の下限（日程表の1日分）はJS側で決める（CSSとJSで別々の数字を持たせないため） */
+  .memoNote.vertical{ min-width:28px; }
   .memoNote.vertical .memoNoteBody{
     writing-mode:vertical-rl; text-orientation:upright; padding:8px 4px 8px; text-align:start;
   }
   .memoNoteResize{
     position:absolute; right:1px; bottom:1px; width:14px; height:14px; cursor:nwse-resize;
   }
+  /* ---- 縦横を別々に変えるための辺ハンドル。右下の角（両方いっぺんに変わる）は今までどおり残してある ----
+     高さだけ縮めたいのに横幅まで動いてしまうのは、角のハンドルが w と h を同時に書き換えるため。
+     辺をつかんだときは触っていない側の値を書き換えない。 ---- */
+  .memoNoteResizeX{
+    position:absolute; right:0; top:14px; bottom:16px; width:6px; cursor:ew-resize;
+  }
+  .memoNoteResizeY{
+    position:absolute; left:6px; right:16px; bottom:0; height:6px; cursor:ns-resize;
+  }
+  .memoNoteResizeX:hover, .memoNoteResizeY:hover{ background:rgba(216,192,114,.55); }
   .memoNoteResize::after{
     content:''; position:absolute; right:3px; bottom:3px; width:7px; height:7px;
     border-right:2px solid #d8c072; border-bottom:2px solid #d8c072;
@@ -336,7 +348,7 @@
     }
     .rowCountCtrl{ display:none !important; }
     .track .bar .handle{ display:none !important; }
-    .memoNoteHandle, .memoNoteResize, .memoTailHandle{ display:none !important; }
+    .memoNoteHandle, .memoNoteResize, .memoNoteResizeX, .memoNoteResizeY, .memoTailHandle{ display:none !important; }
     .ganttDatesCell .dateTagInput{ border:none !important; background:transparent !important; color:#1a2233 !important; }
   }
 </style>
@@ -939,7 +951,9 @@
       el.style.height = memo.h+'px';
       el.innerHTML = '<div class="memoNoteHandle" data-role="memoHandle" data-memo-id="'+esc(memo.id)+'" title="ドラッグで移動">・・・</div>'
         + '<textarea class="memoNoteBody" data-role="memoBody" placeholder="メモを入力">'+esc(memo.text||'')+'</textarea>'
-        + '<div class="memoNoteResize" data-role="memoResize" data-memo-id="'+esc(memo.id)+'" title="ドラッグでサイズ変更"></div>';
+        + '<div class="memoNoteResizeX" data-role="memoResizeX" data-memo-id="'+esc(memo.id)+'" title="ドラッグで横幅だけ変更"></div>'
+        + '<div class="memoNoteResizeY" data-role="memoResizeY" data-memo-id="'+esc(memo.id)+'" title="ドラッグで高さだけ変更"></div>'
+        + '<div class="memoNoteResize" data-role="memoResize" data-memo-id="'+esc(memo.id)+'" title="ドラッグで縦横まとめて変更"></div>';
       ganttInner.appendChild(el);
 
       const lineEl = document.createElement('div');
@@ -2434,16 +2448,32 @@
     });
   });
 
-  let memoDrag = null; // { type:'move'|'resize'|'tail', id, startClientX, startClientY, orig:{x,y,w,h,tailX,tailY} }
+  // ---- メモのリサイズ下限 ----
+  // 横幅は「日程表の1日分」まで細くできるようにする。固定pxを決め打ちせず、ズームで変わる1日幅（DAY_W）をそのまま使う。
+  // ただし縦書き本文(12.5px)＋左右padding(8px)＋枠(5px)が入らない幅にすると文字が枠からはみ出すので、その分は下限に残す
+  // （ズームを最小の14pxまで縮めても、文字が読めなくならないようにするため）。
+  // 横書きのメモは従来どおり90pxのまま（細くすると横書きの文字が入らないため、今回の対象外）。
+  const MEMO_VERTICAL_MIN_W = 28;
+  const MEMO_MIN_W = 90;
+  const MEMO_MIN_H = 56;
+  function memoMinW(memo){
+    return (memo && memo.vertical) ? Math.max(MEMO_VERTICAL_MIN_W, DAY_W) : MEMO_MIN_W;
+  }
+
+  let memoDrag = null; // { type:'move'|'resize'|'resizeX'|'resizeY'|'tail', id, startClientX, startClientY, orig:{x,y,w,h,tailX,tailY} }
   ganttInner.addEventListener('mousedown', (e)=>{
-    const targetHandle = e.target.closest('[data-role="memoHandle"], [data-role="memoResize"], [data-role="memoTailHandle"]');
+    const targetHandle = e.target.closest('[data-role="memoHandle"], [data-role="memoResize"], [data-role="memoResizeX"], [data-role="memoResizeY"], [data-role="memoTailHandle"]');
     if(!targetHandle) return;
     const memo = memos.find(m=>m.id===targetHandle.dataset.memoId);
     if(!memo) return;
     e.preventDefault();
     ensureMemoTail(memo);
     const role = targetHandle.dataset.role;
-    const type = role==='memoTailHandle' ? 'tail' : (role==='memoHandle' ? 'move' : 'resize');
+    const type = role==='memoTailHandle' ? 'tail'
+      : role==='memoHandle' ? 'move'
+      : role==='memoResizeX' ? 'resizeX'
+      : role==='memoResizeY' ? 'resizeY'
+      : 'resize';
     memoDrag = { type, id: memo.id, startClientX: e.clientX, startClientY: e.clientY,
       orig:{ x:memo.x, y:memo.y, w:memo.w, h:memo.h, tailX:memo.tailX, tailY:memo.tailY } };
   });
@@ -2463,9 +2493,12 @@
       memo.tailY = memoDrag.orig.tailY + dy;
       if(noteEl){ noteEl.style.left = memo.x+'px'; noteEl.style.top = memo.y+'px'; }
       updateMemoTailVisual(memo);
-    }else if(memoDrag.type==='resize'){
-      memo.w = Math.max(90, memoDrag.orig.w + dx);
-      memo.h = Math.max(56, memoDrag.orig.h + dy);
+    }else if(memoDrag.type==='resize' || memoDrag.type==='resizeX' || memoDrag.type==='resizeY'){
+      // 右辺＝横幅だけ／下辺＝高さだけ／右下の角＝両方（従来どおり）。
+      // 触っていない側は「元の値をそのまま入れ直す」。ここで片方から他方を計算しないことが、
+      // 「高さを縮めたのに横幅が広がる」を起こさない条件。
+      memo.w = (memoDrag.type==='resizeY') ? memoDrag.orig.w : Math.max(memoMinW(memo), memoDrag.orig.w + dx);
+      memo.h = (memoDrag.type==='resizeX') ? memoDrag.orig.h : Math.max(MEMO_MIN_H, memoDrag.orig.h + dy);
       if(noteEl){ noteEl.style.width = memo.w+'px'; noteEl.style.height = memo.h+'px'; }
       updateMemoTailVisual(memo);
     }else if(memoDrag.type==='tail'){
