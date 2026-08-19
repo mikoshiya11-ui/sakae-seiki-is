@@ -84,6 +84,49 @@
   .curInfo .ciItem .ciLabel{ font-size:9.5px; font-weight:700; color:#8592a6; }
   .curInfo .ciItem .ciVal{ font-size:13px; font-weight:700; color:#173a68; min-height:16px; }
   .curInfo .ciItem .ciVal.muted{ color:#c7cfdc; font-weight:400; }
+  /* 同じ工程記号が複数ある部品（NC＋2オモテ／NC＋3ヨコ など）を取り違えないよう、識別BOXは目立たせる */
+  .curInfo .ciItem .ciVal.ident{ color:#b45309; }
+
+  /* ---- 工程完了（バーコード）。工数などの実績詳細とは別の操作であることが分かる並びにする ---- */
+  .doneRow{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px;
+    background:#f2f7f3; border:1.5px solid #cfe3d4; border-radius:10px; padding:12px 14px;
+  }
+  .doneRow.isDone{ background:#eef4fb; border-color:#cddff0; }
+  .doneRow.noTarget{ background:#f7f9fc; border-color:#e6eaf1; }
+  .doneRow .doneState{ font-size:13px; font-weight:700; color:#166534; }
+  .doneRow.isDone .doneState{ color:#173a68; }
+  .doneRow.noTarget .doneState{ color:#a4adbc; font-weight:400; }
+  .doneRow button{
+    border:none; border-radius:8px; font-size:13px; font-weight:700; padding:9px 18px; cursor:pointer; font-family:inherit;
+  }
+  .doneRow .doneBtn{ background:#16a34a; color:#fff; }
+  .doneRow .doneBtn:hover{ filter:brightness(1.08); }
+  .doneRow .doneBtn:disabled{ background:#dfe4ec; color:#a4adbc; cursor:default; }
+  .doneRow .undoneBtn{ background:#fff; color:#c0392b; border:1.5px solid #f0c9c4; }
+  .doneRow .undoneBtn:hover{ background:#fdf3f2; }
+  .detailTitle{ font-size:12.5px; font-weight:700; color:#5b6b84; margin-bottom:10px; }
+
+  /* ---- 古いバーコードで工程が1つに決まらないときの選択欄（勝手に先頭を選ばない） ---- */
+  .candCard{
+    display:none; background:#fffaf2; border:1.5px solid #f3dcb8; border-radius:14px; padding:16px 20px; margin-bottom:20px;
+  }
+  .candCard.open{ display:block; }
+  .candCard .candTitle{ font-size:13px; font-weight:700; color:#8a5a1a; margin-bottom:12px; line-height:1.6; }
+  .candCard .candList{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .candCard .candItem{
+    display:flex; align-items:center; gap:14px; background:#fff; border:1.5px solid #f0e0c6; border-radius:10px;
+    padding:10px 14px; font-size:13px; font-family:inherit; color:#1a2233; cursor:pointer; text-align:left;
+  }
+  .candCard .candItem:hover{ border-color:#d9a441; background:#fffdf8; }
+  .candCard .candItem .cCode{ font-weight:800; color:#173a68; min-width:64px; }
+  .candCard .candItem .cIdent{ font-weight:800; color:#b45309; min-width:88px; }
+  .candCard .candItem .cSub{ color:#5b6b84; font-size:12px; }
+  .candCard .candItem .cDone{ color:#16a34a; font-size:12px; font-weight:700; }
+  .candCard .candCancel{
+    border:none; background:#8592a6; color:#fff; font-size:12px; font-weight:700; padding:7px 14px;
+    border-radius:7px; cursor:pointer; font-family:inherit;
+  }
 
   .fieldRow{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
   .fieldRow .fItem{ display:flex; flex-direction:column; gap:4px; }
@@ -153,13 +196,15 @@
   <div class="wrap">
 
     <div class="noteBar">
-      作業票に印刷したバーコード（品番・部品・工程）を読み取ると、下の「今回の対象」が自動入力されます。あとは紙に書かれた実績の数字を入力してEnter（または「登録する」）を押すだけです。バーコードリーダーが無い場合は「品番から選ぶ」で手動入力もできます。<br>
-      「状況」欄で「未完」を選んで登録すると、その工程はまだ作業中として扱われ、残品表からは消えません（「完了」で登録した工程だけ残品表から外れます）。
+      <b>工程が終わったこと</b>と<b>実績の詳細（工数・数量など）</b>は別々に扱います。<br>
+      ① 現場から回ってきたバーコード票を読み取り、「<b>この工程を完了にする</b>」を押す ⇒ その工程が完了になり、工程残品表から消えます。工数を入れていなくても完了します。<br>
+      ② 工数・数量・良否・設備などの<b>実績詳細</b>は、紙を見ながら<b>後から</b>下の欄で入力します（何度でも追加できます）。<br>
+      バーコードリーダーが無い場合は「品番から選ぶ」で手動でも対象を選べます。すでに印刷済みの古いバーコードもそのまま読めます。
     </div>
 
     <div class="scanCard">
       <span class="scanLabel">📷 ここにカーソルを置いてバーコードを読み取ってください</span>
-      <input type="text" id="scanInput" placeholder="バーコードをスキャン（テスト時は品番-部品コード-工程コード を入力してEnter）" autocomplete="off">
+      <input type="text" id="scanInput" placeholder="バーコードをスキャン（テスト時は P+工程ID、または旧形式の 社内No.-工程コード を入力してEnter）" autocomplete="off">
       <button type="button" class="manualToggleBtn" id="manualToggleBtn">品番から選ぶ（手動）</button>
     </div>
 
@@ -176,10 +221,23 @@
       <button type="button" class="manualPick" id="manualPickBtn">この工程を対象にする</button>
     </div>
 
+    <div class="candCard" id="candCard">
+      <div class="candTitle" id="candTitle">このバーコードには工程が複数あります。どれを完了にしますか？</div>
+      <div class="candList" id="candList"></div>
+      <button type="button" class="candCancel" id="candCancel">やめる</button>
+    </div>
+
     <div class="entryCard">
       <div class="curTitle">今回の対象</div>
       <div class="curInfo" id="curInfo"></div>
 
+      <div class="doneRow" id="doneRow">
+        <span class="doneState" id="doneState"></span>
+        <button type="button" class="doneBtn" id="doneBtn">✅ この工程を完了にする</button>
+        <button type="button" class="undoneBtn" id="undoneBtn">完了を取り消す</button>
+      </div>
+
+      <div class="detailTitle">実績詳細（工数・数量など。工程完了とは別の操作で、後から入力できます）</div>
       <div class="fieldRow">
         <div class="fItem"><label>日付</label><input type="date" id="dateInput"></div>
         <div class="fItem"><label>社員No</label><input type="text" id="employeeNo" placeholder="例）16"></div>
@@ -212,7 +270,7 @@
     </div>
 
     <div class="footNote">
-      入力したデータは sakaeIS_jissekiLog_v1 として保存され、工数・変動費集計の元データになります（このページはまだモックです）。
+      工程が終わったという事実は sakaeIS_procDoneLog_v1 に、工数・数量などの実績詳細は sakaeIS_jissekiLog_v1 に、それぞれ別々に保存されます。工程残品表は「どちらかで完了になっていれば完了」として扱います（このページはまだモックです）。
     </div>
 
   </div>
@@ -274,8 +332,9 @@
     }
     return list;
   }
-  // ---- Code39は日本語や「(」「)」を表現できないため、作業票印刷側は工程コードの先頭の英数字部分だけを
-  // バーコードに使っている（例：「DG(外注-材料直送)」→「DG」）。ここでも同じ削り方をして照合する ----
+  // ---- 古いバーコード（社内No.-工程コード）を読むときだけ使う。Code39は日本語や「(」「)」を表現できないため、
+  // 当時の作業票印刷は工程コードの先頭の英数字部分だけをバーコードにしていた（例：「DG(外注-材料直送)」→「DG」）。
+  // 同じ削り方をして照合する。新しいバーコードは工程ID（procId）そのものなので、この処理は通らない ----
   function barcodeSafeCode(code){
     const m = String(code||'').match(/^[A-Za-z0-9]+/);
     return m ? m[0] : '';
@@ -289,69 +348,134 @@
     }
     return base + (part && part.subNo ? ('-'+part.subNo) : '');
   }
+  // ---- 画面と実績ログで使う「対象1件」の形。どの画面でも同じ作り方をする ----
+  function makeMatch(bs, part, proc){
+    return {
+      // productNoは案件を紐づけるための内部キー（例：35481000-11）。displayNoは実際に紙に印字されてる
+      // 部品ごとの番号（例：35481001-11）。画面には読み取った番号と同じdisplayNoの方を出して迷わないようにする
+      productNo: bs.order.productNo || '', displayNo: displayNoFor(bs.order.productNo, part),
+      customerName: bs.order.customer||'', modelName: bs.order.model||'',
+      partId: part.id, partCode: part.subNo||part.code||'', partName: part.name||'',
+      procId: proc.id, processCode: proc.code||'', processIdent: proc.ident||'',
+      procDate: proc.date||''
+    };
+  }
+
+  // ---- 新しいバーコード：工程ID（procId）そのもの。頭の「P」は旧形式と見分けるための目印。
+  // Code39は小文字を大文字にしてしまうので、小文字へ戻してから探す（procIdは必ず小文字の英数字7文字） ----
+  function findByProcId(procId){
+    if(!procId) return null;
+    const list = scanAllProducts();
+    for(const bs of list){
+      if(!bs || !bs.order) continue;
+      for(const part of (bs.parts||[])){
+        const proc = (part.processes||[]).find(pr=> pr.id === procId);
+        if(proc) return makeMatch(bs, part, proc);
+      }
+    }
+    return null;
+  }
+
+  // ---- 旧バーコードの逆引き。工程コードは同じ部品の中で重複しうるので、1件目で打ち切らず候補を全部集める ----
+  function collectByRealNumberingRule(base, subNoDigits, suffix, processCode){
+    const out = [];
+    scanAllProducts().forEach(bs=>{
+      if(!bs || !bs.order) return;
+      const orderBase = (bs.order.productNo||'').trim();
+      const om = orderBase.match(/^(\d+?)(\d{3})-(\d{2})$/);
+      if(!om || om[1]!==base || om[3]!==suffix) return;
+      const part = (bs.parts||[]).find(p=> p.subNo && String(p.subNo).padStart(3,'0')===subNoDigits);
+      if(!part) return;
+      (part.processes||[]).forEach(proc=>{
+        if(barcodeSafeCode(proc.code)===processCode){
+          const m = makeMatch(bs, part, proc);
+          m.displayNo = base + subNoDigits + '-' + suffix;
+          out.push(m);
+        }
+      });
+    });
+    return out;
+  }
+  function collectByTriple(productNo, partSubNo, processCode){
+    const key = BUHIN_PREFIX + productNo;
+    let bs;
+    try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ return []; }
+    if(!bs || !bs.order) return [];
+    const part = (bs.parts||[]).find(p=> String(p.subNo)===String(partSubNo));
+    if(!part) return [];
+    return (part.processes||[]).filter(proc=> barcodeSafeCode(proc.code)===processCode)
+      .map(proc=> makeMatch(bs, part, proc));
+  }
+
+  // ---- 読み取った文字列を新旧どちらの形式か見分けて解釈する。
+  //   「-」を含まない → 新形式（P＋procId）。工程が1件に必ず決まる
+  //   「-」を含む     → 旧形式（社内No.-工程コード）。候補が複数になることがある
+  // 戻り値は { kind:'one', match } / { kind:'many', candidates } / null（見つからない） ----
   function findByBarcodeKey(rawKey){
     const trimmed = (rawKey||'').trim();
     if(!trimmed) return null;
+
+    if(trimmed.indexOf('-') === -1){
+      let body = trimmed;
+      if(/^[Pp]/.test(body)) body = body.slice(1);
+      const match = findByProcId(body.toLowerCase());
+      return match ? { kind:'one', match: match } : null;
+    }
+
     const segs = trimmed.split('-');
     if(segs.length < 2) return null;
     const processCode = segs[segs.length-1];
     const partNoText = segs.slice(0, segs.length-1).join('-'); // 作業票印刷に印字されてる「NO.」の文字列と同じもの
 
-    // 1) 実際の採番ルール（5桁品番＋3桁の部品ごとの枝番＋2桁の任意コード。例：35481001-11）で読み解けるか試す。
-    //    このルールに沿った番号は「品番-部品コード-工程コード」のような単純な3分割ではなく、部品ごとに全体の数字が
-    //    変わる特殊な形なので、登録済みの全案件を横断して、同じ考え方で組み立てた番号が一致するものを探す
+    // 1) 実際の採番ルール（5桁品番＋3桁の部品ごとの枝番＋2桁の任意コード。例：35481001-11）で読み解けるか試す
+    let candidates = [];
     const m = partNoText.match(/^(\d+?)(\d{3})-(\d{2})$/);
-    if(m){
-      const found = findByRealNumberingRule(m[1], m[2], m[3], processCode);
-      if(found) return found;
-    }
+    if(m) candidates = collectByRealNumberingRule(m[1], m[2], m[3], processCode);
 
     // 2) 採番ルールに当てはまらない品番（デモ品番など）は、従来通り「品番-部品の社内No[枝番]-工程コード」として解釈する
-    if(segs.length >= 3){
+    if(!candidates.length && segs.length >= 3){
       const partSubNo = segs[segs.length-2];
       const productNo = segs.slice(0, segs.length-2).join('-');
-      return findByTriple(productNo, partSubNo, processCode);
+      candidates = collectByTriple(productNo, partSubNo, processCode);
     }
-    return null;
+    if(!candidates.length) return null;
+    if(candidates.length === 1) return { kind:'one', match: candidates[0] };
+    return { kind:'many', candidates: candidates };
   }
-  // ---- 採番ルール（品番＋部品ごとの枝番＋任意コード）を理解して、全案件の中から一致する部品を逆引きする ----
-  function findByRealNumberingRule(base, subNoDigits, suffix, processCode){
-    const list = scanAllProducts();
-    for(const bs of list){
-      if(!bs || !bs.order) continue;
-      const orderBase = (bs.order.productNo||'').trim();
-      const om = orderBase.match(/^(\d+?)(\d{3})-(\d{2})$/);
-      if(!om || om[1]!==base || om[3]!==suffix) continue;
-      const part = (bs.parts||[]).find(p=> p.subNo && String(p.subNo).padStart(3,'0')===subNoDigits);
-      if(!part) continue;
-      const proc = (part.processes||[]).find(p=> barcodeSafeCode(p.code)===processCode);
-      if(!proc) continue;
-      return {
-        // productNoは案件を紐づけるための内部キー（例：49171000-11）。displayNoは実際にスキャンした・紙に印字されてる
-        // 部品ごとの番号（例：49171001-11）。画面には読み取った番号と同じdisplayNoの方を表示して迷わないようにする
-        productNo: bs.order.productNo||orderBase, displayNo: base+subNoDigits+'-'+suffix,
-        customerName: bs.order.customer||'', modelName: bs.order.model||'',
-        partId: part.id, partCode: part.subNo||part.code||'', partName: part.name||'',
-        procId: proc.id, processCode: proc.code
-      };
-    }
-    return null;
+
+  // ---- 工程完了（バーコード）専用の保存領域。実績詳細（工数・数量など）とは別に持つ。
+  // 「その工程が終わった」という事実だけを記録し、工数が未入力でも完了は成立する。
+  // procIdをキーにしているので、同じ工程を二度読んでも記録は増えない ----
+  const PROC_DONE_KEY = 'sakaeIS_procDoneLog_v1';
+  function loadProcDone(){
+    try{
+      const raw = localStorage.getItem(PROC_DONE_KEY);
+      const obj = raw ? JSON.parse(raw) : null;
+      return (obj && typeof obj === 'object' && !Array.isArray(obj)) ? obj : {};
+    }catch(e){ return {}; }
   }
-  function findByTriple(productNo, partSubNo, processCode){
-    const key = BUHIN_PREFIX + productNo;
-    let bs;
-    try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ return null; }
-    if(!bs || !bs.order) return null;
-    const part = (bs.parts||[]).find(p=> String(p.subNo)===String(partSubNo));
-    if(!part) return null;
-    const proc = (part.processes||[]).find(p=> barcodeSafeCode(p.code)===processCode);
-    if(!proc) return null;
-    return {
-      productNo: bs.order.productNo||productNo, displayNo: bs.order.productNo||productNo,
-      customerName: bs.order.customer||'', modelName: bs.order.model||'',
-      partId: part.id, partCode: part.subNo||part.code||'', partName: part.name||'',
-      procId: proc.id, processCode: proc.code
-    };
+  function saveProcDone(map){ localStorage.setItem(PROC_DONE_KEY, JSON.stringify(map)); }
+  function isDoneByBarcode(procId){ return !!(procId && loadProcDone()[procId]); }
+  function markProcDone(procId){
+    if(!procId) return false;
+    const map = loadProcDone();
+    if(map[procId]) return false;           // すでに完了＝新しい記録は作らない
+    map[procId] = { procId: procId, completedAt: new Date().toISOString(), source: 'barcode' };
+    saveProcDone(map);
+    return true;
+  }
+  function unmarkProcDone(procId){
+    if(!procId) return false;
+    const map = loadProcDone();
+    if(!map[procId]) return false;
+    delete map[procId];
+    saveProcDone(map);
+    return true;
+  }
+  // 実績ログ側で「完了」として登録済みかどうか（古いやり方。残品表はこちらも完了として扱う）
+  function isDoneByLog(procId){
+    if(!procId) return false;
+    return loadLog().some(e=> e && e.procId===procId && e.completion !== '未完');
   }
 
   function loadLog(){
@@ -365,23 +489,127 @@
   let current = null; // {productNo, customerName, modelName, partId, partCode, partName, procId, processCode}
 
   const curInfoEl = document.getElementById('curInfo');
+  const doneRowEl = document.getElementById('doneRow');
+  const doneStateEl = document.getElementById('doneState');
+  const doneBtn = document.getElementById('doneBtn');
+  const undoneBtn = document.getElementById('undoneBtn');
+
   function renderCurInfo(){
     if(!current){
-      curInfoEl.innerHTML = ['品番','客先/型式','部品','工程','（未選択）'].map(()=>'').join('');
       curInfoEl.innerHTML =
-        '<div class="ciItem"><span class="ciLabel">品番</span><span class="ciVal muted">―</span></div>'
-        + '<div class="ciItem"><span class="ciLabel">客先／型式</span><span class="ciVal muted">―</span></div>'
-        + '<div class="ciItem"><span class="ciLabel">部品</span><span class="ciVal muted">―</span></div>'
-        + '<div class="ciItem"><span class="ciLabel">工程</span><span class="ciVal muted">バーコードを読み取ってください</span></div>'
-        + '<div class="ciItem"><span class="ciLabel">連携</span><span class="ciVal muted">―</span></div>';
+        '<div class="ciItem"><span class="ciLabel">品番（案件）</span><span class="ciVal muted">―</span></div>'
+        + '<div class="ciItem"><span class="ciLabel">社内No.</span><span class="ciVal muted">―</span></div>'
+        + '<div class="ciItem"><span class="ciLabel">部品名</span><span class="ciVal muted">―</span></div>'
+        + '<div class="ciItem"><span class="ciLabel">工程記号</span><span class="ciVal muted">バーコードを読み取ってください</span></div>'
+        + '<div class="ciItem"><span class="ciLabel">識別BOX</span><span class="ciVal muted">―</span></div>'
+        + '<div class="ciItem"><span class="ciLabel">客先／型式</span><span class="ciVal muted">―</span></div>';
+      renderDoneRow();
       return;
     }
     curInfoEl.innerHTML =
-      '<div class="ciItem"><span class="ciLabel">品番</span><span class="ciVal">'+esc(current.displayNo||current.productNo)+'</span></div>'
-      + '<div class="ciItem"><span class="ciLabel">客先／型式</span><span class="ciVal">'+esc(current.customerName)+' / '+esc(current.modelName)+'</span></div>'
-      + '<div class="ciItem"><span class="ciLabel">部品</span><span class="ciVal">'+esc(current.partCode)+' '+esc(current.partName)+'</span></div>'
-      + '<div class="ciItem"><span class="ciLabel">工程</span><span class="ciVal">'+esc(current.processCode)+'</span></div>'
-      + '<div class="ciItem"><span class="ciLabel">作業票と連携</span><span class="ciVal" style="color:#16a34a;">🔗 連携済み</span></div>';
+      '<div class="ciItem"><span class="ciLabel">品番（案件）</span><span class="ciVal">'+esc(current.productNo||'―')+'</span></div>'
+      + '<div class="ciItem"><span class="ciLabel">社内No.</span><span class="ciVal">'+esc(current.displayNo||current.productNo)+'</span></div>'
+      + '<div class="ciItem"><span class="ciLabel">部品名</span><span class="ciVal">'+esc(current.partCode)+' '+esc(current.partName)+'</span></div>'
+      + '<div class="ciItem"><span class="ciLabel">工程記号</span><span class="ciVal">'+esc(current.processCode||'―')+'</span></div>'
+      + '<div class="ciItem"><span class="ciLabel">識別BOX</span><span class="ciVal ident">'+esc(current.processIdent||'―')+'</span></div>'
+      + '<div class="ciItem"><span class="ciLabel">客先／型式</span><span class="ciVal">'+esc(current.customerName)+' / '+esc(current.modelName)+'</span></div>';
+    renderDoneRow();
+  }
+
+  // ---- 工程完了の状態表示。すでに完了している工程を読んだ場合は、その場ではっきり出す ----
+  function renderDoneRow(){
+    if(!doneRowEl) return;
+    if(!current){
+      doneRowEl.className = 'doneRow noTarget';
+      doneStateEl.textContent = 'バーコードを読み取ると、この工程を完了にできます。';
+      doneBtn.style.display = 'none';
+      undoneBtn.style.display = 'none';
+      return;
+    }
+    const byBarcode = isDoneByBarcode(current.procId);
+    const byLog = isDoneByLog(current.procId);
+    if(byBarcode || byLog){
+      doneRowEl.className = 'doneRow isDone';
+      // 実績ログ側で完了になっている分は、ここでは取り消せない（実績そのものを消す／未完に直すのは別の操作）。
+      // ボタンが無い理由が分かるよう、どうすれば取り消せるかを文言で示す
+      doneStateEl.textContent = byBarcode
+        ? 'この工程はすでに完了しています（バーコードで登録済み）。'
+        : 'この工程はすでに完了しています（実績入力で「完了」として登録済み）。取り消すには、下の実績一覧からその実績を削除してください。';
+      doneBtn.style.display = 'none';
+      undoneBtn.style.display = byBarcode ? '' : 'none';
+    }else{
+      doneRowEl.className = 'doneRow';
+      doneStateEl.textContent = 'この工程はまだ完了していません。';
+      doneBtn.style.display = '';
+      undoneBtn.style.display = 'none';
+    }
+  }
+
+  if(doneBtn){
+    doneBtn.addEventListener('click', ()=>{
+      if(!current){ alert('先にバーコードを読み取るか、品番から選んでください。'); focusScan(); return; }
+      if(isDoneByBarcode(current.procId) || isDoneByLog(current.procId)){
+        alert('この工程はすでに完了しています。');
+        renderDoneRow();
+        return;
+      }
+      const procId = current.procId;
+      const label = (current.processCode||'') + (current.processIdent||'');
+      markProcDone(procId);
+      renderDoneRow();
+      showUndo(label + ' を完了にしました', ()=>{ unmarkProcDone(procId); renderDoneRow(); });
+      focusScan();
+    });
+  }
+  if(undoneBtn){
+    undoneBtn.addEventListener('click', ()=>{
+      if(!current) return;
+      const label = (current.processCode||'') + (current.processIdent||'');
+      if(!window.confirm('「'+label+'」の工程完了を取り消しますか？\n工程残品表にまた表示されます。（工数などの実績詳細は消えません）')) return;
+      unmarkProcDone(current.procId);
+      renderDoneRow();
+    });
+  }
+
+  // ---- 古いバーコードで工程が1つに決まらないときの選択欄。勝手に先頭を選ばない ----
+  const candCard = document.getElementById('candCard');
+  const candList = document.getElementById('candList');
+  const candTitle = document.getElementById('candTitle');
+  let candMatches = [];
+  function closeCandidates(){
+    candMatches = [];
+    if(candCard) candCard.classList.remove('open');
+  }
+  function showCandidates(list, rawKey){
+    candMatches = list;
+    candTitle.textContent = 'このバーコード（' + rawKey + '）には工程が ' + list.length + ' 件あります。どれか選んでください。';
+    candList.innerHTML = list.map((m,i)=>{
+      const done = isDoneByBarcode(m.procId) || isDoneByLog(m.procId);
+      return '<button type="button" class="candItem" data-idx="'+i+'">'
+        + '<span class="cCode">'+esc(m.processCode||'―')+'</span>'
+        + '<span class="cIdent">'+esc(m.processIdent||'（識別BOXなし）')+'</span>'
+        + '<span class="cSub">'+esc(m.partCode)+' '+esc(m.partName)+(m.procDate?'　'+esc(m.procDate):'')+'</span>'
+        + (done ? '<span class="cDone">完了済み</span>' : '')
+        + '</button>';
+    }).join('');
+    candCard.classList.add('open');
+  }
+  if(candList){
+    candList.addEventListener('click', (e)=>{
+      const btn = e.target.closest('[data-idx]');
+      if(!btn) return;
+      const m = candMatches[Number(btn.dataset.idx)];
+      closeCandidates();
+      if(m) setCurrentFromMatch(m, '候補から選択');
+    });
+  }
+  if(document.getElementById('candCancel')){
+    document.getElementById('candCancel').addEventListener('click', ()=>{
+      closeCandidates();
+      current = null;
+      renderCurInfo();
+      focusScan();
+    });
   }
 
   const scanInput = document.getElementById('scanInput');
@@ -389,7 +617,12 @@
 
   function setCurrentFromMatch(match, sourceLabel){
     if(!match){
+      // 直前に選ばれていた工程がそのまま残っていると、読み取りに失敗したことに気づかず
+      // 別の工程を完了・登録してしまう。見つからなかったときは必ず対象を空にする
+      current = null;
+      renderCurInfo();
       alert('作業票の中に一致する品番・部品・工程が見つかりませんでした（'+sourceLabel+'）。作業票側の登録内容をご確認ください。');
+      focusScan();
       return;
     }
     current = match;
@@ -405,8 +638,16 @@
     if(!val) return;
     scanInput.classList.add('flash');
     setTimeout(()=> scanInput.classList.remove('flash'), 150);
-    const match = findByBarcodeKey(val);
-    setCurrentFromMatch(match, 'スキャン内容：'+val);
+    const res = findByBarcodeKey(val);
+    closeCandidates();
+    if(res && res.kind === 'many'){
+      // 古いバーコードで工程が1つに決まらない場合。先頭を勝手に選ばず、人に選んでもらう
+      current = null;
+      renderCurInfo();
+      showCandidates(res.candidates, val);
+      return;
+    }
+    setCurrentFromMatch(res ? res.match : null, 'スキャン内容：'+val);
   });
 
   // ---- 手動選択（バーコードリーダーが無い場合の代替） ----
@@ -444,19 +685,15 @@
       manualProcSel.innerHTML = '<option value="">（工程なし）</option>';
       return;
     }
-    manualProcSel.innerHTML = part.processes.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.code||'')+(p.date?'（'+esc(p.date)+'）':'')+'</option>').join('');
+    manualProcSel.innerHTML = part.processes.map(p=>'<option value="'+esc(p.id)+'">'+esc((p.code||'')+(p.ident||''))+(p.date?'（'+esc(p.date)+'）':'')+'</option>').join('');
   });
   document.getElementById('manualPickBtn').addEventListener('click', ()=>{
     const bs = manualProductsCache.find(b=>b.order.productNo===manualProductSel.value);
     const part = bs && (bs.parts||[]).find(p=>p.id===manualPartSel.value);
     const proc = part && (part.processes||[]).find(p=>p.id===manualProcSel.value);
     if(!bs || !part || !proc){ alert('品番・部品・工程をすべて選んでください。'); return; }
-    setCurrentFromMatch({
-      productNo: bs.order.productNo, displayNo: displayNoFor(bs.order.productNo, part),
-      customerName: bs.order.customer||'', modelName: bs.order.model||'',
-      partId: part.id, partCode: part.subNo||part.code||'', partName: part.name||'',
-      procId: proc.id, processCode: proc.code
-    }, '手動選択');
+    closeCandidates();
+    setCurrentFromMatch(makeMatch(bs, part, proc), '手動選択');
     manualCard.classList.remove('open');
   });
 
@@ -485,7 +722,7 @@
       productNo: current.productNo, displayNo: current.displayNo||current.productNo,
       customerName: current.customerName, modelName: current.modelName,
       partId: current.partId, partCode: current.partCode, partName: current.partName,
-      procId: current.procId, processCode: current.processCode,
+      procId: current.procId, processCode: current.processCode, processIdent: current.processIdent||'',
       setupHours: numOrZero(setupHoursInput), mannedHours: numOrZero(mannedHoursInput),
       unmannedHours: numOrZero(unmannedHoursInput), nightHours: numOrZero(nightHoursInput),
       qty: qtyInput.value ? Number(qtyInput.value) : '',
@@ -514,6 +751,7 @@
   }
   document.getElementById('commitBtn').addEventListener('click', commitEntry);
   document.getElementById('clearBtn').addEventListener('click', ()=>{
+    closeCandidates();
     current = null; renderCurInfo(); focusScan();
   });
   // Enterキーで登録欄内のどこからでも登録できるようにする（社員No〜良否のどこでEnterしても良い）
@@ -562,7 +800,7 @@
         + '<td class="codeCell">'+esc(e.displayNo||e.productNo)+'</td>'
         + '<td>'+esc(e.customerName)+' / '+esc(e.modelName)+'</td>'
         + '<td>'+esc(e.partCode)+' '+esc(e.partName)+'</td>'
-        + '<td class="codeCell">'+esc(e.processCode)+'</td>'
+        + '<td class="codeCell">'+esc((e.processCode||'')+(e.processIdent||''))+'</td>'
         + '<td class="numCell">'+esc(e.setupHours||0)+'</td>'
         + '<td class="numCell">'+esc(e.mannedHours||0)+'</td>'
         + '<td class="numCell">'+esc(e.unmannedHours||0)+'</td>'
@@ -584,6 +822,8 @@
     logEntries = loadLog().filter(x=>x.id!==btn.dataset.id);
     saveLog();
     renderLog();
+    // 実績詳細を消しても、バーコードで付けた工程完了はそのまま残る（別の操作）
+    renderDoneRow();
   });
   filterDateInput.addEventListener('change', renderLog);
   filterEmployeeSel.addEventListener('change', renderLog);

@@ -353,11 +353,22 @@
     return !!code && (/^NC/.test(code) || !!PHYSICAL_PROC_CODES[code]);
   }
 
-  // ---- 実績入力で登録済みの工程id一覧（＝完了済みの工程）。実際に完了記録が付いた工程はここで除外する。
-  // 実績入力側に「完了／未完」欄が追加されたため、「未完」で登録された分はまだ作業中とみなし、
+  // ---- 完了済みの工程id一覧。完了の付き方は2通りあり、どちらでも「完了」として扱う。
+  //   ① バーコードで工程完了として読み取った記録（sakaeIS_procDoneLog_v1）
+  //      ＝「その工程が終わった」という事実だけの記録。工数が未入力でも完了になる
+  //   ② 実績入力で工数などを入れて「完了」で登録した実績ログ（従来のやり方。既存データもこちら）
+  // 実績入力側に「完了／未完」欄が追加されたため、②の「未完」で登録された分はまだ作業中とみなし、
   // 残品表からは消さない（completion項目が無い古いデータは、これまで通り「完了」扱いのままにする）----
+  const PROC_DONE_KEY = 'sakaeIS_procDoneLog_v1';
   function loadDoneProcIds(){
     const set = new Set();
+    try{
+      const raw = localStorage.getItem(PROC_DONE_KEY);
+      const map = raw ? JSON.parse(raw) : null;
+      if(map && typeof map === 'object' && !Array.isArray(map)){
+        Object.keys(map).forEach(procId=>{ if(procId) set.add(procId); });
+      }
+    }catch(e){}
     try{
       const raw = localStorage.getItem(LOG_KEY);
       const list = raw ? JSON.parse(raw) : [];
@@ -519,11 +530,12 @@
           data[t.label].push({
             orderNo: partOrderNo(order, part), customer: order.customer||'', model: order.model||'',
             due: order.dueDate||'', name: part.name||'', qty: (part.qty!=null && part.qty!=='') ? part.qty : '',
-            process: proc.code,
+            // 同じ工程記号が複数ある部品でも見分けられるよう、識別BOXを併記する（分類は工程記号のまま）
+            process: (proc.code||'') + (proc.ident||''),
             hours: null,
             procDue: proc.date||'', procAmpm: proc.ampm==='PM' ? 'PM' : 'AM',
             // 前工程は1件に決め打ちせず、同じスロットに居るものを全部並べる（期限はどれでも同じ）
-            prevProc: prevList.length ? prevList.map(function(x){ return x.code; }).join(' / ') : 'なし',
+            prevProc: prevList.length ? prevList.map(function(x){ return (x.code||'') + (x.ident||''); }).join(' / ') : 'なし',
             nextProc: '-',
             isArrange: true, arrangeLabel: t.label,
             arrangeDue: dl ? dl.date : '', arrangeAmpm: dl ? dl.ampm : '',
@@ -544,10 +556,11 @@
         data[group].push({
           orderNo: orderLabel, customer: order.customer||'', model: order.model||'',
           due: order.dueDate||'', name: part.name||'', qty: (part.qty!=null && part.qty!=='') ? part.qty : '',
-          process: cur.code,
+          // 同じ工程記号が複数ある部品でも見分けられるよう、識別BOXを併記する（タブの分類は工程記号のまま）
+          process: (cur.code||'') + (cur.ident||''),
           hours: (WORK_HOUR_CODES[cur.code] && cur.hours!=null && cur.hours!=='') ? Number(cur.hours) : null,
           procDue: cur.date||'', procAmpm: cur.ampm==='PM' ? 'PM' : 'AM',
-          prevProc: prev ? prev.code : '-', nextProc: next ? next.code : '-',
+          prevProc: prev ? ((prev.code||'')+(prev.ident||'')) : '-', nextProc: next ? ((next.code||'')+(next.ident||'')) : '-',
           isArrange: false, arrangeDue: '', arrangeAmpm: '',
           _rowKey: (order.productNo||'') + '_' + part.id + '_' + cur.id
         });
@@ -908,7 +921,8 @@
   // ---- 他タブでの作業票の更新・実績入力の登録をリアルタイムに反映する ----
   window.addEventListener('storage', (e)=>{
     if(!e.key) return;
-    if(e.key.indexOf(BUHIN_PREFIX)!==0 && e.key!==LOG_KEY && e.key!==RECORDS_KEY) return;
+    // バーコードで工程完了が付いた（＝別タブの実績入力が書き込んだ）ときも描き直す
+    if(e.key.indexOf(BUHIN_PREFIX)!==0 && e.key!==LOG_KEY && e.key!==RECORDS_KEY && e.key!==PROC_DONE_KEY) return;
     render();
   });
 
