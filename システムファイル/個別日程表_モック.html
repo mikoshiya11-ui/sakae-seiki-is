@@ -105,6 +105,9 @@
     border-radius:7px; cursor:pointer; font-family:inherit;
   }
   .monthToggle button.active{ background:#173a68; color:#fff; }
+  /* 日程の一括移動。ズーム切替と同じ形にして、ツールバーに自然に並ぶようにする */
+  .shiftToggle .shiftLabel{ font-size:12px; font-weight:700; color:#5b6b84; padding:0 4px 0 8px; align-self:center; white-space:nowrap; }
+  .shiftToggle button{ padding:7px 11px; font-size:13px; }
 
   .rangeToggle{
     display:flex; align-items:center; gap:6px; background:#fff; border-radius:10px; padding:6px 10px;
@@ -390,6 +393,13 @@
         <button type="button" id="zoomOutBtn" title="計画表を縮小">－</button>
         <button type="button" id="zoomResetBtn" title="標準の大きさに戻す">100%</button>
         <button type="button" id="zoomInBtn" title="計画表を拡大">＋</button>
+      </div>
+      <div class="monthToggle shiftToggle" id="shiftToggle" title="この案件の工程日程を、順番も間隔も変えずにまとめて前後へずらします（受注日・納期は変わりません）">
+        <span class="shiftLabel">日程をまとめて移動</span>
+        <button type="button" data-shift="-2">◀ 1日</button>
+        <button type="button" data-shift="-1">◀ 半日</button>
+        <button type="button" data-shift="1">半日 ▶</button>
+        <button type="button" data-shift="2">1日 ▶</button>
       </div>
       <button type="button" class="addMemoBtn" id="addPartBtn2" title="作業票に戻らず、この日程表から新しい部品を追加します">＋ 部品を追加</button>
       <button type="button" class="addMemoBtn" id="addMemoBtn">＋ メモを追加</button>
@@ -1333,6 +1343,74 @@
   document.getElementById('zoomOutBtn').addEventListener('click', ()=> setZoom(DAY_W-4));
   document.getElementById('zoomResetBtn').addEventListener('click', ()=> setZoom(30));
   document.getElementById('zoomResetBtn').textContent = Math.round(DAY_W/30*100)+'%';
+
+  // ---- 日程の一括移動（平行移動） ----
+  // ひな形から受注日基準で展開した日程を、休日や着手日の都合で「全体をそのまま前後へずらす」ための機能。
+  // 再計算ではなく単純なシフトなので、工程順・工程間隔・days（バー長）・レーン配置・行段数・
+  // 工程ID・部品IDは一切変えない。受注日・納期も変えない（これらは案件の条件であって現場調整の対象ではない）。
+  //
+  // 対象は「有効な日付を持つ工程すべて」。工程コードの固定リストは使わない。
+  // DE/SU/PN の固定ミニ表もバーと同じ工程データ（bs.parts[].processes[]）を見ているため、
+  // 別扱いにしなくても同じ量だけ動く（convertBuhinParts が dateTags と events に振り分けているだけ）。
+  // 日付が未入力・読めない工程は、そのまま未入力で残す（勝手に今日などで埋めない）。
+  const HALF_STEP_LABEL = { '-2':'1日前へ', '-1':'半日前へ', '1':'半日後ろへ', '2':'1日後ろへ' };
+
+  // 半日（1コマ）単位で日付とAM/PMを進める・戻す。
+  // 「日 × 2 ＋ (PMなら1)」の通し番号で足し算し、はみ出した分を日付側へ繰り上げ・繰り下げる。
+  // 月末・年末は Date の日付計算に任せるので、月境界・年境界をまたいでも正しく回る。
+  // 土日・祝日はスキップしない（この機能自体が「実際の休日に合わせて人が調整する」ためのもの）。
+  function shiftHalf(dateStr, ampm, steps){
+    const d = parseDateStr(dateStr);
+    if(!d) return null;
+    const total = (ampm === 'PM' ? 1 : 0) + steps;
+    const dayShift = Math.floor(total / 2);          // 負の数でも下向きに丸める（Math.floor）
+    const isPM = (total - dayShift * 2) === 1;       // 0 か 1 のどちらかになる
+    const nd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + dayShift);
+    return { date: fmtDateForInput(nd), ampm: isPM ? 'PM' : 'AM' };
+  }
+
+  function shiftAllProcesses(steps){
+    if(!handoff) return;                 // 作業票とリンクしていないサンプル表示では対象外
+    if(!checkEditable()) return;         // 計画確定中は個別バーと同じく動かせない（抜け道を作らない）
+    if(!steps) return;
+
+    // 書き換える前の値を全部控えてから動かす。「元に戻す」は1回で全工程まとめて戻す。
+    const undoList = [];
+    (buhinState.parts||[]).forEach(part=>{
+      (part.processes||[]).forEach(proc=>{
+        const moved = shiftHalf(proc.date, proc.ampm, steps);
+        if(!moved) return;               // 日付が無い／読めない工程は触らない
+        undoList.push({ proc: proc, date: proc.date, ampm: proc.ampm });
+        proc.date = moved.date;
+        proc.ampm = moved.ampm;
+      });
+    });
+    if(undoList.length === 0){
+      alert('日付が入っている工程がありません。');
+      return;
+    }
+    saveBuhinState();
+    refreshFromBuhin();
+    render();
+    showUndo('日程を' + (HALF_STEP_LABEL[String(steps)] || (steps + 'コマ')) + 'まとめて移動しました（' + undoList.length + '工程）', ()=>{
+      undoList.forEach(u=>{ u.proc.date = u.date; u.proc.ampm = u.ampm; });
+      saveBuhinState();
+      refreshFromBuhin();
+      render();
+    });
+  }
+
+  (function initShiftToggle(){
+    const el = document.getElementById('shiftToggle');
+    if(!el) return;
+    // 作業票とリンクしていない表示（サンプル）では動かす対象が無いので、ボタン自体を出さない
+    if(!handoff){ el.style.display = 'none'; return; }
+    el.addEventListener('click', (e)=>{
+      const btn = e.target.closest('button[data-shift]');
+      if(!btn) return;
+      shiftAllProcesses(Number(btn.dataset.shift));
+    });
+  })();
 
   function buildLegend(){
     const legendEl = document.getElementById('legend');
