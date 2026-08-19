@@ -248,12 +248,13 @@
     return null;
   }
   const WORK_HOUR_CODES = { 'LA':true, 'MI':true, 'NC1':true, 'NC2':true, 'NC3':true, 'NC4':true, 'NC5':true, 'NC':true };
-  // ---- 実際に機械・人手で加工する「物理工程」のコード一覧。DE（出図）・SU（支給）・PN（図面）・外注手配・客先承認・
+  // ---- 実際に機械・人手で加工する「物理工程」のコード一覧。DE（出図）・SU（支給）・外注手配・客先承認・
   // 検収待ちなど、日付は入っていても実際の加工とは違う事務・調整系の工程は、たとえ日付が今日に近くても現在工程には選ばない
   // （これらは物理工程が1つも残っていない部品でのみ、最後の手段として拾う）----
+  // ※ PN は現場の運用上、実際に手を動かす工程として扱うため物理工程に含める（2026-08-19 追加）。
   const PHYSICAL_PROC_CODES = {
     'LA':true,'MI':true,'JG':true,'EW':true,'OMI':true,'OGS':true,'GS':true,'GC':true,
-    'EM':true,'DR':true,'WEL':true,'3D':true,'FIN':true,'熱処理':true,'ｶﾅｯｸ':true,'ﾆｭｰｶﾅｯｸ':true
+    'EM':true,'DR':true,'WEL':true,'3D':true,'FIN':true,'PN':true,'熱処理':true,'ｶﾅｯｸ':true,'ﾆｭｰｶﾅｯｸ':true
   };
   function isPhysicalCode(code){
     return !!code && (/^NC/.test(code) || !!PHYSICAL_PROC_CODES[code]);
