@@ -92,6 +92,9 @@
   td.nameCell, th.nameCell{ white-space:normal; min-width:220px; }
   td.modelCell, th.modelCell{ white-space:normal; min-width:170px; }
 
+  /* 工程完了期限は「日付＋午前/午後」を1行で出すため、折り返さない幅を確保する（2026-08-19 現場要望） */
+  td.dueCell, th.dueCell{ font-weight:700; white-space:nowrap; min-width:132px; }
+  .dueAmpm{ font-weight:700; color:#5b6b84; margin-left:4px; font-size:11.5px; }
   .dueCell{ font-weight:700; }
   .dueCell.soon{ color:#c9720d; }
   .dueCell.over{ color:#c0392b; }
@@ -104,11 +107,42 @@
   .procTag{
     display:inline-block; font-size:11px; font-weight:700; color:#fff; background:#173a68; padding:2px 9px; border-radius:5px;
   }
+  /* 手配行は工程そのものではないので、ひと目で区別が付くようにする */
+  .procTag.arrange{ background:#8a5a1a; }
+  .arrangeTag{
+    display:inline-block; font-size:9.5px; font-weight:800; color:#8a5a1a; background:#fff3e0;
+    border:1px solid #f3dcb8; padding:1px 5px; border-radius:8px; margin-left:5px;
+  }
+  .needCheck{ color:#8a5a1a; font-weight:700; }
+
+  .printBtn{
+    border:1.5px solid #dfe4ec; background:#fff; color:#5b6b84; font-size:12.5px; font-weight:700; padding:7px 14px;
+    border-radius:8px; cursor:pointer; font-family:inherit;
+  }
+  .printBtn:hover{ border-color:#173a68; color:#173a68; }
+  .printTitle{ display:none; }
 
   .checkCol{ width:34px; text-align:center; }
   .checkCol input{ width:16px; height:16px; cursor:pointer; }
 
   .emptyState{ padding:60px 20px; text-align:center; color:#a4adbc; font-size:13px; line-height:1.8; }
+
+  /* ---- 印刷（A4横）。今開いているタブの一覧をそのまま刷る。操作用の部品は出さない ---- */
+  @media print{
+    @page{ size:A4 landscape; margin:8mm; }
+    body{ background:#fff; }
+    .topbar, .toolRow, .orphanBar, .debugToggleBtn, .debugPanel, .footNote, .checkCol{ display:none !important; }
+    .wrap{ padding:0; max-width:none; }
+    .tableCard{ box-shadow:none; border-radius:0; }
+    .tableScroll{ overflow:visible; max-height:none; }
+    .printTitle{ display:block; font-size:14px; font-weight:700; color:#1a2233; margin:0 0 6px; }
+    table{ font-size:10px; }
+    th, td{ padding:3px 5px; }
+    thead{ display:table-header-group; }   /* 2ページ目以降にも見出しを出す */
+    tbody tr{ page-break-inside:avoid; }
+    tbody tr.checked{ opacity:1; }         /* 薄いと紙で読めないため、印刷では取り消し線だけにする */
+    .badge{ border:1px solid #999; }
+  }
 
   .footNote{ font-size:12.5px; color:#a4adbc; text-align:center; margin-top:20px; line-height:1.7; }
 
@@ -159,8 +193,11 @@
     <div class="toolRow">
       <div class="procToggle" id="procToggle"></div>
       <input type="text" class="searchBox" id="searchBox" placeholder="社内№・客先・品名で検索">
+      <button type="button" class="printBtn" id="printBtn" title="今開いているタブの一覧をA4横で印刷します">🖨 印刷する（A4横）</button>
       <div class="summaryRow" id="summaryRow"></div>
     </div>
+
+    <div class="printTitle" id="printTitle"></div>
 
     <div class="tableCard">
       <div class="tableScroll">
@@ -177,7 +214,8 @@
               <th data-key="process">工程</th>
               <th data-key="hours">工数</th>
               <th data-key="procDue" class="sorted asc">工程完了期限</th>
-              <th data-key="prevProc">前工程完了予定</th>
+              <th data-key="arrangeDue" class="dueCell">手配期限</th>
+              <th data-key="prevProc">前工程</th>
               <th data-key="nextProc">次工程</th>
             </tr>
           </thead>
@@ -208,6 +246,11 @@
   // groupOf()で表示対象を13グループに絞ったので、実質すべてのグループがそのままタブに出る想定
   const MAX_TABS = 13;
   const OTHER_KEY = '__OTHER__';
+  // ---- 「全体」タブ（一番左）。残品表に正式表示するグループを横断してまとめて見るためのもの。
+  // 中身は各グループの行をそのまま足し合わせたもので、groupOf() が対象外にしている工程（SU・DE など）を
+  // 「全体だから」という理由で新たに表示することはしない（表示対象そのものは増やさない）。
+  // 今後 手配系の項目が増えた場合も、DATA に入っていれば自動的にここへ含まれる。 ----
+  const ALL_KEY = '__ALL__';
 
   function esc(s){
     return (s==null?'':s).toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -247,6 +290,56 @@
        || code==='OST' || code==='HET' || code==='外注') return code;
     return null;
   }
+  // ---- 手配忘れ防止のための注意項目（3種類）----
+  // これは作業票の正式な工程ではない。作業票・工程マスタ・バーコード・実績入力には一切追加せず、
+  // この画面が「その工程が日程に入っている」という事実から毎回その場で作り出す行。
+  // 拾う条件は実データの書き方に合わせてある（2026-08-19 実データ444件で対象集合を確認）：
+  //   熱処理手配   HET（1件）
+  //   カナック手配 コードに「ｶﾅｯｸ」または「カナック」を含む（ﾆｭｰｶﾅｯｸ 8件）
+  //   外注手配     コードに「外注」を含む（ラクド（外注）5・メッキ（外注）5・塗装（外注）2・DG(外注-材料直送)2）
+  // ※「外注」は完全一致では実データに0件しか無く、現場は業者名＋（外注）の形で書いているため部分一致にしている。
+  //   一方 DG / ODG / パーカー のように「外注」と書かれていないものは拾わない（推測で広げない）。
+  const ARRANGE_TYPES = [
+    { key:'HET',    label:'熱処理手配',   match:function(c){ return c==='HET' || c==='熱処理'; } },
+    { key:'KANACK', label:'カナック手配', match:function(c){ return c.indexOf('ｶﾅｯｸ')>=0 || c.indexOf('カナック')>=0; } },
+    { key:'GAICHU', label:'外注手配',     match:function(c){ return c.indexOf('外注')>=0; } }
+  ];
+  const ARRANGE_LABELS = ARRANGE_TYPES.map(function(t){ return t.label; });
+  function arrangeTypeOf(code){
+    const c = code || '';
+    for(let i=0;i<ARRANGE_TYPES.length;i++){ if(ARRANGE_TYPES[i].match(c)) return ARRANGE_TYPES[i]; }
+    return null;
+  }
+  // 日程上の位置。日付＋午前/午後だけで決める（文字列のまま大小比較できる形にする）
+  function slotKey(pr){ return (pr.date||'') + (pr.ampm==='PM' ? '_2' : '_1'); }
+  // ---- 前工程 ＝ 対象工程より「厳密に前の時刻スロット」のうち、いちばん遅いスロットに居る工程（複数ありうる）----
+  // processes[] の配列順は使わない。工程ピッカーを開閉すると配列がマスタ順に作り直されるため、
+  // 配列順は実際の工程順を表さない（実データでも隣り合う22.7%が日付逆転していた）。
+  // ガントでバーを動かして日付・午前午後が変われば、ここが毎回計算し直される。
+  function prevSlotProcesses(procs, target){
+    const t = slotKey(target);
+    const earlier = (procs||[]).filter(function(p){ return p.date && slotKey(p) < t; });
+    if(!earlier.length) return [];
+    let best = earlier[0];
+    earlier.forEach(function(p){ if(slotKey(p) > slotKey(best)) best = p; });
+    const bk = slotKey(best);
+    return earlier.filter(function(p){ return slotKey(p) === bk; });
+  }
+  // ---- 手配期限：前工程が午前終わりなら同日の午後、午後終わりなら翌日の午前 ----
+  // 同じスロットに工程が何本あっても date と ampm は同じなので、どれを見ても答えは1つに決まる。
+  // 土日・祝日の繰り延べは今回は入れない。
+  function arrangeDeadline(prevList){
+    if(!prevList || !prevList.length) return null;
+    const prev = prevList[0];
+    const d = parseDate(prev.date);
+    if(!d) return null;
+    if(prev.ampm === 'PM'){
+      const n = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1);
+      return { date: n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0'), ampm:'AM' };
+    }
+    return { date: prev.date, ampm:'PM' };
+  }
+
   const WORK_HOUR_CODES = { 'LA':true, 'MI':true, 'NC1':true, 'NC2':true, 'NC3':true, 'NC4':true, 'NC5':true, 'NC':true };
   // ---- 実際に機械・人手で加工する「物理工程」のコード一覧。DE（出図）・SU（支給）・外注手配・客先承認・
   // 検収待ちなど、日付は入っていても実際の加工とは違う事務・調整系の工程は、たとえ日付が今日に近くても現在工程には選ばない
@@ -412,6 +505,33 @@
       (bs.parts||[]).forEach(part=>{
         const sorted = sortedProcesses(part.processes);
         if(!sorted.length) return;
+
+        // ---- 手配忘れ防止の注意項目。工程の「現在／これから」に関係なく、
+        // まだ完了していない対象工程があれば必ず出す（手配は工程より前に済ませるものなので、
+        // 現在工程が手前にある段階で見えていないと意味がない）----
+        (part.processes||[]).forEach(proc=>{
+          const t = arrangeTypeOf(proc.code);
+          if(!t) return;
+          if(doneIds.has(proc.id)) return;   // その工程自体が完了済みなら手配も済んでいる
+          const prevList = proc.date ? prevSlotProcesses(part.processes, proc) : [];
+          const dl = arrangeDeadline(prevList);
+          if(!data[t.label]) data[t.label] = [];
+          data[t.label].push({
+            orderNo: partOrderNo(order, part), customer: order.customer||'', model: order.model||'',
+            due: order.dueDate||'', name: part.name||'', qty: (part.qty!=null && part.qty!=='') ? part.qty : '',
+            process: proc.code,
+            hours: null,
+            procDue: proc.date||'', procAmpm: proc.ampm==='PM' ? 'PM' : 'AM',
+            // 前工程は1件に決め打ちせず、同じスロットに居るものを全部並べる（期限はどれでも同じ）
+            prevProc: prevList.length ? prevList.map(function(x){ return x.code; }).join(' / ') : 'なし',
+            nextProc: '-',
+            isArrange: true, arrangeLabel: t.label,
+            arrangeDue: dl ? dl.date : '', arrangeAmpm: dl ? dl.ampm : '',
+            // 既存のチェック（品番_部品id_工程id）と衝突しない形。手配は工程IDを持たないため種別を挟む
+            _rowKey: (order.productNo||'') + '_' + part.id + '_arr:' + t.key + ':' + proc.id
+          });
+        });
+
         const idx = currentProcIndex(sorted, doneIds, todayStr);
         if(idx === -1) return; // 全工程が完了済み＝残品ではない
         const cur = sorted[idx];
@@ -426,7 +546,9 @@
           due: order.dueDate||'', name: part.name||'', qty: (part.qty!=null && part.qty!=='') ? part.qty : '',
           process: cur.code,
           hours: (WORK_HOUR_CODES[cur.code] && cur.hours!=null && cur.hours!=='') ? Number(cur.hours) : null,
-          procDue: cur.date||'', prevProc: prev ? prev.code : '-', nextProc: next ? next.code : '-',
+          procDue: cur.date||'', procAmpm: cur.ampm==='PM' ? 'PM' : 'AM',
+          prevProc: prev ? prev.code : '-', nextProc: next ? next.code : '-',
+          isArrange: false, arrangeDue: '', arrangeAmpm: '',
           _rowKey: (order.productNo||'') + '_' + part.id + '_' + cur.id
         });
       });
@@ -460,15 +582,28 @@
   // タブとして実際に表示する一覧。期限が近い方からMAX_TABS-1件を個別タブにし、
   // それより先（＝一番急ぎではない残り）は1本の「その他」タブにまとめる（＝どれかのタブには必ず出るので抜け漏れなし）
   function orderedGroups(data){
-    const sorted = sortedGroupKeys(data);
-    if(sorted.length <= MAX_TABS) return sorted;
-    return sorted.slice(0, MAX_TABS - 1).concat([OTHER_KEY]);
+    // 手配の3種は工程グループではないので、MAX_TABS の「その他」畳み込みには巻き込まない
+    // （畳み込まれると手配忘れ防止のタブが消えてしまうため）。並びは常に一番右。
+    const arrangeKeys = ARRANGE_LABELS.filter(function(l){ return (data[l]||[]).length; });
+    const sorted = sortedGroupKeys(data).filter(function(k){ return ARRANGE_LABELS.indexOf(k) === -1; });
+    const groups = (sorted.length <= MAX_TABS)
+      ? sorted
+      : sorted.slice(0, MAX_TABS - 1).concat([OTHER_KEY]);
+    const all = groups.concat(arrangeKeys);
+    // 「全体」は工程グループではないので MAX_TABS の数には数えず、常に一番左に置く
+    return all.length ? [ALL_KEY].concat(all) : [];
   }
   // 指定したタブ（グループ）に表示する行一覧。「その他」タブの場合はMAX_TABSに収まりきらなかった
   // 残り全グループの行をまとめて返す（＝件数が多くてもデータが消えることはない）
   function rowsForGroup(data, group){
+    if(group === ALL_KEY){
+      // 表示対象の全グループを1つに合わせる。同じ行が2つのグループに入ることはないので重複は出ない
+      let rows = [];
+      sortedGroupKeys(data).forEach(g=>{ rows = rows.concat(data[g]||[]); });
+      return rows;
+    }
     if(group === OTHER_KEY){
-      const sorted = sortedGroupKeys(data);
+      const sorted = sortedGroupKeys(data).filter(function(k){ return ARRANGE_LABELS.indexOf(k) === -1; });
       let rows = [];
       sorted.slice(MAX_TABS - 1).forEach(g=>{ rows = rows.concat(data[g]||[]); });
       return rows;
@@ -532,8 +667,16 @@
   });
 
   let DATA = buildData();
-  let currentProc = orderedGroups(DATA)[0] || '';
-  let sortKey = 'procDue';
+  let currentProc = orderedGroups(DATA)[0] || '';   // orderedGroups の先頭は「全体」
+  // 並び順の既定はタブごとに変える。「全体」は工程を横断して見る画面なので、
+  // 工程完了期限ではなく案件の納期が近い順にする（現場要望）。工程タブは従来どおり工程完了期限順。
+  // 見出しをクリックして並べ替えたあとは、その選択をタブを切り替えるまで保つ。
+  function defaultSortKeyFor(group){
+    if(group === ALL_KEY) return 'due';
+    if(ARRANGE_LABELS.indexOf(group) >= 0) return 'arrangeDue';   // 手配タブは手配期限が近い順
+    return 'procDue';
+  }
+  let sortKey = defaultSortKeyFor(currentProc);
   let sortAsc = true;
   let searchTerm = '';
 
@@ -574,7 +717,12 @@
   const procToggle = document.getElementById('procToggle');
 
   // 工程コード→タブ表示名（groupOf()でまとめたグループ名＋「工程」。まとめた組はグループ名がそのまま「3D・NCM」等になる）
-  function procLabel(g){ return g === OTHER_KEY ? 'その他' : (g + '工程'); }
+  function procLabel(g){
+    if(g === ALL_KEY) return '全体';
+    if(g === OTHER_KEY) return 'その他';
+    if(ARRANGE_LABELS.indexOf(g) >= 0) return g;   // 「熱処理手配」等はそのまま（工程ではないため）
+    return g + '工程';
+  }
 
   function renderTabs(){
     const groups = orderedGroups(DATA);
@@ -596,7 +744,7 @@
     }
     rows.sort((a,b)=>{
       let av = a[sortKey], bv = b[sortKey];
-      if(sortKey==='due' || sortKey==='procDue'){
+      if(sortKey==='due' || sortKey==='procDue' || sortKey==='arrangeDue'){
         av = parseDate(av) || new Date(0);
         bv = parseDate(bv) || new Date(0);
       }
@@ -654,14 +802,40 @@
       html += '<td>'+fmtDate(row.due)+'</td>';
       html += '<td class="nameCell">'+esc(row.name)+'</td>';
       html += '<td>'+esc(row.qty)+'</td>';
-      html += '<td><span class="procTag">'+esc(row.process)+'</span></td>';
+      html += '<td><span class="procTag'+(row.isArrange?' arrange':'')+'">'+esc(row.process)+'</span>'
+        + (row.isArrange ? '<span class="arrangeTag">手配</span>' : '') + '</td>';
       html += '<td>'+(row.hours || row.hours===0 ? row.hours+'H' : '-')+'</td>';
-      html += '<td class="dueCell '+dueCls+'">'+fmtDate(row.procDue)+badge+'</td>';
+      const ampmText = row.procDue ? '<span class="dueAmpm">'+(row.procAmpm==='PM'?'午後':'午前')+'</span>' : '';
+      html += '<td class="dueCell '+dueCls+'">'+fmtDate(row.procDue)+ampmText+badge+'</td>';
+      // 手配期限。手配行だけに出す。前工程が取れない・日付が無い場合は勝手に推測せず「要確認」にする
+      if(!row.isArrange){
+        html += '<td class="dueCell">-</td>';
+      }else if(!row.arrangeDue){
+        html += '<td class="dueCell"><span class="needCheck">要確認</span></td>';
+      }else{
+        const aLeft = daysUntil(row.arrangeDue);
+        let aCls = '', aBadge = '';
+        if(aLeft !== null){
+          if(aLeft < 0){ aCls = 'over'; aBadge = '<span class="badge over">期限超過</span>'; }
+          else if(aLeft <= 2){ aCls = 'soon'; aBadge = '<span class="badge soon">あと'+aLeft+'日</span>'; }
+        }
+        html += '<td class="dueCell '+aCls+'">'+fmtDate(row.arrangeDue)
+          + '<span class="dueAmpm">'+(row.arrangeAmpm==='PM'?'午後':'午前')+'</span>'+aBadge+'</td>';
+      }
       html += '<td>'+esc(row.prevProc||'-')+'</td>';
       html += '<td>'+esc(row.nextProc||'-')+'</td>';
       html += '</tr>';
     });
     tableBody.innerHTML = html;
+
+    const titleEl = document.getElementById('printTitle');
+    if(titleEl){
+      const d = new Date();
+      const stamp = d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0');
+      titleEl.textContent = '工程残品表　' + (currentProc ? procLabel(currentProc) : '')
+        + '　（' + rows.length + '件）　印刷日 ' + stamp
+        + (searchTerm ? '　絞り込み「'+searchTerm+'」' : '');
+    }
 
     const overCount = allRows.filter(r=>{ const d=daysUntil(r.procDue); return d!==null && d<0; }).length;
     const soonCount = allRows.filter(r=>{ const d=daysUntil(r.procDue); return d!==null && d>=0 && d<=2; }).length;
@@ -671,12 +845,22 @@
       (overCount ? '<span class="sumChip danger">期限超過 <b>'+overCount+'</b>件</span>' : '');
   }
 
+  function applySortHeaderUI(){
+    table.querySelectorAll('th').forEach(h=> h.classList.remove('sorted','asc'));
+    const th = table.querySelector('th[data-key="'+sortKey+'"]');
+    if(th){ th.classList.add('sorted'); if(sortAsc) th.classList.add('asc'); }
+  }
   procToggle.addEventListener('click', (e)=>{
     const btn = e.target.closest('button[data-proc]');
-    if(!btn) return;
+    if(!btn || btn.dataset.proc === currentProc) return;
     currentProc = btn.dataset.proc;
+    sortKey = defaultSortKeyFor(currentProc);
+    sortAsc = true;
+    applySortHeaderUI();
     render();
   });
+
+  document.getElementById('printBtn').addEventListener('click', ()=>{ window.print(); });
 
   document.getElementById('searchBox').addEventListener('input', (e)=>{
     searchTerm = e.target.value.trim();
@@ -710,6 +894,10 @@
   const initProc = (params.get('proc') || '').toUpperCase();
   if(initProc && DATA[initProc]){
     currentProc = initProc;
+    // 既定タブが「全体」になったため、リンクで工程タブを開いた時は並び順もその工程の既定へ合わせる
+    sortKey = defaultSortKeyFor(currentProc);
+    sortAsc = true;
+    applySortHeaderUI();
   }
   const initProductNo = (params.get('productNo') || '').trim();
   if(initProductNo){
@@ -724,6 +912,8 @@
     render();
   });
 
+  // 見出しの並び順マーク（HTMLでは工程完了期限に付けてある）を、実際の初期並び順に合わせてから描画する
+  applySortHeaderUI();
   render();
 })();
 </script>
