@@ -42,18 +42,26 @@
   }
 
   // ---- 認証確認が終わるまで、画面を白いオーバーレイで隠す（未ログイン状態の画面がチラ見えするのを防ぐ） ----
+  // gateHidden: 認証確認が終わったかどうか。取り付けより先に hideGate() が呼ばれた場合に、
+  // 後からオーバーレイを出してしまわないためのフラグ（これが無いと「ログイン状態を確認しています…」が消えなくなる）。
+  let gateHidden = false;
   function showGate(message){
+    if(gateHidden) return;                       // 既に確認が終わっているなら出さない
     let el = document.getElementById('sakaeAuthGate');
     if(!el){
       el = document.createElement('div');
       el.id = 'sakaeAuthGate';
       el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#f4f6fa;display:flex;align-items:center;justify-content:center;font-family:"Hiragino Sans","Yu Gothic",-apple-system,BlinkMacSystemFont,sans-serif;color:#5b6b84;font-size:14px;';
       el.textContent = message || '確認中…';
-      const attach = ()=> document.documentElement.appendChild(el);
-      if(document.body) attach(); else document.addEventListener('DOMContentLoaded', attach);
+      // documentElement（<html>）はこのスクリプトが動く時点で必ず存在するため、
+      // body の生成や DOMContentLoaded を待たずにその場で取り付ける。
+      // 待つ実装にすると、取り付け前に認証確認が終わった場合に hideGate() が空振りし、
+      // そのあとオーバーレイだけが貼られて消えなくなる。
+      document.documentElement.appendChild(el);
     }
   }
   function hideGate(){
+    gateHidden = true;
     const el = document.getElementById('sakaeAuthGate');
     if(el) el.remove();
   }
