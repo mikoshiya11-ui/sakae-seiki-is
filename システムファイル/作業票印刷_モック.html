@@ -57,12 +57,16 @@
      margin-topでパネル上端よりもかなり高い位置まで引き上げて、中央から離しておく。
      flex-directionはwriting-mode:vertical-rlの中では「column＝横方向」「row＝縦方向」に
      入れ替わるため、上から順に積み上げるにはrowを指定する ---- */
+  /* 🔴 以前は margin-top:-40px で引き上げていたため、縦書きの「作業票」が用紙の上端より上に出てしまい、
+     .slipSheet の overflow:hidden で切り取られて紙に出ていなかった（赤字のNO.だけが見えていた）。
+     切り取り線から離すという元の狙いは上寄せ（justify-content:flex-start）だけで足りるので、
+     引き上げをやめて「作業票」→ 赤字のNO. の順に必ず見えるようにする。 */
   .slipSideLabel{
     flex:0 0 26px; background:#f7f9fc; border-right:1.5px solid #222; display:flex; flex-direction:row;
-    align-items:center; justify-content:flex-start; gap:8px; padding:0; margin-top:-40px;
+    align-items:center; justify-content:flex-start; gap:8px; padding:0; margin-top:0;
     writing-mode:vertical-rl; text-orientation:upright;
   }
-  .slipSideLabel .slipSideTitle{ font-size:12px; font-weight:800; color:#173a68; letter-spacing:.08em; }
+  .slipSideLabel .slipSideTitle{ font-size:12px; font-weight:800; color:#1a2233; letter-spacing:.08em; }
   /* 品番だけは現物と同じく、縦書きの中で横書きの文字列をそのまま90度回転させて表示する */
   .slipSideLabel .slipSideNo{ font-size:11px; font-weight:700; color:#c0392b; letter-spacing:.04em; text-orientation:sideways; }
   /* 工程が13以上あって2枚目以降ができた時の「2/3枚目」表示 */
@@ -73,13 +77,10 @@
   .slipMain{ padding:10px 14px 12px; }
 
   .slipTopRow{ display:flex; border:1.5px solid #222; }
-  .sketchBox{
-    flex:0 0 110px; border-right:1.5px solid #222; display:flex; align-items:flex-start; justify-content:flex-start;
-    padding:6px 8px;
-  }
-  .sketchBox .sketchLabel{ font-size:10.5px; font-weight:700; color:#a4adbc; }
-
   .procTableWrap{ flex:1 1 auto; min-width:0; display:flex; }
+  /* 略図は部品で1つではなく、工程1件につき1セル。工程表と同じ表の1列目に入れることで、
+     工程の行と略図のセルが必ず同じ高さ・同じ位置に並ぶ（高さを別々に指定すると必ずズレるため）。
+     略図の幅（旧 .sketchBox の 110px）はここ1か所だけで決め、他の列はその残りに対する割合で出す。 */
   table.procTable{ border-collapse:collapse; width:100%; table-layout:fixed; align-self:stretch; }
   table.procTable td, table.procTable th{
     border-top:1px solid #dfe4ec; border-right:1px solid #dfe4ec; padding:2px 6px; font-size:11px; vertical-align:middle;
@@ -98,11 +99,22 @@
   /* ---- 現物と同じく「機械名/外注人名」「NO./工程」「着手」「完成」「実働H/見積H」はいずれも1セル内で上段（空欄・点線）/下段（印字値）の2段構成。
      「着手」「完成」は横に並んだ別々のカラムだが、それぞれの中身は他と同じ2段構成。完成はまだ値を入れない（空欄のまま）。
      列の境界が分かりやすいよう縦罫線も入れている ---- */
-  table.procTable td.machineCell{ width:15%; padding:0; }
-  table.procTable td.noCodeCell{ width:13%; padding:0; }
-  table.procTable td.hoursStackCell{ width:11%; padding:0; }
-  table.procTable td.startCell{ width:9%; padding:0; }
-  table.procTable td.finishCell{ width:9%; padding:0; }
+  /* 列幅：略図を表の中へ入れたので、全部の列を「表全体に対する割合」で決める（1か所にまとめる）。
+     割合の出どころは、略図が別枠だった時のA3印刷時の実寸。A3横=420mm、余白8mm、パネル2枚＋切り取り線、
+     縦書きラベル26px、slipMainの左右padding14px を引くと表の幅は約698px。そこでの各列の幅は
+     略図110 / 機械名88.3 / NO.工程76.5 / 着手53 / 完成53 / 実働H64.7 / 備考253 px だったので、
+     それを百分率にしたものが下の数字（合計100%）。以前と同じ見た目のまま、行の高さだけが工程表と揃う。 */
+  table.procTable td.sketchCell, table.procTable tr.procHeadRow th.sketchHead{
+    width:15.75%; border-right:1.5px solid #222;
+  }
+  table.procTable td.sketchCell{
+    font-size:10px; line-height:1.3; color:#1a2233; padding:2px 6px; white-space:normal; word-break:break-all;
+  }
+  table.procTable td.machineCell{ width:12.64%; padding:0; }
+  table.procTable td.noCodeCell{ width:10.95%; padding:0; }
+  table.procTable td.hoursStackCell{ width:9.27%; padding:0; }
+  table.procTable td.startCell{ width:7.58%; padding:0; }
+  table.procTable td.finishCell{ width:7.58%; padding:0; }
   .cellLine{ height:15px; padding:1px 6px; font-size:10px; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .cellLineTop{ color:#c7cfdc; border-bottom:1px dashed transparent; }
   .cellLineTop.dotted{ border-bottom:1px dashed #c7cfdc; }
@@ -196,7 +208,7 @@
       現物の作業票印刷（A3横1枚＝左「作業票」＋完了チケット×12、右「作業票（控）」＋控えタグ×8）に合わせて作り直し中です。<br>
       枝番「000」（ASSY・組付/検査）を除く全部品を、枝番の若い順に1部品＝1枚（工程が13以上なら複数枚）ずつまとめて表示します（表示専用・ここでは入力できません。項目を直したい場合は作業票側で編集してください）。<br>
       工程は日程の若い順（同じ日程ならNC1→NC2→NC3のように数字順）にNO.1〜を振り直して並べています（12行に満たない分は空欄）。着手欄には作業票の工程日付を表示（現物と同じく完成欄は手書き用に空欄のまま）。予定工数はLA・MI・NC系の工程のみ表示します。<br>
-      「機械名・外注／人名」欄は現物にはありますが、作業票側にまだ入力箇所がないため今は空欄です（今後作業票側に追加予定）。<br>
+      「機械名・外注／人名」欄には、作業票の「工程を編集」で入力した<b>外注・人名</b>を表示します。<b>備考</b>は同じ工程の備考欄へ、<b>注記</b>はその工程に対応する<b>略図セル</b>へ表示します（略図は部品で1つではなく工程ごとに縦に分かれたセルです）。<br>
       完了チケットにはバーコード（社内No.-部品コード-工程コード）を印刷しています。工程完了時に千切って実績入力画面でスキャンすると、事務員の手入力なしで対象が自動選択されます。
     </div>
 
@@ -281,6 +293,12 @@
   // 同じ日程（同じ午前/午後）ならNC1→NC2→NC3のように数字の若い順（作業票の並び替えと同じルール） ----
   // DE・PNは日程だけの目印工程で実際の作業・完了チケットは無いため、作業票印刷（工程表・完了チケットとも）には出さない
   const PRINT_HIDDEN_CODES = { 'DE':true, 'PN':true };
+  // ---- 紙に出す工程の見出し。工程記号＋識別BOX を続けて書く（例：NC＋2オモテ → NC2オモテ）。
+  // バーコードの中身は従来どおり工程記号だけを使う（識別BOXは入れない）ので、既に現場へ出ている紙とも突き合わせできる。 ----
+  function procDisplay(p){
+    if(!p) return '';
+    return (p.code||'') + (p.ident||'');
+  }
   function sortedProcesses(part){
     return (part.processes||[]).filter(p=>!PRINT_HIDDEN_CODES[p.code]).sort((a,b)=>{
       const da = a.date || '';
@@ -406,8 +424,9 @@
         const hoursTxt = WORK_HOUR_CODES[p.code] ? (p.hours!=null && p.hours!=='' ? esc(p.hours)+'h' : '') : '';
         const startDate = p.date ? fmtDateShort(p.date) : '';
         rowsHtml += '<tr>'
+          + '<td class="sketchCell">'+esc(p.sketchNote||'')+'</td>'
           + '<td class="machineCell"><div class="cellLine cellLineTop dotted"></div><div class="cellLine cellLineBottom">'+esc(p.machine||'')+'</div></td>'
-          + '<td class="noCodeCell"><div class="noCodeWrap"><span class="tinyNo">'+no+'</span><span class="codeSwatch" style="background:'+colorOf(p.code)+';"></span>'+esc(p.code)+'</div></td>'
+          + '<td class="noCodeCell"><div class="noCodeWrap"><span class="tinyNo">'+no+'</span><span class="codeSwatch" style="background:'+colorOf(p.code)+';"></span>'+esc(procDisplay(p))+'</div></td>'
           + '<td class="startCell"><div class="cellLine cellLineTop dotted"></div><div class="cellLine cellLineBottom">'+esc(startDate)+'</div></td>'
           + '<td class="finishCell"><div class="cellLine cellLineTop dotted"></div><div class="cellLine cellLineBottom"></div></td>'
           + '<td class="hoursStackCell">'
@@ -418,6 +437,7 @@
           + '</tr>';
       }else{
         rowsHtml += '<tr class="emptyRow">'
+          + '<td class="sketchCell"></td>'
           + '<td class="machineCell"><div class="cellLine cellLineTop dotted"></div><div class="cellLine cellLineBottom"></div></td>'
           + '<td class="noCodeCell"><div class="noCodeWrap"><span class="tinyNo">'+no+'</span></div></td>'
           + '<td class="startCell"><div class="cellLine cellLineTop dotted"></div><div class="cellLine cellLineBottom"></div></td>'
@@ -428,7 +448,7 @@
       }
     }
     rowsHtml += '<tr class="procHeadRow">'
-      + '<th>機械名<br>外注／人名</th><th>NO.<br>工程</th><th>着手</th><th>完成</th><th>実働H<br>見積H</th><th>備考</th>'
+      + '<th class="sketchHead">略図</th><th>機械名<br>外注／人名</th><th>NO.<br>工程</th><th>着手</th><th>完成</th><th>実働H<br>見積H</th><th>備考</th>'
       + '</tr>';
     return rowsHtml;
   }
@@ -469,7 +489,7 @@
       const no = i+1;
       html += '<div class="ticketRow">'
         + '<span class="tNo">'+no+'</span>'
-        + '<span class="tCode">'+(p?esc(p.code):'')+'</span>'
+        + '<span class="tCode">'+(p?esc(procDisplay(p)):'')+'</span>'
         + '<span class="tDone">完了</span>'
         + '<span class="tBarcode">'+ticketBarcodeSvg(part, p)+'</span>'
         + '<span class="tIdent">'+esc(partOrderNo(part)||'―')+'<br>'+esc(part.name||'―')+'</span>'
@@ -492,7 +512,6 @@
     const issuedWareki = toWareki(new Date());
     return '<div class="slipMain">'
       + '<div class="slipTopRow">'
-      + '<div class="sketchBox"><span class="sketchLabel">略図</span></div>'
       + '<div class="procTableWrap"><table class="procTable"><tbody>'+procTableRowsHtml(list)+'</tbody></table></div>'
       + '</div>'
       + '<div class="slipInfoGrid">'

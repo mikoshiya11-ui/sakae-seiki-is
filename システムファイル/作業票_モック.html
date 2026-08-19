@@ -140,54 +140,68 @@
 
   .footNote{ font-size:11px; color:#a4adbc; text-align:center; margin-top:20px; line-height:1.7; }
 
-  /* ---- 工程エディタ（ポップオーバー） ---- */
+  /* ---- 工程エディタ（大型モーダル）。工程数の多い案件でも一覧で見渡せるよう画面の大部分を使う。
+     1行＝1工程。工程記号／識別BOX／外注・人名／日付／午前午後／備考／注記を横に並べ、縦スクロールで全工程を追う。 ---- */
   .procPicker{
-    position:fixed; z-index:500; background:#fff; border-radius:10px; box-shadow:0 8px 28px rgba(20,35,70,.28);
-    padding:14px; width:420px; max-height:420px; overflow-y:auto; overscroll-behavior:contain; display:none; border:1px solid #e6eaf1;
+    position:fixed; inset:0; z-index:500; background:rgba(16,26,45,.42); display:none;
+    align-items:center; justify-content:center; padding:24px;
   }
-  .procPicker.open{ display:block; }
-  .ppGroupLabel{ font-size:10px; font-weight:700; color:#a4adbc; margin:9px 0 5px; }
-  .ppGroupLabel:first-child{ margin-top:0; }
-  .ppRow{
-    display:flex; align-items:center; gap:8px; padding:4px 0;
+  .procPicker.open{ display:flex; }
+  .pmBox{
+    background:#fff; border-radius:14px; box-shadow:0 18px 48px rgba(20,35,70,.34); border:1px solid #e6eaf1;
+    width:min(1240px, 96vw); height:min(860px, 90vh); display:flex; flex-direction:column; overflow:hidden;
   }
-  .ppToggle{
-    display:flex; align-items:center; gap:6px; border-radius:6px; padding:4px 9px; font-size:11.5px;
-    font-weight:700; color:#3a4a63; border:1.5px solid #dfe4ec; cursor:pointer; user-select:none; flex:0 0 auto;
+  .pmHead{
+    flex:0 0 auto; display:flex; align-items:center; gap:12px; padding:14px 18px; border-bottom:1.5px solid #e6eaf1;
   }
-  .ppToggle .sw{ width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
-  .ppRow.on .ppToggle{ border-color:transparent; color:#fff; }
-  .ppRow input[type=date]{
-    border:1.5px solid #dfe4ec; border-radius:6px; padding:3px 6px; font-size:11px; font-family:inherit;
-    color:#3a4a63; display:none;
-  }
-  .ppRow.on input[type=date]{ display:block; }
-  .ppRow input[type=text].ppNote{
-    border:1.5px solid #dfe4ec; border-radius:6px; padding:3px 6px; font-size:11px; font-family:inherit;
-    color:#3a4a63; display:none; flex:1; min-width:0;
-  }
-  .ppRow.on input[type=text].ppNote{ display:block; }
-  .ppRow select.ppAmpm{
-    border:1.5px solid #dfe4ec; border-radius:6px; padding:3px 4px; font-size:11px; font-family:inherit;
-    color:#3a4a63; display:none; flex:0 0 auto;
-  }
-  .ppRow.on select.ppAmpm{ display:block; }
-  .ppAddRow{ display:flex; gap:6px; margin-top:10px; padding-top:10px; border-top:1px dashed #dfe4ec; }
-  .ppAddRow input{
-    flex:1; border:1.5px solid #dfe4ec; border-radius:6px; padding:5px 8px; font-size:11.5px; font-family:inherit;
-    color:#3a4a63; min-width:0;
-  }
-  .ppAddRow input:focus{ outline:none; border-color:#173a68; }
-  .ppAddRow button{
-    border:none; background:#173a68; color:#fff; font-size:11.5px; font-weight:700; padding:6px 12px;
-    border-radius:6px; cursor:pointer; font-family:inherit; white-space:nowrap; flex:0 0 auto;
-  }
-  .ppAddRow button:hover{ filter:brightness(1.1); }
-  .ppFoot{ margin-top:12px; text-align:right; }
-  .ppFoot button{
-    border:none; background:#173a68; color:#fff; font-size:12px; font-weight:700; padding:7px 14px;
+  .pmHead .pmTitle{ font-size:15px; font-weight:800; color:#173a68; }
+  .pmHead .pmSub{ font-size:12px; color:#5b6b84; }
+  .pmHead .pmSpacer{ margin-left:auto; }
+  .pmHead button{
+    border:none; background:#173a68; color:#fff; font-size:12px; font-weight:700; padding:7px 16px;
     border-radius:7px; cursor:pointer; font-family:inherit;
   }
+  .pmHead button:hover{ filter:brightness(1.1); }
+  /* 一覧性を優先するため、横は詰めて縦スクロールで見る */
+  .pmBody{ flex:1 1 auto; overflow:auto; overscroll-behavior:contain; padding:0; }
+  table.pmTable{ width:100%; border-collapse:collapse; table-layout:fixed; }
+  table.pmTable th{
+    position:sticky; top:0; z-index:1; background:#f7f9fc; font-size:11px; font-weight:700; color:#5b6b84;
+    text-align:left; padding:8px 8px; border-bottom:1.5px solid #dfe4ec; white-space:nowrap;
+  }
+  table.pmTable td{ padding:4px 6px; border-bottom:1px solid #eef1f6; vertical-align:middle; }
+  table.pmTable tr:hover td{ background:#fbfcfe; }
+  /* 列幅は colgroup 1か所だけで決める（table-layout:fixed の表は行の途中の width が効かないため） */
+  .pmTable col.pmColCode{ width:118px; }
+  .pmTable col.pmColIdent{ width:118px; }
+  .pmTable col.pmColMachine{ width:132px; }
+  .pmTable col.pmColDate{ width:126px; }
+  .pmTable col.pmColAmpm{ width:78px; }
+  .pmTable col.pmColNote{ width:auto; }
+  .pmTable col.pmColSketch{ width:auto; }
+  .pmTable col.pmColOps{ width:52px; }
+  .pmSwatch{ display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px; vertical-align:middle; }
+  .pmTable input, .pmTable select{
+    width:100%; border:1.5px solid #dfe4ec; border-radius:6px; padding:5px 7px; font-size:12px; font-family:inherit;
+    color:#3a4a63; background:#fff; min-width:0;
+  }
+  .pmTable input:focus, .pmTable select:focus{ outline:none; border-color:#173a68; }
+  .pmTable input:disabled, .pmTable select:disabled{ background:#f4f6fa; color:#8592a6; }
+  .pmTable .pmCodeWrap{ display:flex; align-items:center; }
+  .pmTable .pmDelBtn{
+    border:none; background:none; color:#c7cfdc; font-size:15px; cursor:pointer; font-family:inherit; padding:2px 6px;
+  }
+  .pmTable .pmDelBtn:hover{ color:#c0392b; }
+  .pmEmpty{ padding:26px 18px; text-align:center; color:#a4adbc; font-size:12.5px; }
+  .pmFoot{
+    flex:0 0 auto; display:flex; align-items:center; gap:12px; padding:12px 18px; border-top:1.5px solid #e6eaf1;
+  }
+  .pmFoot button{
+    flex:0 0 auto; white-space:nowrap; border:none; background:#173a68; color:#fff; font-size:12px; font-weight:700;
+    padding:8px 16px; border-radius:7px; cursor:pointer; font-family:inherit;
+  }
+  .pmFoot button:hover{ filter:brightness(1.1); }
+  .pmFoot .pmHint{ font-size:11.5px; color:#8592a6; line-height:1.6; }
 
   /* ---- 部品行の右クリックメニュー（工程のコピー／貼り付け） ---- */
   .rowCtxMenu{
@@ -248,7 +262,7 @@
         <div style="display:flex; align-items:center; gap:12px;">
           <div class="title">部品一覧</div>
           <button class="addPartBtn" id="addPartBtn">＋ 部品を追加</button>
-          <button type="button" class="addPartBtn" id="memoVerticalToggleBtn" style="background:#8592a6;">📐 注記を縦書き表示</button>
+          <button type="button" class="addPartBtn" id="memoVerticalToggleBtn" style="background:#8592a6;">📐 注記を畳む</button>
         </div>
       </div>
       <div class="partsScroll" id="partsScroll">
@@ -287,13 +301,45 @@
   </div>
 
   <div class="procPicker" id="procPicker">
-    <div id="ppList"></div>
-    <div class="ppAddRow">
-      <input type="text" id="ppAddInput" placeholder="一覧に無い工程名を入力して追加">
-      <button type="button" id="ppAddBtn">＋ 追加</button>
+    <div class="pmBox">
+      <div class="pmHead">
+        <span class="pmTitle">工程を編集</span>
+        <span class="pmSub" id="ppPartLabel"></span>
+        <span class="pmSpacer"></span>
+        <button type="button" id="ppDone">閉じる</button>
+      </div>
+      <div class="pmBody">
+        <table class="pmTable">
+          <colgroup>
+            <col class="pmColCode"><col class="pmColIdent"><col class="pmColMachine"><col class="pmColDate">
+            <col class="pmColAmpm"><col class="pmColNote"><col class="pmColSketch"><col class="pmColOps">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>工程記号</th>
+              <th>識別BOX</th>
+              <th>外注・人名</th>
+              <th>日付</th>
+              <th>午前/午後</th>
+              <th>備考</th>
+              <th>注記</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="ppList"></tbody>
+        </table>
+        <div class="pmEmpty" id="ppEmpty" style="display:none;">工程がまだありません。下の「＋ 工程を追加」から追加してください。</div>
+      </div>
+      <div class="pmFoot">
+        <button type="button" id="ppAddBtn">＋ 工程を追加</button>
+        <span class="pmHint">
+          識別BOX＝同じ工程記号の中で見分ける文字（1ウラ／2オモテ／材料直送 など）。ガントバーや作業票印刷では「工程記号＋識別BOX」で表示します。<br>
+          外注・人名＝作業票印刷の「機械名／外注・人名」欄／備考＝同じ工程の備考欄／注記＝その工程に対応する略図セルへ印刷されます。
+        </span>
+      </div>
     </div>
-    <div class="ppFoot"><button type="button" id="ppDone">閉じる</button></div>
   </div>
+  <datalist id="procCodeList"></datalist>
 
   <div class="rowCtxMenu" id="rowCtxMenu">
     <button type="button" id="ctxDuplicateRow">この行を複製（新しい行として追加）</button>
@@ -513,6 +559,14 @@
         if(!pr.ampm) pr.ampm = 'AM';
         if(pr.hours==null) pr.hours = '';
         if(!pr.days) pr.days = 3;
+        // ---- 工程を「工程記号／識別BOX／外注・人名／備考／注記」の5つに分けた際に追加した項目。
+        // 古い保存データには無いので空で補完する（既存のcode・noteの中身は書き換えない）。
+        //   ident      識別BOX   同じ工程記号の中で見分けるための文字（1ウラ／2オモテ／材料直送 など）
+        //   machine    外注・人名 作業票印刷の「機械名／外注・人名」欄へ出る
+        //   sketchNote 注記      作業票印刷の、その工程に対応する略図セルへ出る
+        if(pr.ident==null) pr.ident = '';
+        if(pr.machine==null) pr.machine = '';
+        if(pr.sketchNote==null) pr.sketchNote = '';
       });
     });
     return st;
@@ -751,7 +805,9 @@
   const memoVerticalToggleBtn = document.getElementById('memoVerticalToggleBtn');
   function applyMemoVerticalMode(){
     partsTableEl.classList.toggle('memoVertical', memoVerticalMode);
-    memoVerticalToggleBtn.textContent = memoVerticalMode ? '📐 注記を横書き表示' : '📐 注記を縦書き表示';
+    // 「縦書き／横書き」は表示のさせ方であって注記そのものの仕様ではないため、ボタンには出さない。
+    // 細く畳んだ状態のときは「注記を表示」、読める幅で出ているときは「注記を畳む」と出す。
+    memoVerticalToggleBtn.textContent = memoVerticalMode ? '📐 注記を表示' : '📐 注記を畳む';
   }
   memoVerticalToggleBtn.addEventListener('click', ()=>{
     memoVerticalMode = !memoVerticalMode;
@@ -765,6 +821,16 @@
     const m = /^NC(\d+)/.exec(code||'');
     return m ? Number(m[1]) : null;
   }
+  // ---- DE・SU・PNは「日程だけ（バー無し）」の工程のため、午前/午後の区別や日数の指定は不要（常に日数1固定） ----
+  const DATE_ONLY_CODES = { 'DE':true, 'SU':true, 'PN':true };
+
+  // ---- 画面・帳票に出す工程の見出し。工程記号＋識別BOX を続けて書く（例：NC＋2オモテ → NC2オモテ）。
+  // 工程の分類（残品表のタブ・工程別の日程表など）はあくまで工程記号だけで決まり、識別BOXは見分けるための文字。 ----
+  function procDisplay(p){
+    if(!p) return '';
+    return (p.code||'') + (p.ident||'');
+  }
+
   function procChipsHtml(part){
     if(!part.processes.length) return '<span style="color:#c7cfdc;font-size:11px;">未設定</span>';
     // 日程の若い順（未設定の日付は末尾）に並べ替えて表示する
@@ -788,7 +854,7 @@
       // ただしDE・SU・PNは1日単位固定（午前/午後の概念が無い）ため、常に付けない
       const dateShort = p.date ? (p.date.slice(5).replace('-','/') + (p.ampm==='AM' && !DATE_ONLY_CODES[p.code] ? '半':'')) : '';
       return '<div class="procUnit">'
-        + '<span class="procChip" style="background:'+colorOf(p.code)+';">'+esc(p.code)+'</span>'
+        + '<span class="procChip" style="background:'+colorOf(p.code)+';">'+esc(procDisplay(p))+'</span>'
         + '<span class="procDate">'+(dateShort||'―')+'</span>'
         + '</div>';
     }).join('');
@@ -854,7 +920,7 @@
     if(editBtn){
       const tr = editBtn.closest('tr[data-idx]');
       const idx = Number(tr.dataset.idx);
-      openProcPicker(idx, editBtn.getBoundingClientRect());
+      openProcPicker(idx);
     }
   });
 
@@ -1108,61 +1174,65 @@
     render();
   });
 
-  // ---- 工程エディタ（ポップオーバー） ----
+  // ---- 工程エディタ（大型モーダル） ----
+  // 1行＝1工程。行は工程ID（procId）で固定し、編集はその工程1件だけをその場で書き換える。
+  // 以前のように「ONになっている工程記号から配列を丸ごと作り直す」ことはしないので、
+  // 編集しただけで工程IDが変わる／同じ工程記号の工程が消える／並び順が勝手に入れ替わる、といったことは起きない。
   const procPicker = document.getElementById('procPicker');
   const ppList = document.getElementById('ppList');
+  const ppEmpty = document.getElementById('ppEmpty');
   const ppDone = document.getElementById('ppDone');
+  const ppAddBtn = document.getElementById('ppAddBtn');
+  const ppPartLabel = document.getElementById('ppPartLabel');
   let ppPartIdx = null;
 
-  // DE・SU・PNは「日程だけ（バー無し）」の工程のため、午前/午後の区別や日数の指定は不要（常に日数1固定）
-  const DATE_ONLY_CODES = { 'DE':true, 'SU':true, 'PN':true };
-  function ppRowHtml(code, existing){
-    const on = !!existing;
-    const color = colorOf(code);
-    const isDateOnly = !!DATE_ONLY_CODES[code];
-    const ampm = existing && existing.ampm==='PM' ? 'PM' : 'AM';
-    const dis = isConfirmed() ? ' disabled' : '';
-    const ampmHtml = isDateOnly ? '' :
-      '<select class="ppAmpm" data-role="ppAmpm"'+dis+'><option value="AM"'+(ampm==='AM'?' selected':'')+'>午前</option><option value="PM"'+(ampm==='PM'?' selected':'')+'>午後</option></select>';
-    return '<div class="ppRow'+(on?' on':'')+'" data-code="'+esc(code)+'">'
-      + '<span class="ppToggle" data-role="ppToggle" style="'+(on?'background:'+color+';':'')+'"><span class="sw" style="background:'+(on?'#fff':color)+';"></span>'+esc(code)+'</span>'
-      + '<input type="date" data-role="ppDate" value="'+(existing?esc(existing.date):'')+'"'+dis+'>'
-      + ampmHtml
-      + '<input type="text" class="ppNote" data-role="ppNote" value="'+(existing?esc(existing.note):'')+'"'+dis+'>'
-      + '</div>';
-  }
-  function buildPpList(part){
+  // 工程記号の入力候補。一覧に無い記号（現場が使っている業者名など）もそのまま入力できるよう、
+  // 選択式ではなく入力候補（datalist）として出す。
+  (function buildProcCodeList(){
+    const dl = document.getElementById('procCodeList');
+    if(!dl) return;
     let html = '';
-    const knownCodes = {};
     PROCESS_GROUPS.forEach(g=>{
-      g.items.forEach(code=>{
-        knownCodes[code] = true;
-        const existing = part.processes.find(p=>p.code===code);
-        html += ppRowHtml(code, existing);
-      });
+      g.items.forEach(code=>{ html += '<option value="'+esc(code)+'"></option>'; });
     });
-    // 個別日程表側で自由入力されたコードなど、上記グループに無いものも消えないようにここに表示する
-    const extras = part.processes.filter(p=>!knownCodes[p.code]);
-    if(extras.length){
-      extras.forEach(existing=>{
-        html += ppRowHtml(existing.code, existing);
-      });
-    }
-    ppList.innerHTML = html;
+    dl.innerHTML = html;
+  })();
+
+  function currentPart(){ return ppPartIdx===null ? null : state.parts[ppPartIdx]; }
+  function findProc(procId){
+    const part = currentPart();
+    if(!part) return null;
+    return (part.processes||[]).find(p=>p.id===procId) || null;
   }
 
-  function openProcPicker(partIdx, anchorRect){
-    if(ppPartIdx !== null && ppPartIdx !== partIdx){ save(); render(); }
+  function ppRowHtml(p){
+    const dis = isConfirmed() ? ' disabled' : '';
+    const pm = p.ampm==='PM';
+    return '<tr data-procid="'+esc(p.id)+'">'
+      + '<td><span class="pmCodeWrap"><span class="pmSwatch" style="background:'+colorOf(p.code)+';"></span>'
+        + '<input type="text" list="procCodeList" data-field="code" value="'+esc(p.code)+'" placeholder="NC"'+dis+'></span></td>'
+      + '<td><input type="text" data-field="ident" value="'+esc(p.ident||'')+'" placeholder="2オモテ"'+dis+'></td>'
+      + '<td><input type="text" data-field="machine" value="'+esc(p.machine||'')+'" placeholder="○○製作所"'+dis+'></td>'
+      + '<td><input type="date" data-field="date" value="'+esc(p.date||'')+'"'+dis+'></td>'
+      + '<td><select data-field="ampm"'+dis+'><option value="AM"'+(pm?'':' selected')+'>午前</option><option value="PM"'+(pm?' selected':'')+'>午後</option></select></td>'
+      + '<td><input type="text" data-field="note" value="'+esc(p.note||'')+'" placeholder="寸法確認"'+dis+'></td>'
+      + '<td><input type="text" data-field="sketchNote" value="'+esc(p.sketchNote||'')+'" placeholder="穴位置注意"'+dis+'></td>'
+      + '<td style="text-align:center;"><button type="button" class="pmDelBtn" data-role="ppDel" title="この工程を削除">✕</button></td>'
+      + '</tr>';
+  }
+  function buildPpList(part){
+    const list = part.processes || [];
+    ppList.innerHTML = list.map(ppRowHtml).join('');
+    ppEmpty.style.display = list.length ? 'none' : 'block';
+  }
+
+  function openProcPicker(partIdx){
+    if(ppPartIdx !== null && ppPartIdx !== partIdx){ save(); }
     ppPartIdx = partIdx;
-    buildPpList(state.parts[partIdx]);
-    const pickerW = 420;
-    let left = anchorRect.left;
-    let top = anchorRect.bottom + 6;
-    if(left + pickerW > window.innerWidth - 10) left = window.innerWidth - pickerW - 10;
-    if(left < 10) left = 10;
-    if(top + 420 > window.innerHeight){ top = Math.max(10, window.innerHeight - 430); }
-    procPicker.style.left = left+'px';
-    procPicker.style.top = top+'px';
+    const part = state.parts[partIdx];
+    if(!part) return;
+    ppPartLabel.textContent = '社内No ' + (part.subNo||'―') + '　' + (part.name||'（部品名未入力）');
+    buildPpList(part);
     procPicker.classList.add('open');
   }
   function closeProcPicker(){
@@ -1172,85 +1242,72 @@
     render();
   }
 
-  function syncPartFromPicker(){
-    if(ppPartIdx===null) return;
-    const part = state.parts[ppPartIdx];
-    const existingByCode = {};
-    part.processes.forEach(p=>{ existingByCode[p.code] = p; });
-    const rows = ppList.querySelectorAll('.ppRow.on');
-    const newProcesses = [];
-    rows.forEach(row=>{
-      const code = row.dataset.code;
-      const date = row.querySelector('[data-role="ppDate"]').value;
-      const note = row.querySelector('[data-role="ppNote"]').value;
-      const ampmEl = row.querySelector('[data-role="ppAmpm"]');
-      const ampm = ampmEl ? ampmEl.value : 'AM';
-      const existing = existingByCode[code];
-      // 工数（時間）は作業票側では編集させない（作業票で決めるのは納期のみ）。既存の値があればそのまま維持する。
-      const hours = (existing && existing.hours!=null) ? existing.hours : '';
-      // 日数は作業票側では編集させず、既存の値（個別日程表でバーを伸縮した結果など）があればそれを維持し、
-      // 無ければ初期値の3日間にする
-      const days = (existing && existing.days) ? existing.days : 3;
-      // 個別日程表とidで紐づいているため、既存の工程はidを保持したまま更新する（新規idを振ると連携が切れる）
-      newProcesses.push({ id: existing ? existing.id : uid(), code, date, note, ampm, hours, days });
-    });
-    part.processes = newProcesses;
-  }
+  // 入力のたびに、その工程1件のその項目だけを書き換える（他の工程・工程ID・並び順には触れない）
+  ppList.addEventListener('input', (e)=>{
+    const field = e.target.dataset.field;
+    const tr = e.target.closest('tr[data-procid]');
+    if(!field || !tr) return;
+    const proc = findProc(tr.dataset.procid);
+    if(!proc) return;
+    proc[field] = e.target.value;
+    if(field === 'code'){
+      const sw = tr.querySelector('.pmSwatch');
+      if(sw) sw.style.background = colorOf(proc.code);
+    }
+    save();
+  });
+  // 選択欄（午前/午後）は input が飛ばないブラウザでも拾えるよう change でも受ける（同じ値を入れるだけなので二重でも害はない）
+  ppList.addEventListener('change', (e)=>{
+    const field = e.target.dataset.field;
+    const tr = e.target.closest('tr[data-procid]');
+    if(field !== 'ampm' || !tr) return;
+    const proc = findProc(tr.dataset.procid);
+    if(!proc) return;
+    proc.ampm = e.target.value;
+    save();
+  });
 
   ppList.addEventListener('click', (e)=>{
-    const toggle = e.target.closest('[data-role="ppToggle"]');
-    if(!toggle) return;
+    const del = e.target.closest('[data-role="ppDel"]');
+    if(!del) return;
     if(!checkEditable()) return;
-    const row = toggle.closest('.ppRow');
-    row.classList.toggle('on');
-    const code = row.dataset.code;
-    const color = colorOf(code);
-    if(row.classList.contains('on')){
-      toggle.style.background = color;
-      toggle.querySelector('.sw').style.background = '#fff';
-    }else{
-      toggle.style.background = '';
-      toggle.querySelector('.sw').style.background = color;
-    }
-    syncPartFromPicker();
-  });
-  ppList.addEventListener('input', (e)=>{
-    if(e.target.dataset.role==='ppDate' || e.target.dataset.role==='ppNote'){
-      syncPartFromPicker();
-    }
-  });
-  ppList.addEventListener('change', (e)=>{
-    if(e.target.dataset.role==='ppAmpm'){
-      syncPartFromPicker();
-    }
-  });
-  // ---- チップに無い工程名を自由入力で追加（個別日程表の工程名入力と同じ考え方）----
-  const ppAddInput = document.getElementById('ppAddInput');
-  const ppAddBtn = document.getElementById('ppAddBtn');
-  function addCustomProcess(){
-    const name = ppAddInput.value.trim();
-    if(!name || ppPartIdx===null) return;
-    if(!checkEditable()) return;
-    const part = state.parts[ppPartIdx];
-    if(part.processes.some(p=>p.code===name)){
-      alert('「'+name+'」はすでに追加されています。');
-      return;
-    }
-    part.processes.push({ id: uid(), code:name, date:'', note:'', ampm:'AM', hours:'', days:3 });
-    ppAddInput.value = '';
+    const tr = del.closest('tr[data-procid]');
+    const part = currentPart();
+    const proc = tr && findProc(tr.dataset.procid);
+    if(!part || !proc) return;
+    const label = procDisplay(proc) || 'この工程';
+    if(!window.confirm('「'+label+'」を削除しますか？\n個別日程表のバーや、各工程の日程表からもこの工程が消えます。')) return;
+    part.processes = (part.processes||[]).filter(p=>p.id!==proc.id);
+    save();
     buildPpList(part);
-  }
-  ppAddBtn.addEventListener('click', addCustomProcess);
-  ppAddInput.addEventListener('keydown', (e)=>{
-    if(e.key==='Enter'){ e.preventDefault(); addCustomProcess(); }
   });
 
+  function addProcessRow(){
+    if(ppPartIdx===null) return;
+    if(!checkEditable()) return;
+    const part = currentPart();
+    if(!part) return;
+    part.processes = part.processes || [];
+    // 個別日程表・各工程の日程表と共有する形をそろえる（独自形式は作らない）
+    part.processes.push({ id: uid(), code:'', ident:'', machine:'', date:'', note:'', sketchNote:'', ampm:'AM', hours:'', days:3 });
+    save();
+    buildPpList(part);
+    const rows = ppList.querySelectorAll('tr[data-procid]');
+    const last = rows[rows.length-1];
+    if(last){
+      const inp = last.querySelector('[data-field="code"]');
+      if(inp) inp.focus();
+    }
+  }
+  ppAddBtn.addEventListener('click', addProcessRow);
+
   ppDone.addEventListener('click', closeProcPicker);
-  document.addEventListener('mousedown', (e)=>{
-    if(!procPicker.classList.contains('open')) return;
-    if(procPicker.contains(e.target)) return;
-    if(e.target.closest('[data-role="editProc"]')) return;
-    closeProcPicker();
+  // 背景（暗い部分）をクリックしたら閉じる。モーダルの中身をクリックしても閉じない
+  procPicker.addEventListener('mousedown', (e)=>{
+    if(e.target === procPicker) closeProcPicker();
+  });
+  document.addEventListener('keydown', (e)=>{
+    if(e.key === 'Escape' && procPicker.classList.contains('open')) closeProcPicker();
   });
 
   render();

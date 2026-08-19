@@ -860,10 +860,13 @@
           // 日付が未入力でもここに出す（記入欄として使うため）。
           dateTags.push({ procId: proc.id, code: proc.code, date: proc.date||'', ampm: proc.ampm||'AM', note: proc.note||'' });
         }else if(!isPrep && d){
-          // バーの表示・編集欄には「工程コード＋備考」をまとめて出す（例：NC1＋ウラ→「NC1 ウラ」）。
-          // 同じ設備でも加工方法（ウラ／オモテ等）が違うパターンを備考側で区別できるようにするため。
-          const dispCode = proc.code + (proc.note ? ' '+proc.note : '');
-          events.push({ procId: proc.id, code: dispCode, half: halfIdxForDate(d, proc.ampm==='PM'), days: proc.days||3 });
+          // バーには「工程記号＋識別BOX」をまとめて出す（例：NC＋2オモテ→「NC2オモテ」）。
+          // 同じ工程記号でも加工方法（ウラ／オモテ等）や材料直送などを見分けられるようにするため。
+          // 編集欄には空白で区切った形（NC 2オモテ）を出す。決定時に工程記号と識別BOXへ分けて保存するため。
+          // 備考（note）は作業票印刷の備考欄へ出る項目なので、ここでは混ぜない。
+          const dispCode = proc.code + (proc.ident || '');
+          const editCode = proc.code + (proc.ident ? ' '+proc.ident : '');
+          events.push({ procId: proc.id, code: dispCode, codeEdit: editCode, half: halfIdxForDate(d, proc.ampm==='PM'), days: proc.days||3 });
         }
         // 日付が未入力の加工／仕上げ工程（ASSなど phase0 以外）は、バーとして描けないためこの画面には出さない。
         // 以前は左のBOXへ落ちていたが、そこは準備工程専用のため混在させない。日付は作業票側で入力する。
@@ -1100,7 +1103,7 @@
           // 作業票の工程日は「終了（納期）」を表すので、バーの右端をev.halfに合わせ、そこから日数ぶん手前を左端にする。
           const barEnd = ev.half;
           const barStart = Math.max(1, barEnd - ((ev.days||3) - 1));
-          data[key].push({ id:'proc_'+ev.procId, procId:ev.procId, start:barStart, end:barEnd, label:ev.code });
+          data[key].push({ id:'proc_'+ev.procId, procId:ev.procId, start:barStart, end:barEnd, label:ev.code, labelEdit:ev.codeEdit });
         });
       });
     }else{
@@ -1678,14 +1681,15 @@
     }
     closeLabelPicker();
   }
-  // ---- 「NC1 ウラ」のように空白区切りで入力された文字列を、工程コード（NC1）と備考（ウラ）に分ける ----
-  // 空白が無ければ全体をコードとして扱う（従来通り）。同じ設備でも加工方法違いのパターンを備考側で区別するために使う。
+  // ---- 「NC 2オモテ」のように空白区切りで入力された文字列を、工程記号（NC）と識別BOX（2オモテ）に分ける ----
+  // 空白が無ければ全体を工程記号として扱う（従来通り）。同じ工程記号の中で加工方法違い等を見分けるために使う。
+  // 備考（作業票印刷の備考欄へ出る項目）はここでは触らない。
   function splitLabelInput(raw){
     const s = (raw||'').trim();
-    if(!s) return { code:'', note:'' };
+    if(!s) return { code:'', ident:'' };
     const idx = s.search(/\s/);
-    if(idx === -1) return { code: s, note: '' };
-    return { code: s.slice(0, idx), note: s.slice(idx).trim() };
+    if(idx === -1) return { code: s, ident: '' };
+    return { code: s.slice(0, idx), ident: s.slice(idx).trim() };
   }
   function commitLabelPicker(newLabel){
     if(!lpTarget) return;
@@ -1705,9 +1709,11 @@
         const d = dateForHalfIdx(bar.end);
         const dt = d.date;
         const dateStr = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
-        // 「NC1 ウラ」のように空白区切りで入力したら、コード（NC1）と備考（ウラ）に分けて保存する
-        const { code: newCode, note: newNote } = splitLabelInput(label);
-        const newProc = { id: uid(), code: newCode, date: dateStr, note: newNote, ampm: d.isPM?'PM':'AM', days: Math.max(1, bar.end - bar.start + 1) };
+        // 「NC 2オモテ」のように空白区切りで入力したら、工程記号（NC）と識別BOX（2オモテ）に分けて保存する。
+        // 項目の持ち方は作業票側の仕様にそろえる（独自形式は作らない）。
+        const { code: newCode, ident: newIdent } = splitLabelInput(label);
+        const newProc = { id: uid(), code: newCode, ident: newIdent, machine:'', date: dateStr, note: '', sketchNote:'',
+                          ampm: d.isPM?'PM':'AM', hours:'', days: Math.max(1, bar.end - bar.start + 1) };
         bs.processes = bs.processes || [];
         bs.processes.push(newProc);
         const laneIdx = Number(key.split('_')[1]);
@@ -1736,9 +1742,9 @@
             delete laneAssign[procId];
             saveLaneAssign();
           }else{
-            const { code: newCode, note: newNote } = splitLabelInput(label);
+            const { code: newCode, ident: newIdent } = splitLabelInput(label);
             proc.code = newCode;
-            proc.note = newNote;
+            proc.ident = newIdent;
           }
           saveBuhinState();
         }
@@ -2055,7 +2061,7 @@
     const { key, rangeId, barEl } = ctxBarTarget;
     const bar = (barsData[key]||[]).find(b=>b.id===rangeId);
     closeBarCtxMenu();
-    if(bar) openLabelPicker(key, rangeId, bar.label, barEl.getBoundingClientRect(), false);
+    if(bar) openLabelPicker(key, rangeId, bar.labelEdit || bar.label, barEl.getBoundingClientRect(), false);
   });
   ctxGotoProc.addEventListener('click', ()=>{
     if(!ctxBarTarget || ctxBarTarget.kind!=='bar') return;
@@ -2349,7 +2355,7 @@
       location.href = gotoProc.file + (urlProductNo ? ('?productNo='+encodeURIComponent(urlProductNo)) : '');
       return;
     }
-    openLabelPicker(key, bar.id, bar.label, barEl.getBoundingClientRect(), false);
+    openLabelPicker(key, bar.id, bar.labelEdit || bar.label, barEl.getBoundingClientRect(), false);
   });
 
   // ---- A3印刷：印刷前に表示期間・ズームを整えてもらい、そのままブラウザの印刷ダイアログを開く ----
@@ -2543,7 +2549,7 @@
       const bs = part && buhinState.parts.find(p=>p.id===part.partId);
       if(code && bs){
         bs.processes = bs.processes || [];
-        bs.processes.push({ id: uid(), code: code, date: inputEl.value, note: '', ampm: 'AM', hours: '', days: 3 });
+        bs.processes.push({ id: uid(), code: code, ident:'', machine:'', date: inputEl.value, note: '', sketchNote:'', ampm: 'AM', hours: '', days: 3 });
         found = true;
       }
     }
