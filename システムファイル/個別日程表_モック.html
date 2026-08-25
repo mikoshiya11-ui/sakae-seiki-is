@@ -1712,7 +1712,7 @@
         // 「NC 2オモテ」のように空白区切りで入力したら、工程記号（NC）と識別BOX（2オモテ）に分けて保存する。
         // 項目の持ち方は作業票側の仕様にそろえる（独自形式は作らない）。
         const { code: newCode, ident: newIdent } = splitLabelInput(label);
-        const newProc = { id: uid(), code: newCode, ident: newIdent, machine:'', date: dateStr, note: '', sketchNote:'',
+        const newProc = { id: uid(), code: newCode, ident: newIdent, machine:'', date: dateStr, note: '',
                           ampm: d.isPM?'PM':'AM', hours:'', days: Math.max(1, bar.end - bar.start + 1) };
         bs.processes = bs.processes || [];
         bs.processes.push(newProc);
@@ -1881,7 +1881,12 @@
   const ctxPasteBar = document.getElementById('ctxPasteBar');
   const ctxDeleteBar = document.getElementById('ctxDeleteBar');
   let ctxBarTarget = null; // { kind:'bar', key, rangeId, barEl } または { kind:'track', key, trackEl, startUnit }
-  let copiedBarData = null; // { label, days } ※コピーしたバーの工程名と日数（位置は貼り付け先のものをそのまま使う）
+  // コピーしたバーの工程名と日数（位置は貼り付け先のものをそのまま使う）。
+  //   label   … 空白で区切った編集用の形（例「NC 2オモテ」）。貼り付け時に工程記号と識別BOXへ分けるのに使う。
+  //   display … 画面に出す形（例「NC2オモテ」）。メニューの文言にだけ使う。
+  // 以前は display の形（空白なし）だけを持っていたため、貼り付け時に分割できず
+  // 工程記号に「NC2オモテ」がまるごと入り、識別BOXが空になっていた。
+  let copiedBarData = null; // { label, display, days }
 
   function openBarCtxMenu(x, y){
     barCtxMenu.classList.add('open');
@@ -2014,7 +2019,7 @@
       ctxCopyBar.style.display = '';
       ctxPasteBar.style.display = '';
       ctxPasteBar.disabled = !copiedBarData;
-      ctxPasteBar.textContent = copiedBarData ? ('バーのペースト（'+copiedBarData.label+'）') : 'バーのペースト（先にコピーしてください）';
+      ctxPasteBar.textContent = copiedBarData ? ('バーのペースト（'+(copiedBarData.display||copiedBarData.label)+'）') : 'バーのペースト（先にコピーしてください）';
       ctxDeleteBar.style.display = '';
       openBarCtxMenu(e.clientX, e.clientY);
       return;
@@ -2031,7 +2036,7 @@
       ctxCopyBar.style.display = 'none';
       ctxPasteBar.style.display = '';
       ctxPasteBar.disabled = !copiedBarData;
-      ctxPasteBar.textContent = copiedBarData ? ('バーのペースト（'+copiedBarData.label+'）') : 'バーのペースト（先にコピーしてください）';
+      ctxPasteBar.textContent = copiedBarData ? ('バーのペースト（'+(copiedBarData.display||copiedBarData.label)+'）') : 'バーのペースト（先にコピーしてください）';
       ctxDeleteBar.style.display = 'none';
       openBarCtxMenu(e.clientX, e.clientY);
     }
@@ -2079,7 +2084,8 @@
     const bar = (barsData[key]||[]).find(b=>b.id===rangeId);
     closeBarCtxMenu();
     if(!bar) return;
-    copiedBarData = { label: bar.label, days: Math.max(1, bar.end - bar.start + 1) };
+    // 分割できる編集用の形（labelEdit）をコピーする。無い場合だけ表示用の形で代用する。
+    copiedBarData = { label: bar.labelEdit || bar.label, display: bar.label, days: Math.max(1, bar.end - bar.start + 1) };
   });
   ctxPasteBar.addEventListener('click', ()=>{
     if(!ctxBarTarget || !copiedBarData) return;
@@ -2128,9 +2134,13 @@
       const bs = part && buhinState.parts.find(p=>p.id===part.partId);
       const proc = bs && (bs.processes||[]).find(pr=>pr.id===procId);
       if(proc){
-        const { code: pastedCode, note: pastedNote } = splitLabelInput(copiedBarData.label);
+        // コピーが持っているのは「工程名（工程記号＋識別BOX）」と「日数」だけ。
+        // splitLabelInput() の戻り値は { code, ident } で note は含まれないため、
+        // ここで note を受け取ろうとすると undefined が入り、貼り付けただけで備考が消えていた。
+        // 外注・人名（machine）・備考（note）・工程ID（procId）は貼り付けでは変更しない。
+        const { code: pastedCode, ident: pastedIdent } = splitLabelInput(copiedBarData.label);
         proc.code = pastedCode;
-        proc.note = pastedNote;
+        proc.ident = pastedIdent;
         proc.days = newEnd - bar.start + 1;
         const d = dateForHalfIdx(newEnd);
         const dt = d.date;
@@ -2549,7 +2559,7 @@
       const bs = part && buhinState.parts.find(p=>p.id===part.partId);
       if(code && bs){
         bs.processes = bs.processes || [];
-        bs.processes.push({ id: uid(), code: code, ident:'', machine:'', date: inputEl.value, note: '', sketchNote:'', ampm: 'AM', hours: '', days: 3 });
+        bs.processes.push({ id: uid(), code: code, ident:'', machine:'', date: inputEl.value, note: '', ampm: 'AM', hours: '', days: 3 });
         found = true;
       }
     }

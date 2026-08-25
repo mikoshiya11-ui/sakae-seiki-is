@@ -644,7 +644,10 @@
             jobs.push({
               productNo: bs.order.productNo || '', customer: bs.order.customer || '',
               partId: part.id, partName: part.name || '', subNo: part.subNo || '',
-              procId: proc.id, code: proc.code, date: ov ? ov.date : proc.date, ampm: ov ? ov.ampm : (proc.ampm || 'AM'), note: proc.note || '',
+              // 工程名の表示は「工程記号＋識別BOX」で揃える（作業票・個別日程表・残品表・実績入力と同じ規則）。
+              // 以前はここで備考(note)を工程名へ連結していたが、識別BOX(ident)を入れる前の名残なので取りやめた。
+              // 備考は作業票印刷の備考欄へ出す項目で、工程名には混ぜない。
+              procId: proc.id, code: proc.code, ident: proc.ident || '', date: ov ? ov.date : proc.date, ampm: ov ? ov.ampm : (proc.ampm || 'AM'), note: proc.note || '',
               days: proc.days || 3 // 個別日程表と同じ「半日単位のバー長さ」。ここでの意味は暦日数ではなく半日コマ数（個別日程表のバー幅と揃えるため）
             });
           }
@@ -718,7 +721,7 @@
       data[key].push({
         id:'proc_'+job.procId, procId: job.procId, productNo: job.productNo, code: job.code,
         start: Math.max(1, endUnit-widthInQuarterUnits+1), end: endUnit,
-        label: (job.customer?job.customer+' ':'')+(job.productNo?job.productNo+' ':'')+job.partName+'（'+job.code+(job.note?' '+job.note:'')+'）',
+        label: (job.customer?job.customer+' ':'')+(job.productNo?job.productNo+' ':'')+job.partName+'（'+job.code+(job.ident||'')+'）',
         customer: job.customer
       });
     });
@@ -949,9 +952,9 @@
       // 通常（17時締め＝午後）は表示せず、半日締め（正午＝午前）だけ「半」を付けて目立たせる（作業票と同じルール）
       const dateShort = (j.date||'').slice(5).replace('-','/') + (j.ampm==='AM'?'半':'');
       const custPart = j.customer ? '　'+esc(j.customer) : '';
-      const notePart = j.note ? ' '+esc(j.note) : '';
+      const identPart = j.ident ? esc(j.ident) : '';
       return '<div class="unassignedItem">'
-        + '<span>'+(j.productNo?'<b>'+esc(j.productNo)+'</b> ':'')+esc(j.partName)+'（'+esc(j.code)+notePart+'）　'+esc(dateShort)+custPart+'</span>'
+        + '<span>'+(j.productNo?'<b>'+esc(j.productNo)+'</b> ':'')+esc(j.partName)+'（'+esc(j.code)+identPart+'）　'+esc(dateShort)+custPart+'</span>'
         + '<button type="button" class="uiAssignBtn" data-role="assignBtn" data-procid="'+esc(j.procId)+'">配置する</button>'
         + '</div>';
     }).join('');
@@ -963,7 +966,7 @@
     pendingAssign = job;
     document.getElementById('placementBanner').style.display = 'flex';
     document.getElementById('placementBannerText').textContent =
-      (job.productNo?job.productNo+' ':'')+job.partName+'（'+job.code+(job.note?' '+job.note:'')+'）を、現在表示中の「'+currentCode+'」タブのどの機械の行に配置しますか？行をクリックしてください。';
+      (job.productNo?job.productNo+' ':'')+job.partName+'（'+job.code+(job.ident||'')+'）を、現在表示中の「'+currentCode+'」タブのどの機械の行に配置しますか？行をクリックしてください。';
   }
   function cancelPlacement(){
     pendingAssign = null;

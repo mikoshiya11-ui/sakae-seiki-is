@@ -141,7 +141,9 @@
   .footNote{ font-size:11px; color:#a4adbc; text-align:center; margin-top:20px; line-height:1.7; }
 
   /* ---- 工程エディタ（大型モーダル）。工程数の多い案件でも一覧で見渡せるよう画面の大部分を使う。
-     1行＝1工程。工程記号／識別BOX／外注・人名／日付／午前午後／備考／注記を横に並べ、縦スクロールで全工程を追う。 ---- */
+     1行＝1工程。工程記号／識別BOX／外注・人名／日付／午前午後／備考を横に並べ、縦スクロールで全工程を追う。
+     （工程ごとの「注記」欄は 2026-08-20 の現場要望により廃止した。工程に持たせるのは
+      識別BOX・外注／人名・備考の3つだけ。部品単位の注記は部品一覧の「注記」欄を使う。） ---- */
   .procPicker{
     position:fixed; inset:0; z-index:500; background:rgba(16,26,45,.42); display:none;
     align-items:center; justify-content:center; padding:24px;
@@ -178,7 +180,6 @@
   .pmTable col.pmColDate{ width:126px; }
   .pmTable col.pmColAmpm{ width:78px; }
   .pmTable col.pmColNote{ width:auto; }
-  .pmTable col.pmColSketch{ width:auto; }
   .pmTable col.pmColOps{ width:52px; }
   .pmSwatch{ display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px; vertical-align:middle; }
   .pmTable input, .pmTable select{
@@ -312,7 +313,7 @@
         <table class="pmTable">
           <colgroup>
             <col class="pmColCode"><col class="pmColIdent"><col class="pmColMachine"><col class="pmColDate">
-            <col class="pmColAmpm"><col class="pmColNote"><col class="pmColSketch"><col class="pmColOps">
+            <col class="pmColAmpm"><col class="pmColNote"><col class="pmColOps">
           </colgroup>
           <thead>
             <tr>
@@ -322,7 +323,6 @@
               <th>日付</th>
               <th>午前/午後</th>
               <th>備考</th>
-              <th>注記</th>
               <th></th>
             </tr>
           </thead>
@@ -334,7 +334,8 @@
         <button type="button" id="ppAddBtn">＋ 工程を追加</button>
         <span class="pmHint">
           識別BOX＝同じ工程記号の中で見分ける文字（1ウラ／2オモテ／材料直送 など）。ガントバーや作業票印刷では「工程記号＋識別BOX」で表示します。<br>
-          外注・人名＝作業票印刷の「機械名／外注・人名」欄／備考＝同じ工程の備考欄／注記＝その工程に対応する略図セルへ印刷されます。
+          外注・人名＝作業票印刷の「機械名／外注・人名」欄／備考＝同じ工程の備考欄へ印刷されます。<br>
+          工程ごとの「注記」欄は廃止しました。部品単位の注記は部品一覧の「注記」欄へ入力してください（作業票印刷の下段「注記」欄に出ます）。
         </span>
       </div>
     </div>
@@ -584,14 +585,15 @@
         if(!pr.ampm) pr.ampm = 'AM';
         if(pr.hours==null) pr.hours = '';
         if(!pr.days) pr.days = 3;
-        // ---- 工程を「工程記号／識別BOX／外注・人名／備考／注記」の5つに分けた際に追加した項目。
+        // ---- 工程を「工程記号／識別BOX／外注・人名／備考」に分けた際に追加した項目。
         // 古い保存データには無いので空で補完する（既存のcode・noteの中身は書き換えない）。
         //   ident      識別BOX   同じ工程記号の中で見分けるための文字（1ウラ／2オモテ／材料直送 など）
         //   machine    外注・人名 作業票印刷の「機械名／外注・人名」欄へ出る
-        //   sketchNote 注記      作業票印刷の、その工程に対応する略図セルへ出る
         if(pr.ident==null) pr.ident = '';
         if(pr.machine==null) pr.machine = '';
-        if(pr.sketchNote==null) pr.sketchNote = '';
+        // ---- 工程ごとの注記（sketchNote）は 2026-08-20 の現場要望により廃止した。
+        // 既に保存されている sketchNote は「読み書きしない旧データ」としてそのまま残す。
+        // 案件を開いただけで空文字を書き込むことがないよう、ここでの補完は行わない。 ----
       });
     });
     return st;
@@ -1259,7 +1261,6 @@
       + '<td><input type="date" data-field="date" value="'+esc(p.date||'')+'"'+dis+'></td>'
       + '<td><select data-field="ampm"'+dis+'><option value="AM"'+(pm?'':' selected')+'>午前</option><option value="PM"'+(pm?' selected':'')+'>午後</option></select></td>'
       + '<td><input type="text" data-field="note" value="'+esc(p.note||'')+'" placeholder="寸法確認"'+dis+'></td>'
-      + '<td><input type="text" data-field="sketchNote" value="'+esc(p.sketchNote||'')+'" placeholder="穴位置注意"'+dis+'></td>'
       + '<td style="text-align:center;"><button type="button" class="pmDelBtn" data-role="ppDel" title="この工程を削除">✕</button></td>'
       + '</tr>';
   }
@@ -1339,7 +1340,7 @@
     if(!part) return;
     part.processes = part.processes || [];
     // 個別日程表・各工程の日程表と共有する形をそろえる（独自形式は作らない）
-    part.processes.push({ id: uid(), code:'', ident:'', machine:'', date:'', note:'', sketchNote:'', ampm:'AM', hours:'', days:3 });
+    part.processes.push({ id: uid(), code:'', ident:'', machine:'', date:'', note:'', ampm:'AM', hours:'', days:3 });
     save();
     buildPpList(part);
     const rows = ppList.querySelectorAll('tr[data-procid]');
