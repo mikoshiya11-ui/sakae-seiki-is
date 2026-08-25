@@ -161,13 +161,38 @@
     }
   }
 
+  // ---- 「中身が同じかどうか」をキーの並び順に左右されずに判定するための正規化 ----
+  // Supabaseの value は jsonb で、保存するとキーの並び順がPostgres側の規則（長さ→バイト順）へ
+  // 並べ替えられて返ってくる。そのため「自分が保存した値がそのまま返ってきただけ」でも
+  // 文字列としては別物になり、下の重複抑止をすり抜けて localStorage を書き直し、
+  // 各ページの storage ハンドラを起動して画面を作り直してしまっていた。
+  // （工程を追加した直後など、ローカルのキー順が jsonb 順と食い違うときに起きる）
+  // ここではキーを再帰的に並べ替えてから比較し、「意味が同じなら何もしない」ようにする。
+  function stableStringify(v){
+    if(v === null || typeof v !== 'object') return JSON.stringify(v);
+    if(Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
+    const keys = Object.keys(v).sort();
+    return '{' + keys.map(k=> JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
+  }
+  function isSameJsonText(a, b){
+    if(a === b) return true;
+    if(a == null || b == null) return false;
+    try{
+      return stableStringify(JSON.parse(a)) === stableStringify(JSON.parse(b));
+    }catch(e){
+      return false; // 解析できないものは「違う」として扱い、従来どおり反映する（fail-safe）
+    }
+  }
+
   // ---- Supabase側の値をlocalStorageへ反映する（自分のpushを誘発しないようフラグを立てる） ----
   function applyRemoteRow(row){
     if(!row || !row.key) return;
     applyingRemoteUpdate = true;
     try{
       const raw = JSON.stringify(row.value);
-      if(localStorage.getItem(row.key) === raw) return; // 変化が無ければ何もしない（余計な再描画を避ける）
+      const cur = localStorage.getItem(row.key);
+      if(cur === raw) return; // 変化が無ければ何もしない（余計な再描画を避ける）
+      if(isSameJsonText(cur, raw)) return; // キーの並び順が違うだけ＝中身は同じ。書き直さない
       localStorage.setItem(row.key, raw);
       // 同じタブ内では標準のstorageイベントは発火しない仕様なので、手動で発火させて
       // 各ページの「他タブでの変更をリアルタイムに反映する」既存の仕組みに乗せる

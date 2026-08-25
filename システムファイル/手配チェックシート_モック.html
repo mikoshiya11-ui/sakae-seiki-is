@@ -121,10 +121,16 @@
 
   function esc(s){ return P.esc(s); }
 
+  // ---- 入力日は受注日（bs.order.orderDate）を正本とする（2026-08-20 現場要望・最新仕様）。
+  // 独立した手入力値ではなくなったため、表示にも期限の算出にもこの値だけを使う。
+  // 保存済みの ac.inputDate は履歴として残すが、読みも書きもしない（削除・一括変換もしない）。
+  // records.orderDate は参照しない（正本は bs.order）。 ----
+  function inputDateValue(){ return (bs && bs.order && bs.order.orderDate) || ''; }
+
   function buildRows(){
     return P.ARRANGEMENT_CHECK_ITEMS.map(def=>{
       const it = ac.items[def.key];
-      const deadline = it.deadline || (def.days!=null ? P.addBusinessDays(ac.inputDate, def.days) : '');
+      const deadline = it.deadline || (def.days!=null ? P.addBusinessDays(inputDateValue(), def.days) : '');
       // 完了日・確認は、印刷後に現場で手書きするため入力欄を置かず空欄にする（2026-08-19 現場要望）。
       // 手順は原本にある品質管理項目。初期値は空で、この画面で自由に入力できるようにする。
       return '<tr data-key="'+def.key+'">'
@@ -155,7 +161,7 @@
       +   '<div class="f"><label>品番</label><div class="readonlyVal">'+esc(o.productNo||'')+'</div></div>'
       +   '<div class="f"><label>型番</label><div class="readonlyVal">'+esc(o.model||'')+'</div></div>'
       +   '<div class="f"><label>品名</label><div class="readonlyVal">'+esc(o.itemName||'')+'</div></div>'
-      +   '<div class="f"><label>入力日</label><input type="date" id="inputDateInput" value="'+esc(ac.inputDate)+'"></div>'
+      +   '<div class="f"><label>入力日</label><div class="readonlyVal">'+esc(inputDateValue())+'</div></div>'
       +   '<div class="f"><label>区分</label><select id="categorySelect">'
       +     ['新作','修改','予備品'].map(v=>'<option value="'+v+'"'+(ac.category===v?' selected':'')+'>'+v+'</option>').join('')
       +   '</select></div>'
@@ -171,7 +177,9 @@
       + '</div>'
       + '</div>';
 
-    document.getElementById('inputDateInput').addEventListener('change', (e)=>{ ac.inputDate = e.target.value; renderRowsOnly(); });
+    // 入力日は受注日の読み取り専用表示になったため、この画面での編集ハンドラは持たない。
+    // 受注日を変更した場合は、次回この画面を開いたとき（または他タブ更新の再描画時）に
+    // 入力日と期限12項目がまとめて追随する。
     document.getElementById('categorySelect').addEventListener('change', (e)=>{ ac.category = e.target.value; });
     document.getElementById('createdByInput').addEventListener('input', (e)=>{ ac.createdBy = e.target.value; });
     document.getElementById('approvedByInput').addEventListener('input', (e)=>{ ac.approvedBy = e.target.value; });

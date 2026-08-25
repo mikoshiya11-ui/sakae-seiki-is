@@ -550,6 +550,31 @@
     if(st.order.issueDate == null) st.order.issueDate = '';
     if(st.order.itemName == null) st.order.itemName = '';
     if(st.order.qty == null) st.order.qty = '';
+    // ---- 部品ID（part.id）の欠損補完。
+    // part.id は新規作成（部品を追加）・行の複製・取り消し（Undo）の照合で既に使っている正式な項目だが、
+    // この項目を入れる前に保存された古いデータには入っていないことがある。
+    // 工程側の pr.id と同じ考え方で、欠けているものだけを採番する。
+    //   ・既に入っている id は絶対に書き換えない
+    //   ・欠けている部品だけに新しい id を振る
+    //   ・同じ案件の中で重複しないことを確認する
+    //   ・subNo・工程・日程・実績など、id 以外は一切変更しない ----
+    (function fillMissingPartIds(){
+      const parts = st.parts || [];
+      const used = new Set();
+      let having = 0;
+      parts.forEach(p=>{ if(p && p.id){ used.add(p.id); having++; } });
+      if(used.size !== having){
+        // 既存IDに重複がある場合でも、既存の値は書き換えない（記録だけ残す）
+        console.warn('[作業票] 既存の部品IDに重複があります。既存IDは変更しません。');
+      }
+      parts.forEach(p=>{
+        if(!p || p.id) return;
+        let nid = uid();
+        while(used.has(nid)) nid = uid();
+        p.id = nid;
+        used.add(nid);
+      });
+    })();
     (st.parts||[]).forEach(p=>{
       if(p.finishedSize==null) p.finishedSize = '';
       if(p.heatTreatSpec==null) p.heatTreatSpec = '';
@@ -760,9 +785,7 @@
     orderCard.innerHTML = `
       <div class="oField"><label>品番</label><input data-of="productNo" value="${esc(o.productNo)}" readonly title="品番は新規作成時（社内No.）で決まるため、ここでは編集できません"></div>
       <div class="oField"><label>社内№</label><input data-of="orderNo" value="${esc(o.orderNo)}" style="min-width:100px;"></div>
-      <div class="oField"><label>発行日</label><input type="date" data-of="issueDate" value="${esc(o.issueDate)}" title="作業票表紙・手配チェックシートに使う発行日（受注日とは別項目）"></div>
       <div class="oField"><label>受注日</label><input type="date" data-of="orderDate" value="${esc(o.orderDate)}"></div>
-      <div class="oField"><label>作成日</label><input type="date" data-of="createdDate" value="${esc(o.createdDate)}"></div>
       <div class="oField"><label>作成者</label><input data-of="createdBy" value="${esc(o.createdBy)}" style="min-width:90px;"></div>
       <div class="oField"><label>発送日</label><input type="date" data-of="shipDate" value="${esc(o.shipDate)}"></div>
       <div class="oField"><label>納期</label><input type="date" data-of="dueDate" value="${esc(o.dueDate)}"></div>
@@ -1120,7 +1143,8 @@
   // ---- 個別日程表など、同じ品番のデータを共有する別タブでの変更をリアルタイムに反映する ----
   function closeProcPickerSilently(){
     procPicker.classList.remove('open');
-    ppPartIdx = null;
+    procPickerOpen = false;
+    ppPartId = null;
   }
   // ---- 他タブ・他端末からの反映（Supabase経由のリアルタイム同期含む）で部品一覧を再描画する際、
   // 今まさに入力中のセルまで巻き込んで作り直してしまう問題があった。値だけ保持してもDOM要素そのものが
@@ -1131,12 +1155,21 @@
   // 保留していた内容をまとめて反映する。 ----
   let pendingRemoteState = null;
   let pendingConfirmChange = false;
+  // 工程エディタ（大型モーダル）を開いているかどうか。開閉の3箇所でだけ書き換える。
+  let procPickerOpen = false;
   function isEditingPartsCell(){
     const el = document.activeElement;
     return !!(el && el.classList && el.classList.contains('cellInput') && partsBody.contains(el));
   }
+  // ---- 外部からの更新で画面を作り直してよいかどうか。
+  // 部品一覧のセルを編集中のときに加えて、工程エディタを開いている間も作り直さない。
+  // 工程エディタの入力欄は cellInput クラスを持たず、partsBody の中にも無いため、
+  // isEditingPartsCell() だけでは工程の入力中を守れず、入力の途中でモーダルが閉じていた。 ----
+  function isProtectedFromRemoteRedraw(){
+    return isEditingPartsCell() || procPickerOpen;
+  }
   function applyPendingRemoteUpdates(){
-    if(isEditingPartsCell()) return; // 別のセルへ移動しただけで、まだ部品一覧を編集中なら適用しない
+    if(isProtectedFromRemoteRedraw()) return; // 編集中は適用しない（保留したままにする）
     let changed = false;
     if(pendingConfirmChange){
       confirmState = loadConfirm();
@@ -1146,10 +1179,17 @@
     if(pendingRemoteState){
       const raw = pendingRemoteState;
       pendingRemoteState = null;
-      try{ state = migrateState(JSON.parse(raw)); changed = true; }catch(err){}
+      // 保留している間に自分が保存していた場合、保留していた内容の方が古い。
+      // 古い内容で上書きすると、いま入力した内容が画面から消えてしまうため適用しない。
+      const cur = localStorage.getItem(storageKeyFor(urlProductNo));
+      if(cur !== null && cur !== raw){
+        console.warn('[作業票] 編集中に届いた他端末の更新は、こちらの保存の方が新しいため反映しませんでした。最新の状態を見るには画面を読み込み直してください。');
+      }else{
+        try{ state = migrateState(JSON.parse(raw)); changed = true; }catch(err){}
+      }
     }
     if(changed){
-      if(procPicker.classList.contains('open')) closeProcPickerSilently();
+      if(procPickerOpen) closeProcPickerSilently();
       render();
     }
   }
@@ -1160,17 +1200,18 @@
   });
   window.addEventListener('storage', (e)=>{
     if(e.key === CONFIRM_KEY){
-      if(isEditingPartsCell()){ pendingConfirmChange = true; return; }
+      // 確定／解除の通知も、部品一覧の編集中と工程エディタを開いている間は保留する
+      if(isProtectedFromRemoteRedraw()){ pendingConfirmChange = true; return; }
       confirmState = loadConfirm();
-      if(procPicker.classList.contains('open')) closeProcPickerSilently();
+      if(procPickerOpen) closeProcPickerSilently();
       render();
       return;
     }
     if(e.key !== storageKeyFor(urlProductNo)) return;
     if(e.newValue == null) return;
-    if(isEditingPartsCell()){ pendingRemoteState = e.newValue; return; }
+    if(isProtectedFromRemoteRedraw()){ pendingRemoteState = e.newValue; return; }
     try{ state = migrateState(JSON.parse(e.newValue)); }catch(err){ return; }
-    if(procPicker.classList.contains('open')) closeProcPickerSilently();
+    if(procPickerOpen) closeProcPickerSilently();
     render();
   });
 
@@ -1184,7 +1225,9 @@
   const ppDone = document.getElementById('ppDone');
   const ppAddBtn = document.getElementById('ppAddBtn');
   const ppPartLabel = document.getElementById('ppPartLabel');
-  let ppPartIdx = null;
+  // 編集中の部品は「配列の何番目か」ではなく部品ID（part.id）で覚えておく。
+  // 他タブ・他端末で部品が増減しても、同じ部品を指し続けられるようにするため。
+  let ppPartId = null;
 
   // 工程記号の入力候補。一覧に無い記号（現場が使っている業者名など）もそのまま入力できるよう、
   // 選択式ではなく入力候補（datalist）として出す。
@@ -1198,7 +1241,7 @@
     dl.innerHTML = html;
   })();
 
-  function currentPart(){ return ppPartIdx===null ? null : state.parts[ppPartIdx]; }
+  function currentPart(){ return ppPartId===null ? null : ((state.parts||[]).find(p=>p.id===ppPartId) || null); }
   function findProc(procId){
     const part = currentPart();
     if(!part) return null;
@@ -1227,17 +1270,24 @@
   }
 
   function openProcPicker(partIdx){
-    if(ppPartIdx !== null && ppPartIdx !== partIdx){ save(); }
-    ppPartIdx = partIdx;
     const part = state.parts[partIdx];
     if(!part) return;
+    if(ppPartId !== null && ppPartId !== part.id){ save(); }
+    ppPartId = part.id;
     ppPartLabel.textContent = '社内No ' + (part.subNo||'―') + '　' + (part.name||'（部品名未入力）');
     buildPpList(part);
     procPicker.classList.add('open');
+    procPickerOpen = true;
   }
   function closeProcPicker(){
     procPicker.classList.remove('open');
-    ppPartIdx = null;
+    procPickerOpen = false;
+    ppPartId = null;
+    // モーダルを開いている間に届いていた他タブ・他端末の更新を、保存より先に取り込む。
+    // ここで何も編集していなければそのまま反映され、編集していれば
+    // 「こちらの保存の方が新しい」と判定して破棄する（＝入力が消えない）。
+    // save() を先に呼ぶと、無編集で開いただけの場合まで常に破棄されてしまう。
+    applyPendingRemoteUpdates();
     save();
     render();
   }
@@ -1283,7 +1333,7 @@
   });
 
   function addProcessRow(){
-    if(ppPartIdx===null) return;
+    if(ppPartId===null) return;
     if(!checkEditable()) return;
     const part = currentPart();
     if(!part) return;

@@ -35,7 +35,7 @@
   .sideTitle{
     writing-mode:vertical-rl; text-orientation:upright; font-size:20px; font-weight:700; letter-spacing:2px;
   }
-  /* 原本と同じく NO. は縦書きで大きめ・赤字（値は自動入力しないので空欄） */
+  /* 原本と同じく NO. は縦書きで大きめ・赤字（値は案件の社内No.を自動表示する） */
   .sideNoLabel{
     writing-mode:vertical-rl; text-orientation:upright; font-size:14px; font-weight:700; color:#1a2233; margin-top:12mm;
   }
@@ -48,7 +48,9 @@
      上段：略図欄＋工程を手書きする12行の表（すべて空欄）
      下段：発行／型式／客先・受注日・納期・数量（自動入力するのはこの6項目だけ）
      それ以外の欄（社内No.・機械名／外注人名・NO./工程・着手・完成・実働H/見積H・備考）は
-     原本どおり欄を残したうえで空欄にする（印刷後に手書きするため）---- */
+     原本どおり欄を残したうえで空欄にする（印刷後に手書きするため）。
+     ただし左端の縦帯 NO. 欄だけは、2026-08-20 の現場要望により案件の社内No.を自動表示する
+     （上記の「空欄にする」は縦帯 NO. については旧仕様。最新要望を優先する）---- */
   .mainCol{ flex:1 1 auto; display:flex; flex-direction:column; padding:3mm 3mm; min-width:0; }
 
   /* 上段：略図＋工程表（原本と同じ列幅・黒の実線） */
@@ -168,11 +170,14 @@
 
     sheetOuter.innerHTML =
       '<div class="sheet">'
-      // 左端の縦帯：原本どおり「作業票」と NO. 欄を置く。NO. の値は自動入力しない（空欄）
+      // 左端の縦帯：原本どおり「作業票」と NO. 欄を置く。
+      // NO. の値は案件の社内No.（bs.order.orderNo）を自動表示する（2026-08-20 現場要望・最新仕様）。
+      // 部品のsubNoは使わない（表紙は案件単位で、部品を1件も参照しない）。
+      // orderNoが空のときは空欄のままにする（productNoへのフォールバックはしない）。
       + '<div class="sideCol">'
       +   '<div class="sideTitle">作業票</div>'
       +   '<div class="sideNoLabel">NO．</div>'
-      +   '<div class="sideNoVal"></div>'
+      +   '<div class="sideNoVal">'+P.esc(o.orderNo||'')+'</div>'
       + '</div>'
       + '<div class="mainCol">'
       // 上段：略図欄（空欄）＋工程を手書きする12行（空欄）
