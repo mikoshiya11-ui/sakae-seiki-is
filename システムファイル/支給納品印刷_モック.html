@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>支給・納品一覧 印刷｜SAKAE SEIKI-iS</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:#f4f6fa; color:#1a2233;
+    font-family:"Hiragino Sans","Yu Gothic",-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  .topbar{
+    background:#173a68; color:#fff; padding:12px 24px; display:flex; align-items:center; gap:10px;
+    font-size:15px; font-weight:700;
+  }
+  .topbar .brand{ display:flex; align-items:baseline; gap:2px; }
+  .topbar .brand .sakae{ color:#fff; }
+  .topbar .brand .is{ color:#f0a35c; }
+  .topbar .sep{ color:#5b7aab; }
+  .topbar .pageName{ font-weight:400; color:#cfe0f5; }
+  .topbar .backLink{ margin-right:auto; color:#cfe0f5; text-decoration:none; font-size:13.5px; font-weight:400; }
+
+  .controlBar{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    background:#fff; border-radius:12px; box-shadow:0 2px 10px rgba(20,35,70,.06);
+    padding:12px 16px; margin:16px 20px;
+  }
+  .controlBar .rangeText{ font-size:13px; color:#2a3446; font-weight:700; }
+  .controlBar .pageText{ font-size:12.5px; color:#5b6b84; }
+  .printBtn{
+    border:none; background:#173a68; color:#fff; font-size:13.5px; font-weight:700;
+    padding:9px 18px; border-radius:8px; cursor:pointer; font-family:inherit; margin-left:auto;
+  }
+  .printBtn:hover{ background:#0f2a4e; }
+  .warnBar{
+    background:#fdecea; border:1px solid #f5c2bd; color:#a33226; font-size:12.5px; border-radius:10px;
+    padding:10px 16px; margin:0 20px 16px; line-height:1.6;
+  }
+  .noteBar{
+    background:#fff7ec; border:1px solid #f3dcb8; color:#8a5a1a; font-size:12.5px; border-radius:10px;
+    padding:10px 16px; margin:0 20px 16px; line-height:1.6;
+  }
+
+  .sheetArea{ padding:0 20px 60px; }
+  .monthSheet{
+    background:#fff; border:1px solid #222; border-radius:0; margin:0 auto 20px;
+    box-shadow:0 2px 10px rgba(20,35,70,.10); padding:8px 10px 10px;
+    width:1512px;   /* A3横 - 余白8mm 相当（画面で仕上がりの幅を確かめるため） */
+  }
+  .sheetHead{ display:flex; align-items:baseline; gap:14px; border-bottom:1.5px solid #222; padding-bottom:5px; margin-bottom:6px; }
+  .sheetTitle{ font-size:15px; font-weight:800; color:#1a2233; }
+  .sheetMonth{ font-size:18px; font-weight:800; color:#173a68; }
+  .sheetMeta{ margin-left:auto; font-size:10.5px; color:#5b6b84; }
+
+  table.pboard{ border-collapse:collapse; table-layout:fixed; width:100%; }
+  table.pboard th, table.pboard td{
+    border:1px solid #9aa8b8; padding:2px 4px; font-size:9.5px; vertical-align:top;
+    color:#1a2233; background:#fff; word-break:break-word;
+  }
+  table.pboard thead th{ background:#f0f3f8; font-weight:700; font-size:9px; text-align:center; }
+  table.pboard thead th.fixedHead{ text-align:left; }
+  table.pboard td.pFixed{ font-size:9.5px; white-space:normal; }
+  table.pboard td.pOrderNo{ font-weight:800; color:#173a68; }
+  table.pboard th.pDay.weekend, table.pboard td.pDay.weekend{ background:#f4f6fa; }
+  table.pboard th.pDay.sun, table.pboard td.pDay.sun{ color:#c0392b; }
+  table.pboard td.pDay{ padding:1px 2px; }
+  tbody tr{ page-break-inside:avoid; break-inside:avoid; }
+
+  .pBox{
+    display:block; border-radius:3px; color:#fff; font-size:8.5px; font-weight:700;
+    padding:1px 3px; margin-bottom:1px; line-height:1.25; word-break:break-word;
+  }
+  /* 欠品・完了は紙で黒ベタに潰さない。取り消し線と枠だけで表す */
+  .pBox.done{ background:#fff !important; color:#5b6b84 !important; border:1px dashed #8592a6; text-decoration:line-through; }
+  .pNote{
+    display:block; background:#fffbe6; border:1px solid #d9c680; border-radius:3px;
+    font-size:8.5px; line-height:1.25; padding:1px 3px; margin-bottom:1px; color:#3a2f0b; word-break:break-word;
+  }
+  .pNote b{ color:#8a6d1a; }
+
+  .undecided{ margin-top:8px; border:1px solid #9aa8b8; }
+  .undecided .udTitle{ background:#f0f3f8; font-size:9.5px; font-weight:700; padding:3px 6px; border-bottom:1px solid #9aa8b8; }
+  .undecided table{ width:100%; border-collapse:collapse; }
+  .undecided td{ border-top:1px solid #dfe4ec; padding:2px 6px; font-size:9px; }
+
+  .emptyState{ padding:60px 20px; text-align:center; color:#a4adbc; font-size:13px; line-height:1.8; }
+
+  @media print{
+    @page{ size:A3 landscape; margin:8mm; }
+    *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; color-adjust:exact !important; }
+    body{ background:#fff; }
+    .topbar, .controlBar, .noteBar, .warnBar{ display:none !important; }
+    .sheetArea{ padding:0; }
+    .monthSheet{
+      width:auto; margin:0; border:none; border-radius:0; box-shadow:none; padding:0;
+      page-break-after:always; break-after:page;
+    }
+    .monthSheet:last-child{ page-break-after:auto; break-after:auto; }
+    table.pboard thead{ display:table-header-group; }
+    table.pboard thead th{ background:#f0f3f8 !important; }
+  }
+</style>
+<script src="_sakaeSupabaseConfig.js"></script>
+<script src="_sakaeSync.js"></script>
+</head>
+<body>
+
+  <div class="topbar">
+    <a class="backLink" href="支給納品一覧_モック.html">← 支給・納品一覧へ</a>
+    <span class="brand"><span class="sakae">SAKAE SEIKI</span><span class="is">-iS</span></span>
+    <span class="sep">｜</span>
+    <span class="pageName">支給・納品一覧 印刷（全期間）</span>
+  </div>
+
+  <div class="controlBar">
+    <span class="rangeText" id="rangeText">対象期間：—</span>
+    <span class="pageText" id="pageText">想定ページ数：—</span>
+    <button type="button" class="printBtn" id="doPrintBtn">🖨 印刷する</button>
+  </div>
+
+  <div class="warnBar" id="warnBar" style="display:none;"></div>
+
+  <div class="noteBar">
+    画面の表示期間には関係なく、<b>全期間</b>を対象にしています。<b>1ページ＝1か月</b>で、月をまたぐ場合は複数ページになります。<br>
+    支給・納品の予定と日付メモを<b>同じ日付の並びの上</b>で確認できます（表示専用です。ここでは入力できません）。予定日が「未定」または空の明細は、各ページの下に一覧で出します。
+  </div>
+
+  <div class="sheetArea" id="sheetArea"></div>
+  <div class="emptyState" id="emptyState" style="display:none;"></div>
+
+<script>
+(function(){
+  function esc(s){
+    return (s==null?'':s).toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  // ---- 読み取り専用。この画面はデータを一切書き換えない ----
+  const RECORDS_KEY = 'sakaeIS_records_v1';
+  const BUHIN_PREFIX = 'sakaeIS_buhinhyoMock_v1_';
+  const DETAIL_PREFIX = 'sakaeIS_shikyuNouhinBoard_v2_';
+  const KUBUN_COLORS = { '納品':'#c0392b', '支給':'#1a2233', '':'#94a3b8' };
+  function kubunColor(k){ return KUBUN_COLORS[k] || KUBUN_COLORS['']; }
+
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function fmtKey(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+  function parseDateStr(s){
+    if(!s) return null;
+    const p = String(s).split('-').map(Number);
+    if(p.length!==3 || !p[0] || !p[1] || !p[2]) return null;
+    const d = new Date(p[0], p[1]-1, p[2]);
+    return isNaN(d) ? null : d;
+  }
+
+  function loadRecords(){
+    try{ const raw = localStorage.getItem(RECORDS_KEY); if(raw) return JSON.parse(raw) || []; }catch(e){}
+    return [];
+  }
+  function loadBuhinOrder(productNo){
+    if(!productNo) return null;
+    try{
+      const raw = localStorage.getItem(BUHIN_PREFIX + productNo);
+      if(raw){ const bs = JSON.parse(raw); return (bs && bs.order) ? bs.order : null; }
+    }catch(e){}
+    return null;
+  }
+  function loadDetail(productNo){
+    try{
+      const raw = localStorage.getItem(DETAIL_PREFIX + productNo);
+      if(raw){
+        const d = JSON.parse(raw) || {};
+        return {
+          items: Array.isArray(d.items) ? d.items : [],
+          memo: Array.isArray(d.memo) ? d.memo : [],
+          dayNotes: Array.isArray(d.dayNotes) ? d.dayNotes : []
+        };
+      }
+    }catch(e){}
+    return { items: [], memo: [], dayNotes: [] };
+  }
+  // 一覧画面と同じ見え方にする（作業票側の値を優先）
+  function productsFromRecords(){
+    return loadRecords().map(r=>{
+      const o = loadBuhinOrder(r.productNo) || {};
+      return {
+        productNo: r.productNo || '',
+        orderNo: o.orderNo || r.orderNo || '',
+        customer: o.customer || r.customer || '',
+        model: o.model || r.modelName || '',
+        dueDate: o.dueDate || r.dueDate || ''
+      };
+    }).filter(p=>p.productNo);
+  }
+
+  // ---- 一覧画面と同じ並び（次に一番早く来る予定日の昇順・同日は決定的に決める） ----
+  function repDateOf(x){
+    const ds = (x.d.items||[]).filter(it=> it && !it.dateUnknown && it.date).map(it=> it.date).sort();
+    if(ds.length) return ds[0];
+    if(x.p.dueDate) return x.p.dueDate;
+    return '';
+  }
+  function compareByRepDate(a,b){
+    const ra = repDateOf(a), rb = repDateOf(b);
+    if(ra !== rb){ if(!ra) return 1; if(!rb) return -1; return ra < rb ? -1 : 1; }
+    const da = a.p.dueDate||'', db = b.p.dueDate||'';
+    if(da !== db){ if(!da) return 1; if(!db) return -1; return da < db ? -1 : 1; }
+    const oa = a.p.orderNo || a.p.productNo || '', ob = b.p.orderNo || b.p.productNo || '';
+    const c = oa.localeCompare(ob, 'ja', { numeric:true });
+    if(c !== 0) return c;
+    return (a.p.productNo||'').localeCompare(b.p.productNo||'', 'ja', { numeric:true });
+  }
+
+  const sheetArea = document.getElementById('sheetArea');
+  const emptyState = document.getElementById('emptyState');
+  const rangeText = document.getElementById('rangeText');
+  const pageText = document.getElementById('pageText');
+  const warnBar = document.getElementById('warnBar');
+
+  function build(){
+    const rows = productsFromRecords().map(p=> ({ p, d: loadDetail(p.productNo) })).sort(compareByRepDate);
+
+    // ---- 全期間（画面の表示期間には依存しない）----
+    // 明細の予定日と日付メモの日付、両方から最小日〜最大日を出す。
+    // メモだけ帯の外に出ると、同じ日付の並びで確認できなくなるため。
+    let min = '', max = '';
+    rows.forEach(x=>{
+      (x.d.items||[]).forEach(it=>{ if(it && !it.dateUnknown && it.date){ if(!min||it.date<min) min=it.date; if(!max||it.date>max) max=it.date; } });
+      (x.d.dayNotes||[]).forEach(n=>{ if(n && n.date){ if(!min||n.date<min) min=n.date; if(!max||n.date>max) max=n.date; } });
+    });
+
+    if(!min || !max){
+      sheetArea.innerHTML = '';
+      emptyState.style.display = 'block';
+      emptyState.innerHTML = '印刷できる予定日・日付メモがまだありません。<br><a href="支給納品一覧_モック.html">支給・納品一覧</a> で予定日を入れてください。';
+      rangeText.textContent = '対象期間：—';
+      pageText.textContent = '想定ページ数：—';
+      return;
+    }
+    const a = parseDateStr(min), b = parseDateStr(max);
+    const months = (b.getFullYear()*12 + b.getMonth()) - (a.getFullYear()*12 + a.getMonth()) + 1;
+    rangeText.textContent = '対象期間：' + min.replace(/-/g,'/') + ' 〜 ' + max.replace(/-/g,'/');
+    pageText.textContent = '想定ページ数：' + months + 'ページ（1ページ＝1か月）';
+
+    if(months > 24){
+      warnBar.style.display = 'block';
+      warnBar.innerHTML = '⚠ 対象期間が <b>'+months+'か月</b>あります。予定日の打ち間違い（年の入力ミスなど）が混ざっている可能性があります。'
+        + '<a href="支給納品一覧_モック.html">一覧</a>で日付を確認してから印刷してください。';
+    }
+
+    // ---- 月ごとにページを作る ----
+    let html = '';
+    let cur = new Date(a.getFullYear(), a.getMonth(), 1);
+    const lastMonth = new Date(b.getFullYear(), b.getMonth(), 1);
+    while(cur <= lastMonth){
+      html += monthSheetHtml(rows, cur.getFullYear(), cur.getMonth(), min, max);
+      cur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
+    }
+    sheetArea.innerHTML = html;
+    emptyState.style.display = 'none';
+  }
+
+  function monthSheetHtml(rows, year, month, minStr, maxStr){
+    const days = [];
+    const last = new Date(year, month+1, 0).getDate();
+    for(let i=1;i<=last;i++) days.push(new Date(year, month, i));
+
+    const dow = ['日','月','火','水','木','金','土'];
+    // 固定列（印刷用に絞る。開閉・削除ボタンの列は紙では意味が無いので出さない）
+    const FIXED = [
+      { key:'orderNo',  w:'90px',  label:'社内№' },
+      { key:'customer', w:'70px',  label:'客先' },
+      { key:'model',    w:'80px',  label:'型式' },
+      { key:'due',      w:'52px',  label:'納期' }
+    ];
+
+    let head = '<colgroup>'
+      + FIXED.map(c=>'<col style="width:'+c.w+';">').join('')
+      + days.map(()=>'<col>').join('')
+      + '</colgroup>';
+
+    let thead = '<thead><tr>'
+      + FIXED.map(c=>'<th class="fixedHead">'+esc(c.label)+'</th>').join('')
+      + days.map(d=>{
+          const cls = 'pDay' + (d.getDay()===0||d.getDay()===6 ? ' weekend':'') + (d.getDay()===0?' sun':'');
+          return '<th class="'+cls+'">'+d.getDate()+'<br>'+dow[d.getDay()]+'</th>';
+        }).join('')
+      + '</tr></thead>';
+
+    // その月に何か出る製品だけを載せる（空行で紙を埋めない）
+    const monthRows = [];
+    const undecided = [];
+    rows.forEach(x=>{
+      const cells = days.map(d=>{
+        const ds = fmtKey(d);
+        const its = (x.d.items||[]).filter(it=> it && !it.dateUnknown && it.date === ds);
+        const nts = (x.d.dayNotes||[]).filter(n=> n && n.date === ds);
+        return { its, nts };
+      });
+      const has = cells.some(c=> c.its.length || c.nts.length);
+      if(has) monthRows.push({ x, cells });
+      (x.d.items||[]).forEach(it=>{
+        if(it && (it.dateUnknown || !it.date)) undecided.push({ x, it });
+      });
+    });
+
+    let body = '<tbody>';
+    if(monthRows.length === 0){
+      body += '<tr><td class="pFixed" colspan="'+(FIXED.length+days.length)+'" style="text-align:center; color:#8592a6;">この月に予定・メモはありません</td></tr>';
+    }
+    monthRows.forEach(r=>{
+      const p = r.x.p;
+      body += '<tr>';
+      body += '<td class="pFixed pOrderNo">'+esc(p.orderNo || p.productNo)+'</td>';
+      body += '<td class="pFixed">'+esc(p.customer||'')+'</td>';
+      body += '<td class="pFixed">'+esc(p.model||'')+'</td>';
+      body += '<td class="pFixed">'+esc(p.dueDate ? p.dueDate.slice(5).replace('-','/') : '')+'</td>';
+      r.cells.forEach((c,i)=>{
+        const d = days[i];
+        const cls = 'pDay' + (d.getDay()===0||d.getDay()===6 ? ' weekend':'');
+        let inner = '';
+        c.its.forEach(it=>{
+          const label = (it.kubun||'未') + ' ' + (it.itemName || it.status || '');
+          // 欠品・完了は紙で黒ベタにせず、破線枠＋取り消し線で表す
+          inner += it.checked
+            ? '<span class="pBox done">'+esc(label)+'</span>'
+            : '<span class="pBox" style="background:'+kubunColor(it.kubun)+';">'+esc(label)+'</span>';
+        });
+        c.nts.forEach(n=>{
+          inner += '<span class="pNote"><b>メモ</b> '+esc(n.text||'')+'</span>';
+        });
+        body += '<td class="'+cls+'">'+inner+'</td>';
+      });
+      body += '</tr>';
+    });
+    body += '</tbody>';
+
+    // 予定日が未定・空の明細は、黙って落とさず各ページの下に必ず出す
+    let ud = '';
+    if(undecided.length){
+      ud = '<div class="undecided"><div class="udTitle">予定日が未定・未入力の明細（'+undecided.length+'件）</div><table>'
+        + undecided.map(u=>
+            '<tr><td style="width:110px;">'+esc(u.x.p.orderNo || u.x.p.productNo)+'</td>'
+            + '<td style="width:70px;">'+esc(u.it.kubun || '未')+'</td>'
+            + '<td>'+esc(u.it.itemName || u.it.status || '')+'</td>'
+            + '<td style="width:70px; text-align:right;">'+(u.it.dateUnknown?'未定':'未入力')+'</td></tr>'
+          ).join('')
+        + '</table></div>';
+    }
+
+    const printedAt = new Date();
+    return '<div class="monthSheet">'
+      + '<div class="sheetHead">'
+      +   '<span class="sheetTitle">支給・納品一覧</span>'
+      +   '<span class="sheetMonth">'+year+'年'+(month+1)+'月</span>'
+      +   '<span class="sheetMeta">全期間 '+minStr.replace(/-/g,'/')+' 〜 '+maxStr.replace(/-/g,'/')
+      +     '　／　出力 '+printedAt.getFullYear()+'/'+pad2(printedAt.getMonth()+1)+'/'+pad2(printedAt.getDate())+'</span>'
+      + '</div>'
+      + '<table class="pboard">'+head+thead+body+'</table>'
+      + ud
+      + '</div>';
+  }
+
+  document.getElementById('doPrintBtn').addEventListener('click', ()=>{ window.print(); });
+
+  // 他タブで内容が変わったら組み直す（この画面は読み取りだけ）
+  window.addEventListener('storage', (e)=>{
+    if(!e.key) return;
+    if(e.key === RECORDS_KEY || e.key.indexOf(BUHIN_PREFIX)===0 || e.key.indexOf(DETAIL_PREFIX)===0) build();
+  });
+
+  build();
+})();
+</script>
+</body>
+</html>

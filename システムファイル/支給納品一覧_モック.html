@@ -84,6 +84,7 @@
     position:sticky; top:0; background:#f7f9fc; font-weight:700; color:#5b6b84; z-index:2; font-size:11px;
   }
   .board thead th:not(.frozen){ padding:6px 4px; font-size:13px; overflow:visible; text-overflow:clip; text-align:center; }
+  .board thead th.dateCol{ font-size:10px; letter-spacing:-.2px; }
   .board thead tr.dateRow th{ top:0; }
   .board thead tr.dowRow th{ top:27px; font-weight:400; color:#a4adbc; }
   .board .frozen{ position:sticky; background:#fff; z-index:1; }
@@ -170,6 +171,38 @@
     padding:0 4px; min-width:13px; display:inline-flex;
   }
 
+  /* ---- 日付メモ（付箋）。日付の欄（td.dayCell）そのものを土台にして置く。
+     z-index は 0〜1 に収める。1 より大きくすると、横スクロールで左の固定列の上に、
+     上スクロールで見出しの上に付箋が乗ってしまう（左固定列=1／見出し=2／見出しの角=4）。
+     つかんで動かしている間だけ一時的に上げる。 ---- */
+  .dayNote{
+    position:absolute; z-index:1; box-sizing:border-box;
+    background:#fff6c2; border:1px solid #e2cf7a; border-radius:5px;
+    box-shadow:0 1px 3px rgba(20,35,70,.22);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .dayNote.dragging{ z-index:30; box-shadow:0 6px 16px rgba(20,35,70,.32); opacity:.92; }
+  .dayNote .dnHandle{
+    flex:0 0 auto; height:14px; background:#f0e2a0; cursor:move; display:flex; align-items:center;
+    justify-content:space-between; padding:0 3px; font-size:9px; color:#8a6d1a; user-select:none;
+  }
+  .dayNote .dnDate{ font-weight:700; }
+  .dayNote .dnDel{ border:none; background:transparent; color:#c0392b; cursor:pointer; font-size:10px; padding:0 2px; line-height:1; }
+  .dayNote textarea{
+    flex:1 1 auto; width:100%; border:none; background:transparent; resize:none; outline:none;
+    font-family:inherit; font-size:11px; line-height:1.3; padding:2px 4px; color:#3a2f0b;
+  }
+  /* 付箋は絶対配置なので行の高さに数えられない。見えない下敷きで行を持ち上げる */
+  .noteSpacer{ width:1px; pointer-events:none; }
+  .addNoteBtn{
+    position:absolute; right:2px; bottom:2px; z-index:1;
+    border:1px solid #dfe4ec; background:#fff; color:#8592a6; border-radius:5px;
+    font-size:10px; line-height:1; padding:2px 4px; cursor:pointer; font-family:inherit; opacity:0;
+  }
+  tr.prodRow td.dayCell:hover .addNoteBtn{ opacity:1; }
+  .addNoteBtn:hover{ border-color:#173a68; color:#173a68; }
+  .outsideChip{ background:#fff7ec; border:1px solid #f3dcb8; color:#8a5a1a; }
+
   .emptyState{ padding:60px 20px; text-align:center; color:#a4adbc; font-size:13px; line-height:1.8; }
   .emptyState a{ color:#173a68; font-weight:700; }
 
@@ -216,7 +249,8 @@
 
     <div class="noteBar">
       客先とのやり取りに関わる「支給」（客先から材料等を引き取る）と「納品」（客先へ納める）を、<b>製品（案件）ごと</b>にまとめた一覧です。1行がトップ画面の案件カード1件にあたります。行を開くと、その製品の支給・納品の明細を1件ずつ入力でき、右の日程表に予定日のBOXが出ます。<br>
-      製品の並びはトップ画面の案件一覧と同じです（社内No.・客先・型式・納期もそちらの内容をそのまま表示します）。この画面で製品を増やすことはできません。新しい案件はトップ画面から登録してください。
+      <b>製品の並びは「次に一番早く来る予定日」の早い順</b>です（支給・納品の区別なく、その製品の予定日のうち最も早い日。予定日が無ければ納期、それも無ければ末尾）。社内No.・客先・型式・納期はトップ画面の内容をそのまま表示します。この画面で製品を増やすことはできません。新しい案件はトップ画面から登録してください。<br>
+      日付の欄にカーソルを合わせると出る<b>「＋メモ」</b>で、その日に付箋を貼れます。付箋はつかんで動かせ、<b>隣の日へ動かすとその日のメモになります</b>。
     </div>
 
     <div class="toolRow">
@@ -234,6 +268,7 @@
         <button type="button" class="rangeResetBtn" id="rangeResetBtn">今日から30日</button>
       </div>
       <button type="button" class="expandAllBtn" id="expandAllBtn">すべてたたむ</button>
+      <button type="button" class="expandAllBtn" id="printBtn" title="画面の表示期間に関わらず、全期間を月ごとのページに分けて印刷します">🖨 印刷（全期間）</button>
       <div class="summaryRow" id="summaryRow"></div>
     </div>
 
@@ -347,18 +382,43 @@
       const raw = localStorage.getItem(detailKey(productNo));
       if(raw){
         const d = JSON.parse(raw) || {};
-        return { items: Array.isArray(d.items) ? d.items : [], memo: Array.isArray(d.memo) ? d.memo : [] };
+        return {
+          items: Array.isArray(d.items) ? d.items : [],
+          memo: Array.isArray(d.memo) ? d.memo : [],
+          // 日付メモ（付箋）。古いデータには無いので空配列にする（移行処理はしない）。
+          dayNotes: Array.isArray(d.dayNotes) ? d.dayNotes : []
+        };
       }
     }catch(e){}
-    return { items: [], memo: [] };
+    return { items: [], memo: [], dayNotes: [] };
   }
   function saveDetail(productNo, d){
     if(!productNo) return;
-    localStorage.setItem(detailKey(productNo), JSON.stringify({ items: d.items||[], memo: d.memo||[] }));
+    // ---- 書き戻す項目を1つでも落とすと、その項目は保存のたびに消える。
+    // dayNotes を足したときは必ずここにも足すこと（loadDetail と対で直す）。 ----
+    localStorage.setItem(detailKey(productNo), JSON.stringify({
+      items: d.items||[], memo: d.memo||[], dayNotes: d.dayNotes||[]
+    }));
   }
-  function newItem(){
+  function newItem(kubun){
     // 区分は既定値を入れない。どちらかへ勝手に寄せると、決めていないことが見えなくなる。
-    return { id:uid(), kubun:'', itemName:'', status:'', date:'', dateUnknown:false, checked:false, note:'' };
+    // ただし「＋支給予定」「＋納品予定」から作った場合は、人がその場で選んでいるので入れてよい。
+    return { id:uid(), kubun:kubun||'', itemName:'', status:'', date:'', dateUnknown:false, checked:false, note:'' };
+  }
+
+  // ---- 日付メモ（付箋）----
+  // date が正本。「何月何日のメモか」は必ずこの1項目で決まる。
+  // dx / dy は、その日の欄の中での見た目の微調整だけに使う（完全な自由座標にはしない）。
+  // 隣の日の欄へ動かしたときは、見た目だけでなく date そのものを書き換える。
+  const NOTE_W = 140, NOTE_H = 56;
+  function newDayNote(dateStr){
+    return { id:uid(), date:dateStr, text:'', name:'', at:new Date().toISOString(), dx:0, dy:0, w:NOTE_W, h:NOTE_H };
+  }
+  function clampNote(n, cellW, cellH){
+    const w = n.w || NOTE_W, h = n.h || NOTE_H;
+    n.dx = Math.max(0, Math.min(Math.round(n.dx||0), Math.max(0, cellW - w)));
+    n.dy = Math.max(0, Math.min(Math.round(n.dy||0), Math.max(0, (cellH||h) - h)));
+    return n;
   }
 
   // ================= 表示期間 =================
@@ -400,7 +460,9 @@
     { key:'kubun',    w:76,  label:'区分' },
     { key:'itemName', w:150, label:'品名' },
     { key:'status',   w:140, label:'状況' },
-    { key:'date',     w:112, label:'予定日' },
+    // 「支給日」という欄は無く、区分＝支給の明細の予定日がそれにあたる。
+    // 画面だけを見てどこへ入力すればよいか分かるよう、見出しにその旨を書く。
+    { key:'date',     w:150, label:'予定日（支給日・納品日）' },
     { key:'note',     w:140, label:'備考' }
   ];
   const COL_LEFT = (function(){
@@ -456,7 +518,39 @@
         if(t && !matchProduct(p, t) && items.length === 0) return true;
         return false;
       })() };
-    }).filter(x=> !x.hidden);
+    }).filter(x=> !x.hidden).sort(compareByRepDate);
+  }
+
+  // ---- 並び順：その製品で次に一番早く来る予定日（代表日）の昇順 ----
+  // 代表日は「表示中の明細」ではなく "全明細" から決める。
+  // 区分で絞り込んでいても並びが変わらず、印刷（全期間・全明細）とも食い違わないため。
+  //   ① 有効な items[].date（未定・空を除く）の最小日
+  //   ② 無ければ 納期（bs.order.dueDate）
+  //   ③ それも無ければ 代表日なし → 末尾
+  function repDateOf(x){
+    const ds = (x.d.items||[])
+      .filter(it=> it && !it.dateUnknown && it.date)
+      .map(it=> it.date)
+      .sort();
+    if(ds.length) return ds[0];
+    if(x.p.dueDate) return x.p.dueDate;
+    return '';
+  }
+  // 同じ代表日のときに並びが揺れないよう、決着がつくまで比較を続ける。
+  // ここを決定的にしないと、再描画のたびに行の上下が入れ替わる。
+  function compareByRepDate(a, b){
+    const ra = repDateOf(a), rb = repDateOf(b);
+    if(ra !== rb){
+      if(!ra) return 1;      // 代表日なしは末尾
+      if(!rb) return -1;
+      return ra < rb ? -1 : 1;
+    }
+    const da = a.p.dueDate||'', db = b.p.dueDate||'';
+    if(da !== db){ if(!da) return 1; if(!db) return -1; return da < db ? -1 : 1; }
+    const oa = a.p.orderNo || a.p.productNo || '', ob = b.p.orderNo || b.p.productNo || '';
+    const c = oa.localeCompare(ob, 'ja', { numeric:true });
+    if(c !== 0) return c;
+    return (a.p.productNo||'').localeCompare(b.p.productNo||'', 'ja', { numeric:true });
   }
 
   // ================= 見出し =================
@@ -519,17 +613,52 @@
       + '<span class="kubunChip'+(nShikyu?'':' zero')+'" style="'+(nShikyu?'background:'+KUBUN_COLORS['支給']+';':'')+'">支'+nShikyu+'</span>'
       + '<span class="kubunChip'+(nNouhin?'':' zero')+'" style="'+(nNouhin?'background:'+KUBUN_COLORS['納品']+';':'')+'">納'+nNouhin+'</span>'
       + '</td>';
-    html += '<td '+fx('itemName')+'><button type="button" class="miniBtn" data-role="addItem">＋ 明細を追加</button></td>';
+    // 「支給日」という欄は無く、区分＝支給の明細の予定日がそれにあたる。
+    // どこへ入力すればよいかを画面だけで分かるよう、区分を選んだ状態で作れる入口を並べる。
+    // 区分を決めずに作る従来の「＋明細を追加」も残す（決めていないことが見える状態を保つため）。
+    html += '<td '+fx('itemName')+'>'
+      + '<button type="button" class="miniBtn" data-role="addItem" data-kubun="支給" title="区分＝支給の明細を追加して予定日へ進みます">＋支給予定</button> '
+      + '<button type="button" class="miniBtn" data-role="addItem" data-kubun="納品" title="区分＝納品の明細を追加して予定日へ進みます">＋納品予定</button> '
+      + '<button type="button" class="miniBtn" data-role="addItem" title="区分を決めずに明細だけ追加します">＋明細を追加</button>'
+      + '</td>';
     html += '<td '+fx('status')+'></td>';
     html += '<td '+fx('date')+'></td>';
     html += '<td '+fx('note')+'><button type="button" class="miniBtn memoBtn'+(memoCount?' has':'')+'" data-role="openMemo">💬 メモ'+(memoCount?' '+memoCount:'')+'</button></td>';
 
+    // 日付メモ（付箋）は製品行の日付の欄に置く。
+    // 明細行は開閉で消えるため、そちらには置かない（閉じた瞬間に付箋も見えなくなるのを避ける）。
+    const notesByDate = {};
+    (x.d.dayNotes||[]).forEach(n=>{ if(n && n.date){ (notesByDate[n.date] = notesByDate[n.date] || []).push(n); } });
+
     days.forEach((d,idx)=>{
       const hits = x.items.filter(it=> !it.dateUnknown && it.date && sameDay(parseDateStr(it.date), d));
-      html += '<td class="'+dayCellCls(d,idx)+'">' + hits.map(it=>boxHtml(it, true)).join('') + '</td>';
+      const ds = fmtDateForInput(d);
+      const notes = notesByDate[ds] || [];
+      // 付箋は絶対配置なので、そのままだと行の高さに数えられず下の行へはみ出す。
+      // 一番下にくる付箋の高さぶんだけ、見えない下敷きを通常の流れに置いて行を持ち上げる。
+      const needH = notes.reduce((m,n)=> Math.max(m, Math.round(n.dy||0) + (n.h||NOTE_H)), 0);
+      html += '<td class="'+dayCellCls(d,idx)+(notes.length?' hasNote':'')+'" data-date="'+ds+'">'
+        + hits.map(it=>boxHtml(it, true)).join('')
+        + notes.map(n=>dayNoteHtml(n)).join('')
+        + (needH ? '<div class="noteSpacer" style="height:'+needH+'px;"></div>' : '')
+        + '<button type="button" class="addNoteBtn" data-role="addNote" title="この日にメモを貼る">＋メモ</button>'
+        + '</td>';
     });
     html += '</tr>';
     return html;
+  }
+
+  function dayNoteHtml(n){
+    const w = n.w || NOTE_W, h = n.h || NOTE_H;
+    const dx = Math.max(0, Math.round(n.dx||0)), dy = Math.max(0, Math.round(n.dy||0));
+    return '<div class="dayNote" data-role="dayNote" data-nid="'+esc(n.id)+'"'
+      + ' style="left:'+dx+'px; top:'+dy+'px; width:'+w+'px; height:'+h+'px;">'
+      + '<div class="dnHandle" data-role="noteHandle" title="つかんで動かす／隣の日へ移すとその日のメモになります">'
+      + '<span class="dnDate">'+esc((n.date||'').slice(5).replace('-','/'))+'</span>'
+      + '<button type="button" class="dnDel" data-role="delNote" title="このメモを削除">✕</button>'
+      + '</div>'
+      + '<textarea data-role="noteText" placeholder="メモ">'+esc(n.text||'')+'</textarea>'
+      + '</div>';
   }
 
   function itemRowHtml(x, item){
@@ -598,11 +727,22 @@
         else undecided++;
       });
     });
+    // 日付メモは表示期間の外にあると画面から消える。黙って消えると「メモが無くなった」と見えるので件数を出す。
+    let outside = 0;
+    const vs = fmtDateForInput(viewStart), ve = fmtDateForInput(viewEnd);
+    allProducts.forEach(p=>{
+      (loadDetail(p.productNo).dayNotes||[]).forEach(n=>{
+        if(!n || !n.date) return;
+        if(n.date < vs || n.date > ve) outside++;
+      });
+    });
+
     summaryRow.innerHTML =
       '<span class="sumChip">製品 <b>'+view.length+'</b> / 全<b>'+allProducts.length+'</b>件</span>'
       + '<span class="sumChip">支給 <b>'+shikyu+'</b>件</span>'
       + '<span class="sumChip">納品 <b>'+nouhin+'</b>件</span>'
-      + (undecided ? '<span class="sumChip">区分未選択 <b>'+undecided+'</b>件</span>' : '');
+      + (undecided ? '<span class="sumChip">区分未選択 <b>'+undecided+'</b>件</span>' : '')
+      + (outside ? '<span class="sumChip outsideChip" title="表示期間を広げると出てきます">表示期間外にメモ <b>'+outside+'</b>件</span>' : '');
   }
 
   // ================= 操作 =================
@@ -625,6 +765,42 @@
     productsFromRecords().forEach(p=>{ if(anyOpen) collapsed[p.productNo] = true; else delete collapsed[p.productNo]; });
     expandAllBtn.textContent = anyOpen ? 'すべて開く' : 'すべてたたむ';
     render();
+  });
+
+  // ---- 印刷（全期間）----
+  // 画面の表示期間には依存しない。全製品の予定日と日付メモから期間を出し、月ごとのページに分けて刷る。
+  // 印刷は表示専用の別ページで組み立てる（この画面は入力欄だらけで、そのまま刷ると紙で読めないため）。
+  document.getElementById('printBtn').addEventListener('click', ()=>{
+    const all = productsFromRecords();
+    let min = '', max = '';
+    all.forEach(p=>{
+      const d = loadDetail(p.productNo);
+      (d.items||[]).forEach(it=>{ if(it && !it.dateUnknown && it.date){ if(!min||it.date<min) min=it.date; if(!max||it.date>max) max=it.date; } });
+      (d.dayNotes||[]).forEach(n=>{ if(n && n.date){ if(!min||n.date<min) min=n.date; if(!max||n.date>max) max=n.date; } });
+    });
+    if(!min || !max){
+      window.alert('印刷できる予定日・日付メモがまだありません。\n予定日を入れてから印刷してください。');
+      return;
+    }
+    const a = parseDateStr(min), b = parseDateStr(max);
+    const months = (b.getFullYear()*12 + b.getMonth()) - (a.getFullYear()*12 + a.getMonth()) + 1;
+    const fmt = s => s.replace(/-/g,'/');
+    // 日付の打ち間違い（例 2099-01-01）が1件あるだけで数十年ぶんになる。そのまま大量に刷らせない。
+    if(months > 24){
+      const ok = window.confirm(
+        '対象期間：'+fmt(min)+' 〜 '+fmt(max)+'\n想定ページ数：'+months+'ページ（月ごと）\n\n'
+        + '⚠ 期間が '+months+' か月と非常に長くなっています。\n'
+        + '予定日の打ち間違い（年の入力ミスなど）が混ざっている可能性があります。\n'
+        + '一覧で日付を確認してから印刷することをおすすめします。\n\n'
+        + 'それでも印刷用の画面を開きますか？');
+      if(!ok) return;
+    }else{
+      const ok = window.confirm('対象期間：'+fmt(min)+' 〜 '+fmt(max)+'\n想定ページ数：'+months+'ページ（月ごと）\n\n印刷用の画面を開きますか？');
+      if(!ok) return;
+    }
+    // 書きかけの内容を共有へ送り切ってから別ページを開く（送信は500ms待ちでまとめられるため）
+    if(window.sakaeSyncFlush){ try{ window.sakaeSyncFlush(); }catch(err){} }
+    window.open('支給納品印刷_モック.html', '_blank');
   });
 
   function updateRangeInputsUI(){
@@ -659,11 +835,46 @@
       render();
       return;
     }
-    if(e.target.closest('[data-role="addItem"]')){
+    const addBtn = e.target.closest('[data-role="addItem"]');
+    if(addBtn){
       const d = loadDetail(pn);
-      d.items.push(newItem());
+      const it = newItem(addBtn.dataset.kubun || '');
+      d.items.push(it);
       saveDetail(pn, d);
       delete collapsed[pn];   // 追加した明細がすぐ見えるように開く
+      render();
+      // 追加したらそのまま日付を入れられるよう、予定日の欄へ移動する
+      const row = tableBody.querySelector('tr.itemRow[data-pn="'+CSS.escape(pn)+'"][data-id="'+CSS.escape(it.id)+'"]');
+      const dateInput = row && row.querySelector('[data-field="date"]');
+      if(dateInput){ dateInput.focus(); try{ dateInput.showPicker && dateInput.showPicker(); }catch(err){} }
+      return;
+    }
+    // 日付メモ（付箋）を、その日の欄に貼る
+    const addNoteBtn = e.target.closest('[data-role="addNote"]');
+    if(addNoteBtn){
+      const cell = addNoteBtn.closest('td.dayCell');
+      if(!cell || !cell.dataset.date) return;
+      const d = loadDetail(pn);
+      d.dayNotes = d.dayNotes || [];
+      const n = newDayNote(cell.dataset.date);
+      // 同じ日に何枚でも貼れる。重ならないよう少しずつずらす。
+      const same = d.dayNotes.filter(z=> z.date === n.date).length;
+      n.dy = same * 12;
+      d.dayNotes.push(n);
+      saveDetail(pn, d);
+      render();
+      const ta = tableBody.querySelector('[data-nid="'+CSS.escape(n.id)+'"] [data-role="noteText"]');
+      if(ta) ta.focus();
+      return;
+    }
+    const delNoteBtn = e.target.closest('[data-role="delNote"]');
+    if(delNoteBtn){
+      const noteEl = delNoteBtn.closest('[data-nid]');
+      if(!noteEl) return;
+      if(!window.confirm('この日付メモを削除しますか？')) return;
+      const d = loadDetail(pn);
+      d.dayNotes = (d.dayNotes||[]).filter(z=> z.id !== noteEl.dataset.nid);
+      saveDetail(pn, d);
       render();
       return;
     }
@@ -705,12 +916,79 @@
     if(f === 'date' || f === 'kubun'){ updateItem(tr, it=>{ it[f] = e.target.value; }); render(); }
   });
   tableBody.addEventListener('input', (e)=>{
+    // 日付メモ（付箋）の本文。再描画はしない（打っている途中でフォーカスが飛ぶため）
+    const noteEl = e.target.closest('[data-role="dayNote"]');
+    if(noteEl && e.target.dataset.role === 'noteText'){
+      const pn = noteEl.closest('tr[data-pn]').dataset.pn;
+      const d = loadDetail(pn);
+      const n = (d.dayNotes||[]).find(z=> z.id === noteEl.dataset.nid);
+      if(n){ n.text = e.target.value; saveDetail(pn, d); }
+      return;
+    }
     const tr = e.target.closest('tr.itemRow[data-id]');
     if(!tr) return;
     const f = e.target.dataset.field;
     // 日付と区分は change 側で扱う（入力中に再描画するとフォーカスが飛ぶため）
     if(!f || f === 'date' || f === 'kubun') return;
     updateItem(tr, it=>{ it[f] = e.target.value; });
+  });
+
+  // ================= 日付メモ（付箋）をつかんで動かす =================
+  // ・動かしている間は保存しない。離した瞬間に1回だけ保存する
+  //   （動かすたびに保存すると共有の送信が多発し、他の端末の画面がちらつくため）
+  // ・同じ日の欄の中で動かしたときは、見た目の位置（dx/dy）だけを直す
+  // ・隣の日の欄まで動かしたときは、日付（date）そのものを書き換える。
+  //   「何月何日のメモか」は必ず date で決まり、位置だけで決まることはない
+  let noteDrag = null;
+  tableBody.addEventListener('mousedown', (e)=>{
+    const handle = e.target.closest('[data-role="noteHandle"]');
+    if(!handle) return;
+    const noteEl = handle.closest('[data-role="dayNote"]');
+    const cell = noteEl && noteEl.closest('td.dayCell');
+    const tr = noteEl && noteEl.closest('tr[data-pn]');
+    if(!noteEl || !cell || !tr) return;
+    e.preventDefault();
+    noteDrag = {
+      pn: tr.dataset.pn, nid: noteEl.dataset.nid, el: noteEl,
+      startX: e.clientX, startY: e.clientY,
+      origDx: parseFloat(noteEl.style.left) || 0,
+      origDy: parseFloat(noteEl.style.top) || 0
+    };
+    noteEl.classList.add('dragging');
+  });
+  document.addEventListener('mousemove', (e)=>{
+    if(!noteDrag) return;
+    // 保存はしない。見た目だけ動かす
+    noteDrag.el.style.left = (noteDrag.origDx + (e.clientX - noteDrag.startX)) + 'px';
+    noteDrag.el.style.top  = (noteDrag.origDy + (e.clientY - noteDrag.startY)) + 'px';
+  });
+  document.addEventListener('mouseup', (e)=>{
+    if(!noteDrag) return;
+    const drag = noteDrag; noteDrag = null;
+    drag.el.classList.remove('dragging');
+    // 離した場所がどの日の欄かを調べる（同じ製品の行の中だけを対象にする）
+    drag.el.style.pointerEvents = 'none';
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    drag.el.style.pointerEvents = '';
+    const dropCell = under && under.closest ? under.closest('td.dayCell[data-date]') : null;
+    const dropRow = dropCell && dropCell.closest('tr[data-pn]');
+
+    const d = loadDetail(drag.pn);
+    const n = (d.dayNotes||[]).find(z=> z.id === drag.nid);
+    if(!n){ render(); return; }
+
+    if(dropCell && dropRow && dropRow.dataset.pn === drag.pn){
+      const r = dropCell.getBoundingClientRect();
+      n.date = dropCell.dataset.date;                    // ← 日付そのものを書き換える
+      n.dx = e.clientX - r.left - 20;
+      n.dy = e.clientY - r.top - 7;
+      clampNote(n, dropCell.clientWidth, Math.max(dropCell.clientHeight, (n.h||NOTE_H)));
+    }else{
+      // 行の外や日付の欄以外で離したときは、動かさなかったことにする（日付は変えない）
+      n.dx = drag.origDx; n.dy = drag.origDy;
+    }
+    saveDetail(drag.pn, d);   // ← 離した時の1回だけ
+    render();
   });
 
   // ================= 製品カードのメモ（掲示板） =================
@@ -805,6 +1083,9 @@
     // 入力中の欄があるときは、打っている内容を消さないように再描画を見送る
     const ae = document.activeElement;
     if(ae && ae.classList && ae.classList.contains('cellInput')) return;
+    // 付箋を書いている最中・つかんで動かしている最中も同じ理由で見送る
+    if(ae && ae.dataset && ae.dataset.role === 'noteText') return;
+    if(noteDrag) return;
     render();
   });
 

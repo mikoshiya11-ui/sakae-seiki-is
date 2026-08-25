@@ -1071,6 +1071,11 @@
       'sakaeIS_kobetsuMock_legacybars_v1' + suffix,
       'sakaeIS_kobetsuMock_checks_v1' + suffix,
       'sakaeIS_kobetsuMock_confirm_v1' + suffix,
+      // 支給・納品一覧（製品単位）の明細・メモ・日付メモ。これも品番に紐づく製品付随データなので、
+      // 社内No.を変えたら引き継ぎ、カードを消したら一緒に消し、JSON書き出しにも含める。
+      // （ここに入っていなかったため、社内No.を変えると支給・納品の明細とメモが引き継がれず、
+      //   画面から見えなくなっていた。2026-08-20 テーマC で是正）
+      'sakaeIS_shikyuNouhinBoard_v2' + suffix,
     ];
   }
 
@@ -1185,7 +1190,7 @@
     const dataKeys = productDataKeys(rec.productNo);
     const hasLinkedData = dataKeys.some(k=> localStorage.getItem(k) != null);
     const warnText = hasLinkedData
-      ? '\n※この案件の作業票（部品表）・個別日程表のデータもすべて一緒に削除されます（工程の日程表からもこの案件の工程が消えます）。'
+      ? '\n※この案件の作業票（部品表）・個別日程表・支給納品一覧のデータもすべて一緒に削除されます（工程の日程表からもこの案件の工程が消えます）。'
       : '';
     if(!window.confirm(label+'（'+(rec.modelName||rec.itemName||'名称未設定')+'）を削除します。'+warnText+'よろしいですか？')) return;
     const idx = records.indexOf(rec);
