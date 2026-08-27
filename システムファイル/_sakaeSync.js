@@ -138,11 +138,42 @@
     pushTimers[key] = setTimeout(()=> deleteKey(key), PUSH_DEBOUNCE_MS);
   }
 
+  // ---- 自分が送った更新の控え（自己エコー除外用） ----
+  // Supabaseのリアルタイム通知は「自分が送った変更」も自分に返してくる。
+  // それを他の人からの更新と同じように取り込むと、送った直後に打った文字が
+  // 送った時点の古い内容で上書きされ、入力が黙って消える。
+  //
+  // 「今のlocalStorageと届いた値が同じか」で見分ける方法は使えない。
+  // 同期の受け側が先にlocalStorageを書き換えてしまうため、その時点で見分けがつかなくなるため。
+  // そこで「自分がその内容を送ったかどうか」を控えておき、それが返ってきたときだけ捨てる。
+  //
+  // 他のタブ・他の人が送った更新は、こちらの控えに無いので従来どおり受け取る
+  // （万一まったく同じ内容だった場合は、取り込んでも取り込まなくても結果が同じなので害はない）。
+  const OUTBOX_TTL_MS = 120000;   // 往復が遅れても拾えるよう長めに持ち、古いものは捨てる
+  const outbox = {};              // { [key]: [ { raw, at }, … ] }
+
+  function rememberOutbound(key, raw){
+    const now = Date.now();
+    const list = (outbox[key] || []).filter(e=> now - e.at < OUTBOX_TTL_MS);
+    list.push({ raw, at: now });
+    outbox[key] = list;
+  }
+  function isOwnOutbound(key, raw){
+    const now = Date.now();
+    const list = (outbox[key] || []).filter(e=> now - e.at < OUTBOX_TTL_MS);
+    outbox[key] = list;
+    // 同じ内容が二度届くことがあるので、見つけても控えからは消さない（TTLで自然に落とす）
+    return list.some(e=> e.raw === raw);
+  }
+
   async function pushKey(key, value){
     delete pushTimers[key];
     delete pendingActions[key];
     let parsed;
     try{ parsed = JSON.parse(value); }catch(e){ parsed = value; } // 値がJSONでない場合も念のためそのまま送る
+    // 送り出す前に控えておく。返ってきたときに自分のものだと分かるようにするため。
+    // 控える形は、受け取り側が組み立てる形（row.value を JSON.stringify したもの）に揃える。
+    try{ rememberOutbound(key, JSON.stringify(parsed)); }catch(e){}
     try{
       const { data:{ user } } = await sb.auth.getUser();
       await sb.from('kv_store').upsert({ key, value: parsed, updated_by: user ? user.id : null }, { onConflict:'key' });
@@ -190,6 +221,10 @@
     applyingRemoteUpdate = true;
     try{
       const raw = JSON.stringify(row.value);
+      // ---- 自分が送った更新が返ってきただけなら、何もしない ----
+      // これを取り込むと、送った後に打った文字が送った時点の内容で上書きされて消える。
+      // 「今のlocalStorageと同じか」ではなく「自分が送ったものか」で見分ける（上の outbox 参照）。
+      if(isOwnOutbound(row.key, raw)) return;
       const cur = localStorage.getItem(row.key);
       if(cur === raw) return; // 変化が無ければ何もしない（余計な再描画を避ける）
       if(isSameJsonText(cur, raw)) return; // キーの並び順が違うだけ＝中身は同じ。書き直さない

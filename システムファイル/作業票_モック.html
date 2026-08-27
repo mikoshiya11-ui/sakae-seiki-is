@@ -486,8 +486,15 @@
     return { category:'新作', inputDate:'', items: items, approvedBy:'', createdBy:'' };
   }
 
+  // ---- HTMLへ埋め込む文字の無害化 ----
+  // 以前は " と ' を変換していなかったため、value="…" の中に半角の " が入ると
+  // そこで属性が終わってしまい、入力欄には " の手前までしか表示されなかった。
+  // その状態で1文字でも打つと、切り詰められた値が保存され、後半が失われていた
+  // （例：6"フランジ → 6 だけになる）。属性として安全な形まで変換する。
   function esc(s){
-    return (s==null?'':s).toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return (s==null?'':s).toString()
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
   function uid(){ return Math.random().toString(36).slice(2,9); }
 
@@ -692,13 +699,29 @@
     }
     // 保存データが無い場合：デモ用の品番(44541)またはURL指定なしなら既存のサンプル、
     // それ以外の品番は受注連絡書から渡された内容で部品ゼロ件の新規受注として開始
-    if(!urlProductNo || urlProductNo === '44541') return migrateState(seedData());
+    if(!urlProductNo || urlProductNo === '44541'){
+      const seeded = migrateState(seedData());
+      // ---- サンプルの中に別案件の品番が埋め込まれたままだと、
+      // その品番の実データを指しているように見えてしまう。開いている案件に合わせる
+      // （品番が分からないときは空にする。save() は品番が無ければ何も書かない）。 ----
+      seeded.order.productNo = urlProductNo || '';
+      return seeded;
+    }
     return migrateState({ order: freshOrderFromParams(), parts: [] });
   }
+  // ---- 自分がこの画面で編集した回数。増えるだけの番号 ----
+  // 「届いた内容を取り込んでよいか」を、localStorage ではなくこの番号で判断する。
+  let editSeq = 0;
+  let remoteBaseSeq = 0;   // いまの state が共有内容と同じだった時点の editSeq
+
   function save(){
-    // ---- 同じ理由で、品番が空のまま保存して共有キーを汚染することも防ぐ ----
-    if(!state.order.productNo) return;
-    localStorage.setItem(storageKeyFor(state.order.productNo), JSON.stringify(state));
+    // ---- 保存先は、URLで指定された案件のキーだけにする ----
+    // 以前は state.order.productNo を鍵にしていたため、サンプルデータの品番が
+    // 埋め込まれたまま別の案件のキーへ書き込まれ、実在案件を汚染しうる状態だった。
+    // 品番が分からないときは保存しない（どこにも書かない）。
+    if(!urlProductNo) return;
+    editSeq++;
+    localStorage.setItem(storageKeyFor(urlProductNo), JSON.stringify(state));
     syncToOrderRecords();
   }
 
@@ -1163,12 +1186,21 @@
     const el = document.activeElement;
     return !!(el && el.classList && el.classList.contains('cellInput') && partsBody.contains(el));
   }
+  // ---- 上段（受注情報カード）を編集中かどうか ----
+  // 上段の入力欄は cellInput クラスを持たず partsBody の外にあるため、
+  // isEditingPartsCell() では拾えず、外部からの更新が届くと入力中でも
+  // orderCard.innerHTML が丸ごと作り直され、打っている途中の文字とフォーカスが失われていた。
+  function isEditingOrderCard(){
+    const el = document.activeElement;
+    return !!(el && orderCard.contains(el));
+  }
   // ---- 外部からの更新で画面を作り直してよいかどうか。
-  // 部品一覧のセルを編集中のときに加えて、工程エディタを開いている間も作り直さない。
+  // 部品一覧のセルを編集中のときに加えて、上段を編集中のときと
+  // 工程エディタを開いている間も作り直さない。
   // 工程エディタの入力欄は cellInput クラスを持たず、partsBody の中にも無いため、
   // isEditingPartsCell() だけでは工程の入力中を守れず、入力の途中でモーダルが閉じていた。 ----
   function isProtectedFromRemoteRedraw(){
-    return isEditingPartsCell() || procPickerOpen;
+    return isEditingPartsCell() || isEditingOrderCard() || procPickerOpen;
   }
   function applyPendingRemoteUpdates(){
     if(isProtectedFromRemoteRedraw()) return; // 編集中は適用しない（保留したままにする）
@@ -1181,13 +1213,29 @@
     if(pendingRemoteState){
       const raw = pendingRemoteState;
       pendingRemoteState = null;
-      // 保留している間に自分が保存していた場合、保留していた内容の方が古い。
-      // 古い内容で上書きすると、いま入力した内容が画面から消えてしまうため適用しない。
-      const cur = localStorage.getItem(storageKeyFor(urlProductNo));
-      if(cur !== null && cur !== raw){
-        console.warn('[作業票] 編集中に届いた他端末の更新は、こちらの保存の方が新しいため反映しませんでした。最新の状態を見るには画面を読み込み直してください。');
+      // ---- 届いた内容を取り込むか捨てるかの判断 ----
+      // localStorage は正本に使えない。同期の受け側が、この画面へ知らせるより先に
+      // localStorage を届いた内容へ書き換えてしまうため、そこを見ても新旧が分からない。
+      // （テーマAでここを localStorage で判定していたため、判定が常に空振りし、
+      //   打った文字が「離れた瞬間」に古い内容へ巻き戻って消えていた。）
+      // 正本はメモリ上の state。editSeq は自分が編集するたびに増える。
+      // remoteBaseSeq は「いま持っている state が、共有されている内容と同じだった時点」の値。
+      //   editSeq === remoteBaseSeq → こちらは何も編集していない → 取り込んでよい
+      //   editSeq !== remoteBaseSeq → こちらに未共有の編集がある → 取り込むと打った文字が消える → 捨てる
+      if(editSeq === remoteBaseSeq){
+        try{
+          state = migrateState(JSON.parse(raw));
+          changed = true;
+          remoteBaseSeq = editSeq;   // いま取り込んだ内容が新しい基準になる
+        }catch(err){}
       }else{
-        try{ state = migrateState(JSON.parse(raw)); changed = true; }catch(err){}
+        // 取り込まないと決めた場合、保存先には届いた古い内容が既に書かれている
+        // （同期の受け側が、この画面へ知らせるより先に書き換えてしまうため）。
+        // そのままにすると画面には残っているのに保存先は古いままで、
+        // 次に開いたときに打った文字が消える。こちらの内容で保存し直す。
+        save();
+        console.warn('[作業票] 編集中に届いた他の人の変更は、こちらの入力を消さないため取り込みませんでした。'
+          + 'こちらの入力はそのまま保存しています。相手の変更を見るには画面を読み込み直してください。');
       }
     }
     if(changed){
@@ -1197,12 +1245,21 @@
   }
   partsBody.addEventListener('focusout', (e)=>{
     if(!e.target.classList || !e.target.classList.contains('cellInput')) return;
+    // 次に触ろうとしているのが部品一覧の中のボタン（「工程を編集」など）なら、まだ何もしない。
+    // ここで作り直してしまうと、押そうとしたボタンのDOMが差し替わってクリックが届かず、
+    // 「部品名を打った直後に『工程を編集』を押しても開かない」という症状になる。
+    if(e.relatedTarget && partsBody.contains(e.relatedTarget)) return;
     // focusoutは次のフォーカス先が確定する前に発火するため、1tick待ってから判定する
+    setTimeout(applyPendingRemoteUpdates, 0);
+  });
+  // 上段の入力からフォーカスが外れたときも、保留していた更新を取り込む機会を作る。
+  // これが無いと、上段を保護したまま保留が解除されず、いつまでも反映されない。
+  orderCard.addEventListener('focusout', ()=>{
     setTimeout(applyPendingRemoteUpdates, 0);
   });
   window.addEventListener('storage', (e)=>{
     if(e.key === CONFIRM_KEY){
-      // 確定／解除の通知も、部品一覧の編集中と工程エディタを開いている間は保留する
+      // 確定／解除の通知も、部品一覧・上段の編集中と工程エディタを開いている間は保留する
       if(isProtectedFromRemoteRedraw()){ pendingConfirmChange = true; return; }
       confirmState = loadConfirm();
       if(procPickerOpen) closeProcPickerSilently();
@@ -1211,8 +1268,27 @@
     }
     if(e.key !== storageKeyFor(urlProductNo)) return;
     if(e.newValue == null) return;
-    if(isProtectedFromRemoteRedraw()){ pendingRemoteState = e.newValue; return; }
+    if(isProtectedFromRemoteRedraw()){
+      pendingRemoteState = e.newValue;
+      // 画面はこのまま守るが、保存先は届いた内容に書き換えられてしまっている
+      // （同期の受け側が、この画面へ知らせるより先に書き換えるため）。
+      // こちらに未共有の編集があるなら、その場で保存し直しておく。
+      // ここで直さずに保留の解除まで待つと、その間に画面を閉じた場合に
+      // 打った文字が保存先に残らず消えてしまう。画面は作り直さない（入力を壊さない）。
+      if(editSeq !== remoteBaseSeq) save();
+      return;
+    }
+    // 編集していない間に届いたものは、その場で取り込む。
+    // ここでも「こちらに未共有の編集があるなら取り込まない」を守る（打った文字を巻き戻さないため）。
+    if(editSeq !== remoteBaseSeq){
+      // 上と同じ理由で、こちらの内容を保存し直しておく（保存先が古い内容のまま残らないように）
+      save();
+      console.warn('[作業票] 届いた他の人の変更は、こちらの入力を消さないため取り込みませんでした。'
+        + 'こちらの入力はそのまま保存しています。相手の変更を見るには画面を読み込み直してください。');
+      return;
+    }
     try{ state = migrateState(JSON.parse(e.newValue)); }catch(err){ return; }
+    remoteBaseSeq = editSeq;
     if(procPickerOpen) closeProcPickerSilently();
     render();
   });
@@ -1353,12 +1429,44 @@
   ppAddBtn.addEventListener('click', addProcessRow);
 
   ppDone.addEventListener('click', closeProcPicker);
-  // 背景（暗い部分）をクリックしたら閉じる。モーダルの中身をクリックしても閉じない
+  // ---- 背景（暗い部分）をクリックしたら閉じる ----
+  // 以前は mousedown の一発で閉じていたため、
+  //   ・押し込んだ瞬間に確定してしまい、離す場所がモーダルの中でも閉じた
+  //   ・左ボタンかどうかを見ていないので、右クリック・中クリックでも閉じた
+  //   ・画面が広いとモーダルの外側（＝閉じる領域）が画面の半分近くを占める
+  // ため、操作の途中で意図せず閉じることがあった。
+  // 押し始めと離した場所の両方が背景で、かつ左ボタンのときだけ閉じる。
+  let bgPressed = false;
   procPicker.addEventListener('mousedown', (e)=>{
-    if(e.target === procPicker) closeProcPicker();
+    bgPressed = (e.button === 0 && e.target === procPicker);
   });
+  procPicker.addEventListener('mouseup', (e)=>{
+    const ok = bgPressed && e.button === 0 && e.target === procPicker;
+    bgPressed = false;
+    if(ok) closeProcPicker();
+  });
+  // モーダルの外で離した場合も、押し始めの状態は持ち越さない
+  document.addEventListener('mouseup', ()=>{ bgPressed = false; });
+
+  // ---- Escape で閉じる ----
+  // 以前は無条件で閉じていたため、日本語入力の変換を取り消すつもりの Escape や、
+  // 入力欄の候補（工程記号の候補・日付や午前午後の選択）を閉じるつもりの Escape でも
+  // モーダルごと閉じてしまっていた。
+  //   ・変換中（IME）の Escape では閉じない
+  //   ・他の処理で既に使われた Escape では閉じない
+  //   ・入力欄にカーソルがあるときは、1回目はその欄から外れるだけにする
+  //     （もう一度押せば閉じる。閉じるつもりの Escape と区別するため）
   document.addEventListener('keydown', (e)=>{
-    if(e.key === 'Escape' && procPicker.classList.contains('open')) closeProcPicker();
+    if(e.key !== 'Escape') return;
+    if(!procPicker.classList.contains('open')) return;
+    if(e.isComposing || e.keyCode === 229) return;   // IMEの変換中は触らない
+    if(e.defaultPrevented) return;
+    const el = document.activeElement;
+    if(el && procPicker.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)){
+      el.blur();
+      return;
+    }
+    closeProcPicker();
   });
 
   render();
