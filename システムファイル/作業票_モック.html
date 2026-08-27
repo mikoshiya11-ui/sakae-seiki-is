@@ -805,10 +805,13 @@
 
   // ---- 受注情報カード ----
   const orderCard = document.getElementById('orderCard');
+  // ---- 現場要望（D-05）：上段の「品番」欄は画面に出さない。
+  // 品番（内部の紐付けキー productNo）は消していない。案件の保存キー・共有キー・
+  // 個別日程表／作業票印刷などへのリンクは今までどおり state.order.productNo を使う。
+  // ここで無くしたのは表示・入力のUIだけ。 ----
   function buildOrderCard(){
     const o = state.order;
     orderCard.innerHTML = `
-      <div class="oField"><label>品番</label><input data-of="productNo" value="${esc(o.productNo)}" readonly title="品番は新規作成時（社内No.）で決まるため、ここでは編集できません"></div>
       <div class="oField"><label>社内№</label><input data-of="orderNo" value="${esc(o.orderNo)}" style="min-width:100px;"></div>
       <div class="oField"><label>受注日</label><input type="date" data-of="orderDate" value="${esc(o.orderDate)}"></div>
       <div class="oField"><label>作成者</label><input data-of="createdBy" value="${esc(o.createdBy)}" style="min-width:90px;"></div>

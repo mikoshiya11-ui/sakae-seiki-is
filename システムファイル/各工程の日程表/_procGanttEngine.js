@@ -19,6 +19,9 @@ window.ProcGantt = (function(){
 
   function init(config){
     const CODE = config.code;
+    // ---- 画面に出す工程の呼び名。工程記号＋識別BOXを続けて書く（例：MI＋2オモテ → MI2オモテ）。
+    // 分類そのものは工程記号だけで決まるので、この関数は表示専用。 ----
+    function procLabel(job){ return (job && job.code ? job.code : '') + (job && job.ident ? job.ident : ''); }
     const COLOR = config.color || '#173a68';
     // ---- 個別日程表からダブルクリックで来た場合はその品番の個別日程表に戻れるようにする（URLの?productNoで判定） ----
     const ctxProductNo = (new URLSearchParams(location.search).get('productNo')||'').trim();
@@ -197,6 +200,22 @@ window.ProcGantt = (function(){
       return { start, end };
     }
     const STORAGE_PREFIX = 'sakaeIS_procGanttMock_' + CODE + '_v1';
+    // ---- ★この位置に置くこと。下の loadView() は（この日程表を初めて開いた時に）computeDefaultView()
+    // → scanJobs() を呼び、scanJobs() は dateOverrides を読む。dateOverrides の宣言が loadView() より
+    // 後ろにあると、その工程の予定が1件でも入っている場合にだけ
+    // 「Cannot access 'dateOverrides' before initialization」で日程表が丸ごと真っ白になっていた
+    // （工程の予定を入れた瞬間にその工程の日程表が開かなくなる、という形で現れる）。 ----
+    // ---- この日程表（このコードのページ）だけの「表示上の日程」の上書き。現場でバーを動かしても
+    // ここだけに保存され、作業票・個別日程表の日付（＝正式な計画日程）は変更しない。
+    // 上書きが無い工程は、これまで通り作業票側の日付（proc.date）をそのまま使う。 ----
+    const DATE_OVERRIDE_KEY = STORAGE_PREFIX + '_dateOverride';
+    function loadDateOverrides(){
+      try{ const raw = localStorage.getItem(DATE_OVERRIDE_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+      return {};
+    }
+    function saveDateOverrides(){ localStorage.setItem(DATE_OVERRIDE_KEY, JSON.stringify(dateOverrides)); }
+    let dateOverrides = loadDateOverrides(); // { [procId]: { date, ampm, days } }
+
     const VIEW_KEY = STORAGE_PREFIX + '_view';
     function loadView(){
       try{
@@ -277,17 +296,6 @@ window.ProcGantt = (function(){
     function saveFreeRowCount(){ localStorage.setItem(FREE_ROWCOUNT_KEY, String(freeRowCount)); }
     let freeRowCount = loadFreeRowCount();
 
-    // ---- この日程表（このコードのページ）だけの「表示上の日程」の上書き。現場でバーを動かしても
-    // ここだけに保存され、作業票・個別日程表の日付（＝正式な計画日程）は変更しない。
-    // 上書きが無い工程は、これまで通り作業票側の日付（proc.date）をそのまま使う。 ----
-    const DATE_OVERRIDE_KEY = STORAGE_PREFIX + '_dateOverride';
-    function loadDateOverrides(){
-      try{ const raw = localStorage.getItem(DATE_OVERRIDE_KEY); if(raw) return JSON.parse(raw); }catch(e){}
-      return {};
-    }
-    function saveDateOverrides(){ localStorage.setItem(DATE_OVERRIDE_KEY, JSON.stringify(dateOverrides)); }
-    let dateOverrides = loadDateOverrides(); // { [procId]: { date, ampm, days } }
-
     // ---- 部品表を横断スキャンして、このコードが付いた工程をジョブとして集める ----
     function scanJobs(){
       const jobs = [];
@@ -317,7 +325,9 @@ window.ProcGantt = (function(){
               productNo: bs.order.productNo||'', orderNo: bs.order.orderNo||'', customer: bs.order.customer||'',
               model: bs.order.model||'', orderDueDate: bs.order.dueDate||'',
               partId: part.id, partName: part.name||'', qty: part.qty||'',
-              procId: proc.id, code: proc.code,
+              // 分類（この日程表に出るかどうか）は上の proc.code === CODE だけで決まる。
+              // ident は同じ工程記号の中で見分けるための文字で、表示にだけ使う（例：MI＋2オモテ → MI2オモテ）。
+              procId: proc.id, code: proc.code, ident: proc.ident || '',
               date: (ov ? ov.date : proc.date) || '',
               ampm: (ov ? ov.ampm : proc.ampm) || 'AM',
               days: (ov && ov.days != null) ? ov.days : (proc.days || 3),
@@ -499,7 +509,7 @@ window.ProcGantt = (function(){
       const startHint = days>1 ? (fmtShort((function(){ const h=dateForHalfIdx(startHalf); const d=h.date; return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })(), (dateForHalfIdx(startHalf).isPM?'PM':'AM'))+'　～　') : '';
       const ctxHint = '\n（右クリックで削除メニュー）';
       const dateHint = '\n'+startHint+fmtShort(job.date, job.ampm)+'（右端＝部品表の工程日付「終了・納期」とリンク中。ドラッグで移動、端をつまむと日数を変更できます）'+ctxHint;
-      return '<div class="bar" data-range="'+job.procId+'" style="left:'+left+'px;width:'+width+'px;background:'+COLOR+';" title="'+esc((job.productNo?job.productNo+' ':'')+job.partName)+dateHint+'">'
+      return '<div class="bar" data-range="'+job.procId+'" style="left:'+left+'px;width:'+width+'px;background:'+COLOR+';" title="'+esc((job.productNo?job.productNo+' ':'')+job.partName+'（'+procLabel(job)+'）')+dateHint+'">'
         + '<div class="handle left" data-role="handle-left"></div>'
         + '<span class="barLabel">🔗</span>'
         + '<div class="handle right" data-role="handle-right"></div>'
@@ -531,7 +541,7 @@ window.ProcGantt = (function(){
         case 'dueDate': v = fmtShort(job.orderDueDate); break;
         case 'itemName': v = job.partName; break;
         case 'qty': v = job.qty; break;
-        case 'process': v = job.code; break;
+        case 'process': v = procLabel(job); break;
         case 'prevProcess': v = job.prevCode; break;
         case 'completeSchedule': v = fmtShort(job.date, job.ampm); break;
         case 'nextProcess': v = job.nextCode; break;
@@ -667,7 +677,7 @@ window.ProcGantt = (function(){
         return;
       }
       listEl.innerHTML = list.map(j=>{
-        const info = (j.productNo?'<b>'+esc(j.productNo)+'</b> ':'')+esc(j.partName)+(j.customer?'　'+esc(j.customer):'');
+        const info = (j.productNo?'<b>'+esc(j.productNo)+'</b> ':'')+esc(j.partName)+'（'+esc(procLabel(j))+'）'+(j.customer?'　'+esc(j.customer):'');
         return '<div class="unassignedItem">'
           + '<span class="uiInfo">'+info+'</span>'
           + '<span class="uiForm">'
@@ -699,7 +709,7 @@ window.ProcGantt = (function(){
         const procId = deleteBtn.dataset.procid;
         const productNo = deleteBtn.dataset.productno;
         const job = jobs.find(j=>j.procId===procId);
-        const label = job ? ((job.productNo?job.productNo+' ':'')+job.partName+'（'+esc(CODE)+'）') : 'この工程';
+        const label = job ? ((job.productNo?job.productNo+' ':'')+job.partName+'（'+esc(procLabel(job))+'）') : 'この工程';
         if(!window.confirm(label+'を削除します。作業票・個別日程表など他の画面からもこの工程が消えます（日程未設定に戻すのではなく完全に削除します）。よろしいですか？')) return;
         const snapshot = deleteProcess(productNo, procId);
         render();

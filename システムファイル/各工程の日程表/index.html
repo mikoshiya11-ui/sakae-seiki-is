@@ -63,7 +63,7 @@
 
   <div class="wrap">
     <div class="noteBar">
-      工程ごとの日程表を、共通エンジン（_procGanttEngine.js／.css）を使って全工程分まとめて作った一覧です。行は作業票（各品番）を自動的にスキャンして表示するビューで、このページ内から直接データを新規入力するものではありません。バーを動かしてもこのページだけの表示位置で、作業票・個別日程表の日付は変わりません。<br>
+      通常の運用で使う工程別の日程表は <b>NC・LA・MI</b> の3つです。それ以外の工程の日程表は現場で使わないため、この一覧には出していません（ページ自体は残してあり、直接のURLでは従来どおり開けます）。<br>      工程ごとの日程表を、共通エンジン（_procGanttEngine.js／.css）を使って作った一覧です。行は作業票（各品番）を自動的にスキャンして表示するビューで、このページ内から直接データを新規入力するものではありません。バーを動かしてもこのページだけの表示位置で、作業票・個別日程表の日付は変わりません。<br>
       実際のデータを入れて動かしてみて、項目の過不足・使わない工程・前工程／次工程の自動算出のズレなどがあれば教えてください。
     </div>
 
@@ -90,8 +90,14 @@
   </div>
 
 <script>
+  // ---- 現場要望（D-09）：通常の利用者に見せる工程別の日程表は NC / LA / MI の3つだけにする。
+  // 工程そのものを3つへ減らすわけではない。作業票の工程選択肢・残品表の工程分類・工程完了・バーコードは
+  // 従来どおり全工程のまま。ここで絞っているのは「この一覧に並べるかどうか」だけで、
+  // 各HTMLファイルも消していないため、直接URLを開けば従来どおり使える。
+  // NCは機械別に分かれるため下の「特殊な工程」カードに出している（NC日程表_モック.html）。
+  const VISIBLE_CODES = new Set(['LA','MI']);
   // 作業票_モック.html の CODE_COLORS / PROCESS_GROUPS と揃えてある（NC1～NC5は機械別のNC日程表で対応済みのためここには含めない）
-  const GROUPS = [
+  const GROUPS_ALL = [
     { id:'grid-prep', items:[
       { code:'DE', file:'DE日程表.html', color:'#94a3b8' },
       { code:'SU', file:'SU日程表.html', color:'#a1a1aa' },
@@ -125,6 +131,15 @@
     ]},
   ];
   function esc(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  // 表示対象だけに絞り込む。中身が空になったグループは見出しごと隠す。
+  const GROUPS = GROUPS_ALL.map(g=> ({ id:g.id, items: g.items.filter(it=> VISIBLE_CODES.has(it.code)) }));
+  GROUPS_ALL.forEach(g=>{
+    const el = document.getElementById(g.id);
+    if(!el) return;
+    const kept = GROUPS.find(x=>x.id===g.id);
+    const title = el.previousElementSibling;
+    if((!kept || !kept.items.length) && title && title.classList.contains('groupTitle')) title.style.display = 'none';
+  });
   GROUPS.forEach(g=>{
     const el = document.getElementById(g.id);
     el.innerHTML = g.items.map(it=>
@@ -136,7 +151,7 @@
   // 専用ページを作らずに1つの汎用ページ（_カスタム日程表.html?code=...）で日程表を開けるようにする。
   // NC1〜NC5・NCなど「NC」から始まる工程（NCMを除く）は機械別のNC日程表で扱うのでここには出さない。 ----
   const KNOWN_CODES = new Set();
-  GROUPS.forEach(g=> g.items.forEach(it=> KNOWN_CODES.add(it.code)));
+  GROUPS_ALL.forEach(g=> g.items.forEach(it=> KNOWN_CODES.add(it.code)));
   function isNCBar(code){
     if(!code) return false;
     if(code.indexOf('NCM') === 0) return false;
@@ -166,7 +181,10 @@
     }
     return Array.from(codes).sort((a,b)=> a.localeCompare(b,'ja'));
   }
-  const customCodes = findCustomCodes();
+  // 登録外（作業票で自由入力された）工程の日程表も、上と同じ理由で通常の一覧には出さない。
+  // _カスタム日程表.html?code=... は残してあるので、必要な場合は直接URLで開ける。
+  const SHOW_CUSTOM_CODES = false;
+  const customCodes = SHOW_CUSTOM_CODES ? findCustomCodes() : [];
   if(customCodes.length){
     document.getElementById('customGroupTitle').style.display = '';
     document.getElementById('grid-custom').innerHTML = customCodes.map(code=>

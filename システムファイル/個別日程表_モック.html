@@ -797,12 +797,17 @@
     'FIN':'FIN日程表.html', 'NCM':'NCM日程表.html', '熱処理':'熱処理日程表.html',
     'ｶﾅｯｸ':'ｶﾅｯｸ日程表.html', 'ﾆｭｰｶﾅｯｸ':'ﾆｭｰｶﾅｯｸ日程表.html', 'PN':'PN日程表.html', '納品':'納品日程表.html'
   };
+  // ---- 現場要望（D-09）：通常の利用者に見せる工程別の日程表は NC / LA / MI の3つだけ。
+  // ここはバーをダブルクリックした時の遷移先＝ナビゲーションなので、同じ3つに合わせる。
+  // 工程そのものは減らしていない（工程記号・工程分類・工程完了・バーコードは従来どおり全工程）。
+  // 各HTMLファイルも消していないため、直接URLを開けば従来どおり使える。 ----
+  const GANTT_VISIBLE_CODES = { 'LA':true, 'MI':true };
   function matchProcGantt(label){
     if(!label) return null;
     if(isNCBar(label)) return { code:'NC', file:'NC日程表_モック.html' };
     const segs = label.split('・');
-    for(const s of segs){ if(PROC_GANTT_FILES[s]) return { code:s, file:'各工程の日程表/'+PROC_GANTT_FILES[s] }; }
-    for(const key in PROC_GANTT_FILES){ if(label.indexOf(key)!==-1) return { code:key, file:'各工程の日程表/'+PROC_GANTT_FILES[key] }; }
+    for(const s of segs){ if(GANTT_VISIBLE_CODES[s] && PROC_GANTT_FILES[s]) return { code:s, file:'各工程の日程表/'+PROC_GANTT_FILES[s] }; }
+    for(const key in PROC_GANTT_FILES){ if(GANTT_VISIBLE_CODES[key] && label.indexOf(key)!==-1) return { code:key, file:'各工程の日程表/'+PROC_GANTT_FILES[key] }; }
     return null;
   }
 

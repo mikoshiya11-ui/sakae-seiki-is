@@ -68,6 +68,7 @@
   }
   .slipSideLabel .slipSideTitle{ font-size:12px; font-weight:800; color:#1a2233; letter-spacing:.08em; }
   /* 品番だけは現物と同じく、縦書きの中で横書きの文字列をそのまま90度回転させて表示する */
+  /* 現場要望（D-06/13）：ここは社内No.なので赤のまま */
   .slipSideLabel .slipSideNo{ font-size:11px; font-weight:700; color:#c0392b; letter-spacing:.04em; text-orientation:sideways; }
   /* 工程が13以上あって2枚目以降ができた時の「2/3枚目」表示 */
   .slipSideLabel .slipSidePage{ font-size:10px; font-weight:700; color:#5b6b84; letter-spacing:.04em; text-orientation:sideways; }
@@ -149,6 +150,8 @@
   .infoCell .iVal.memoVal{
     white-space:normal; overflow:visible; text-overflow:clip; word-break:break-word;
     align-items:flex-start; line-height:1.35; padding:3px 6px;
+    /* 現場要望（D-06/13）：赤で刷るのは「社内No.」と「部品の注記」の2つだけ。ほかは黒。 */
+    color:#c0392b;
   }
   .issueRow{ font-size:10px; color:#5b6b84; padding:3px 8px; border-top:1px solid #222; }
 
@@ -158,6 +161,8 @@
   .tagBox .tagRow{ display:flex; align-items:baseline; gap:9px; padding:3px 0; font-size:12px; }
   .tagBox .tagLabel{ flex:0 0 48px; font-size:10px; color:#8592a6; }
   .tagBox .tagVal{ font-weight:700; color:#1a2233; flex:1 1 auto; }
+  /* 現場要望（D-06/13）：控えタグの中でも赤にするのは社内No.の値だけ */
+  .tagBox .tagVal.tagNoVal{ color:#c0392b; }
   .tagBox .tagQtyLabel{ font-size:10px; color:#8592a6; }
   .tagBox .tagQtyVal{ font-weight:700; color:#1a2233; }
 
@@ -194,6 +199,9 @@
     .wrap{ max-width:none; padding:0; margin:0; }
     .slipSheet{ box-shadow:none; border:1px solid #222; border-radius:0; margin:0; page-break-after:always; }
     .slipSheet:last-child{ page-break-after:auto; }
+    /* 赤黒2色で刷るため、工程ごとの色チップは紙では黒にする（画面上の色分けは従来どおり残す）。
+       工程記号そのものの文字色は変えていない。 */
+    .codeSwatch{ background:#1a2233 !important; }
     table.procTable tr.procHeadRow th{ background:#f7f9fc !important; }
     .infoCell .iLabel{ background:#f7f9fc !important; }
     .ticketHeadRow{ background:#f7f9fc !important; }
@@ -467,7 +475,7 @@
   // ---- 右側下段：控えタグ（社内No／品名／型式／数量。現物では8枚とも同じ内容） ----
   function tagSheetHtml(part){
     const tagHtml = '<div class="tagBox">'
-      + '<div class="tagRow"><span class="tagLabel">社内No.</span><span class="tagVal">'+esc(partOrderNo(part)||'―')+'</span></div>'
+      + '<div class="tagRow"><span class="tagLabel">社内No.</span><span class="tagVal tagNoVal">'+esc(partOrderNo(part)||'―')+'</span></div>'
       + '<div class="tagRow"><span class="tagLabel">品名</span><span class="tagVal">'+esc(part.name||'―')+'</span><span class="tagQtyLabel">数量</span></div>'
       + '<div class="tagRow"><span class="tagLabel">型式</span><span class="tagVal">'+esc(order.model||'―')+'</span><span class="tagQtyVal">'+esc(part.qty||'―')+'</span></div>'
       + '</div>';

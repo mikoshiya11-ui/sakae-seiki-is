@@ -394,8 +394,11 @@
       <button data-filter="done">完了案件(CSV出力)</button>
     </div>
     <div class="quickLinks" id="dataTransferRow" style="margin-top:6px;">
-      <button type="button" id="exportAllBtn" title="カードと、紐づく作業票・個別日程表のデータをまとめてJSONファイルに書き出します（別のパソコン・別のブラウザにデータを持っていく時に使います）">📤 データを書き出し（JSON）</button>
-      <button type="button" id="importAllBtn" title="書き出したJSONファイルを読み込んで、今この画面にある案件と全部入れ替えます">📥 データを読み込み（JSON）</button>
+      <!-- 現場要望（D-12）：JSONの書き出し／読み込みは、誤操作の方がリスクが高いため通常の画面には出さない。
+           ボタンは残したまま隠してあり、書き出し・読み込みの処理そのもの（buildExportData／取り込み処理）は
+           そのまま動く。復旧・別のパソコンへの移行が必要になったら、この style="display:none" を外せば使える。 -->
+      <button type="button" id="exportAllBtn" style="display:none;" title="カードと、紐づく作業票・個別日程表のデータをまとめてJSONファイルに書き出します（別のパソコン・別のブラウザにデータを持っていく時に使います）">📤 データを書き出し（JSON）</button>
+      <button type="button" id="importAllBtn" style="display:none;" title="書き出したJSONファイルを読み込んで、今この画面にある案件と全部入れ替えます">📥 データを読み込み（JSON）</button>
       <input type="file" id="importFileInput" accept="application/json" style="display:none;">
     </div>
   </div>
