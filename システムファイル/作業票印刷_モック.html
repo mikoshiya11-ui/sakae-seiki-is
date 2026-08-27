@@ -79,8 +79,9 @@
 
   .slipTopRow{ display:flex; border:1.5px solid #222; }
   .procTableWrap{ flex:1 1 auto; min-width:0; display:flex; }
-  /* 略図は部品で1つではなく、工程1件につき1セル。工程表と同じ表の1列目に入れることで、
-     工程の行と略図のセルが必ず同じ高さ・同じ位置に並ぶ（高さを別々に指定すると必ずズレるため）。
+  /* 略図は部品につき1つの大きなBOX（2026-08-27 D-14で工程ごとの分割から戻した）。
+     工程表と同じ表の1列目に入れたまま rowspan で縦につなぐので、BOXの中に横罫線が入らず、
+     それでいて工程表と高さ・左右位置がズレない（高さを別々に指定すると必ずズレるため）。
      略図の幅（旧 .sketchBox の 110px）はここ1か所だけで決め、他の列はその残りに対する割合で出す。
      2026-08-20 の現場要望により、略図セルには何も印字しない（現物どおり手書き用の空欄に戻した）。
      以前ここへ出していた工程ごとの注記（sketchNote）は廃止。部品単位の注記は下段情報欄の「注記」欄へ出す。 */
@@ -438,14 +439,18 @@
   function procTableRowsHtml(list){
     const rowCount = Math.max(PROC_ROWS_MIN, list.length);
     let rowsHtml = '';
+    // ---- 現場要望（D-14）：略図は工程1件につき1マスではなく、部品につき1つの大きなBOXにする。
+    // いちばん上の行のセルだけを rowspan で工程の行数ぶん縦につなぎ、以降の行では略図のセルを出さない。
+    // こうするとBOXの中に横罫線が入らない。外枠・「略図」の見出し・工程表側の罫線はそのまま。 ----
     for(let i=rowCount-1;i>=0;i--){
       const p = list[i];
       const no = i+1;
+      const sketchTd = (i === rowCount-1) ? '<td class="sketchCell" rowspan="'+rowCount+'"></td>' : '';
       if(p){
         const hoursTxt = WORK_HOUR_CODES[p.code] ? (p.hours!=null && p.hours!=='' ? esc(p.hours)+'h' : '') : '';
         const startDate = p.date ? fmtDateShort(p.date) : '';
         rowsHtml += '<tr>'
-          + '<td class="sketchCell"></td>'
+          + sketchTd
           + '<td class="machineCell"><div class="cellLine cellLineTop dotted"></div><div class="cellLine cellLineBottom">'+esc(p.machine||'')+'</div></td>'
           + '<td class="noCodeCell"><div class="noCodeWrap"><span class="tinyNo">'+no+'</span><span class="codeSwatch" style="background:'+colorOf(p.code)+';"></span>'+esc(procDisplay(p))+'</div></td>'
           + '<td class="startCell"><div class="cellLine cellLineTop dotted"></div><div class="cellLine cellLineBottom">'+esc(startDate)+'</div></td>'
@@ -458,7 +463,7 @@
           + '</tr>';
       }else{
         rowsHtml += '<tr class="emptyRow">'
-          + '<td class="sketchCell"></td>'
+          + sketchTd
           + '<td class="machineCell"><div class="cellLine cellLineTop dotted"></div><div class="cellLine cellLineBottom"></div></td>'
           + '<td class="noCodeCell"><div class="noCodeWrap"><span class="tinyNo">'+no+'</span></div></td>'
           + '<td class="startCell"><div class="cellLine cellLineTop dotted"></div><div class="cellLine cellLineBottom"></div></td>'
