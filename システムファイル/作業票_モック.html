@@ -799,8 +799,11 @@
   });
 
   const pageNameEl = document.getElementById('pageName');
+  // 利用者向けの案件識別は「社内No.」に統一する（案件品番は社内No.と紛らわしいため画面には出さない）。
+  // 品番そのもの（urlProductNo）は、保存先・共有キー・他画面へのリンクに今までどおり使っている。
   if(urlProductNo){
-    pageNameEl.textContent = '作業票（品番：' + urlProductNo + '）';
+    const no = (state.order && state.order.orderNo) || '';
+    pageNameEl.textContent = '作業票' + (no ? '（社内No.：' + no + '）' : '');
   }
 
   // ---- 受注情報カード ----

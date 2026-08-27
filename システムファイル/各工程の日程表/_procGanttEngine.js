@@ -509,7 +509,7 @@ window.ProcGantt = (function(){
       const startHint = days>1 ? (fmtShort((function(){ const h=dateForHalfIdx(startHalf); const d=h.date; return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })(), (dateForHalfIdx(startHalf).isPM?'PM':'AM'))+'　～　') : '';
       const ctxHint = '\n（右クリックで削除メニュー）';
       const dateHint = '\n'+startHint+fmtShort(job.date, job.ampm)+'（右端＝部品表の工程日付「終了・納期」とリンク中。ドラッグで移動、端をつまむと日数を変更できます）'+ctxHint;
-      return '<div class="bar" data-range="'+job.procId+'" style="left:'+left+'px;width:'+width+'px;background:'+COLOR+';" title="'+esc((job.productNo?job.productNo+' ':'')+job.partName+'（'+procLabel(job)+'）')+dateHint+'">'
+      return '<div class="bar" data-range="'+job.procId+'" style="left:'+left+'px;width:'+width+'px;background:'+COLOR+';" title="'+esc((job.orderNo?job.orderNo+' ':'')+job.partName+'（'+procLabel(job)+'）')+dateHint+'">'
         + '<div class="handle left" data-role="handle-left"></div>'
         + '<span class="barLabel">🔗</span>'
         + '<div class="handle right" data-role="handle-right"></div>'
@@ -677,7 +677,8 @@ window.ProcGantt = (function(){
         return;
       }
       listEl.innerHTML = list.map(j=>{
-        const info = (j.productNo?'<b>'+esc(j.productNo)+'</b> ':'')+esc(j.partName)+'（'+esc(procLabel(j))+'）'+(j.customer?'　'+esc(j.customer):'');
+        // 案件の識別は社内No.で出す（案件品番は社内No.と紛らわしいため画面には出さない）
+        const info = (j.orderNo?'<b>'+esc(j.orderNo)+'</b> ':'')+esc(j.partName)+'（'+esc(procLabel(j))+'）'+(j.customer?'　'+esc(j.customer):'');
         return '<div class="unassignedItem">'
           + '<span class="uiInfo">'+info+'</span>'
           + '<span class="uiForm">'
@@ -709,7 +710,7 @@ window.ProcGantt = (function(){
         const procId = deleteBtn.dataset.procid;
         const productNo = deleteBtn.dataset.productno;
         const job = jobs.find(j=>j.procId===procId);
-        const label = job ? ((job.productNo?job.productNo+' ':'')+job.partName+'（'+esc(procLabel(job))+'）') : 'この工程';
+        const label = job ? ((job.orderNo?job.orderNo+' ':'')+job.partName+'（'+esc(procLabel(job))+'）') : 'この工程';
         if(!window.confirm(label+'を削除します。作業票・個別日程表など他の画面からもこの工程が消えます（日程未設定に戻すのではなく完全に削除します）。よろしいですか？')) return;
         const snapshot = deleteProcess(productNo, procId);
         render();

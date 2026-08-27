@@ -397,13 +397,15 @@
   if(!state || !state.order){
     emptyState.style.display = 'block';
     emptyState.textContent = urlProductNo
-      ? '社内No.「'+urlProductNo+'」の作業票データが見つかりません。先に作業票側でデータを保存してください。'
-      : 'このページは作業票の「作業票を印刷 →」から開いてください（社内No.の指定が必要です）。';
+      ? 'この案件（'+urlProductNo+'）の作業票データが見つかりません。先に作業票側でデータを保存してください。'
+      : 'このページは作業票の「作業票を印刷 →」から開いてください。';
     return;
   }
 
-  pageNameEl.textContent = '作業票印刷（社内No.：'+urlProductNo+'）';
   const order = state.order;
+  // ここは「社内No.」と書きながら中身は案件品番（productNo）を出していた。
+  // 案件の識別は社内No.に統一するため、本当の社内No.を出す（未入力なら付けない）。
+  pageNameEl.textContent = '作業票印刷' + (order.orderNo ? '（社内No.：'+order.orderNo+'）' : '');
   const parts = state.parts || [];
 
   // ---- 全部品を対象にする（枝番「000」＝ASSY・組付/検査の行は現物でも個別の作業票が無いため対象外） ----

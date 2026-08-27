@@ -1268,14 +1268,17 @@
   const orderCardEl = document.getElementById('orderCard');
   function renderOrderCard(){
     if(!handoff) return;
-    if(pageNameEl) pageNameEl.textContent = '個別日程表（品番：' + urlProductNo + '）';
+    // 利用者向けの案件識別は「社内No.」に統一する（案件品番は社内No.と紛らわしいため画面には出さない）。
+    // 品番そのもの（urlProductNo）は、データを読む鍵・戻り先URLの組み立てに今までどおり使っている。
+    if(pageNameEl) pageNameEl.textContent = '個別日程表' + ((buhinState.order && buhinState.order.orderNo) ? '（社内No.：' + buhinState.order.orderNo + '）' : '');
     if(!orderCardEl) return;
     const o = buhinState.order || {};
     const shipBadge = o.shipDate ? ('発送：' + o.shipDate.slice(5).replace('-','/')) : '発送：未定';
     const dueBadge = o.dueDate ? ('納期：' + o.dueDate.slice(5).replace('-','/')) : '納期：未定';
     orderCardEl.innerHTML =
-      '<div><div class="oMeta">品番</div><div class="oNo">'+esc(urlProductNo)+'</div></div>'
-      + (o.orderNo ? '<div><div class="oMeta">社内№</div><div class="oModel">'+esc(o.orderNo)+'</div></div>' : '')
+      // 案件品番の欄は出さない（社内No.と紛らわしいため）。社内No.は案件の顔になるので、
+      // 未入力でも欄ごと消えないように常に出す（以前は orderNo がある時だけ出していた）。
+      '<div><div class="oMeta">社内№</div><div class="oNo">'+esc(o.orderNo||'-')+'</div></div>'
       + '<div><div class="oMeta">型式・図番</div><div class="oModel">'+esc(o.model||'-')+'</div></div>'
       + '<div><div class="oMeta">客先</div><div class="oModel">'+esc(o.customer||'-')+'</div></div>'
       + '<div><div class="oMeta">作成日</div><div class="oModel">'+esc(o.createdDate ? o.createdDate.slice(5).replace('-','/') : '-')+'</div></div>'

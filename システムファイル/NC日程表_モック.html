@@ -642,7 +642,7 @@
           if(/^NC[1-5]?$/.test(proc.code) && proc.date){
             const ov = dateOverrides[proc.id];
             jobs.push({
-              productNo: bs.order.productNo || '', customer: bs.order.customer || '',
+              productNo: bs.order.productNo || '', orderNo: bs.order.orderNo || '', customer: bs.order.customer || '',
               partId: part.id, partName: part.name || '', subNo: part.subNo || '',
               // 工程名の表示は「工程記号＋識別BOX」で揃える（作業票・個別日程表・残品表・実績入力と同じ規則）。
               // 以前はここで備考(note)を工程名へ連結していたが、識別BOX(ident)を入れる前の名残なので取りやめた。
@@ -721,7 +721,8 @@
       data[key].push({
         id:'proc_'+job.procId, procId: job.procId, productNo: job.productNo, code: job.code,
         start: Math.max(1, endUnit-widthInQuarterUnits+1), end: endUnit,
-        label: (job.customer?job.customer+' ':'')+(job.productNo?job.productNo+' ':'')+job.partName+'（'+job.code+(job.ident||'')+'）',
+        // 案件の識別は社内No.で出す（案件品番は社内No.と紛らわしいため画面には出さない）
+        label: (job.customer?job.customer+' ':'')+(job.orderNo?job.orderNo+' ':'')+job.partName+'（'+job.code+(job.ident||'')+'）',
         customer: job.customer
       });
     });
@@ -954,7 +955,8 @@
       const custPart = j.customer ? '　'+esc(j.customer) : '';
       const identPart = j.ident ? esc(j.ident) : '';
       return '<div class="unassignedItem">'
-        + '<span>'+(j.productNo?'<b>'+esc(j.productNo)+'</b> ':'')+esc(j.partName)+'（'+esc(j.code)+identPart+'）　'+esc(dateShort)+custPart+'</span>'
+        // 案件の識別は社内No.で出す（案件品番は社内No.と紛らわしいため画面には出さない）
+        + '<span>'+(j.orderNo?'<b>'+esc(j.orderNo)+'</b> ':'')+esc(j.partName)+'（'+esc(j.code)+identPart+'）　'+esc(dateShort)+custPart+'</span>'
         + '<button type="button" class="uiAssignBtn" data-role="assignBtn" data-procid="'+esc(j.procId)+'">配置する</button>'
         + '</div>';
     }).join('');
@@ -966,7 +968,7 @@
     pendingAssign = job;
     document.getElementById('placementBanner').style.display = 'flex';
     document.getElementById('placementBannerText').textContent =
-      (job.productNo?job.productNo+' ':'')+job.partName+'（'+job.code+(job.ident||'')+'）を、現在表示中の「'+currentCode+'」タブのどの機械の行に配置しますか？行をクリックしてください。';
+      (job.orderNo?job.orderNo+' ':'')+job.partName+'（'+job.code+(job.ident||'')+'）を、現在表示中の「'+currentCode+'」タブのどの機械の行に配置しますか？行をクリックしてください。';
   }
   function cancelPlacement(){
     pendingAssign = null;

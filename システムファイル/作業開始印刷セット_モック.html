@@ -104,8 +104,8 @@
     const bs = P.loadBs(productNo);
     const o = (bs && bs.order) || {};
     infoGrid.innerHTML =
-      '<div class="k">対象品番</div><div class="v">'+P.esc(productNo)+'</div>'
-      + '<div class="k">社内No.</div><div class="v">'+P.esc(o.orderNo||'-')+'</div>'
+      // 案件品番の行は出さない（社内No.と紛らわしいため）。品番は画面を開く鍵として今までどおり使う。
+      '<div class="k">社内No.</div><div class="v">'+P.esc(o.orderNo||'-')+'</div>'
       + '<div class="k">客先</div><div class="v">'+P.esc(o.customer||'-')+'</div>'
       + '<div class="k">品名</div><div class="v">'+P.esc(o.itemName||'-')+'</div>';
 

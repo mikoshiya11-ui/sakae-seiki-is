@@ -199,17 +199,17 @@
       <b>工程が終わったこと</b>と<b>実績の詳細（工数・数量など）</b>は別々に扱います。<br>
       ① 現場から回ってきたバーコード票を読み取り、「<b>この工程を完了にする</b>」を押す ⇒ その工程が完了になり、工程残品表から消えます。工数を入れていなくても完了します。<br>
       ② 工数・数量・良否・設備などの<b>実績詳細</b>は、紙を見ながら<b>後から</b>下の欄で入力します（何度でも追加できます）。<br>
-      バーコードリーダーが無い場合は「品番から選ぶ」で手動でも対象を選べます。すでに印刷済みの古いバーコードもそのまま読めます。
+      バーコードリーダーが無い場合は「社内No.から選ぶ」で手動でも対象を選べます。すでに印刷済みの古いバーコードもそのまま読めます。
     </div>
 
     <div class="scanCard">
       <span class="scanLabel">📷 ここにカーソルを置いてバーコードを読み取ってください</span>
       <input type="text" id="scanInput" placeholder="バーコードをスキャン（テスト時は P+工程ID、または旧形式の 社内No.-工程コード を入力してEnter）" autocomplete="off">
-      <button type="button" class="manualToggleBtn" id="manualToggleBtn">品番から選ぶ（手動）</button>
+      <button type="button" class="manualToggleBtn" id="manualToggleBtn">社内No.から選ぶ（手動）</button>
     </div>
 
     <div class="manualCard" id="manualCard">
-      <div class="mField"><label>品番</label>
+      <div class="mField"><label>社内No.</label>
         <select id="manualProduct"><option value="">選択してください</option></select>
       </div>
       <div class="mField"><label>部品</label>
@@ -497,8 +497,8 @@
   function renderCurInfo(){
     if(!current){
       curInfoEl.innerHTML =
-        '<div class="ciItem"><span class="ciLabel">品番（案件）</span><span class="ciVal muted">―</span></div>'
-        + '<div class="ciItem"><span class="ciLabel">社内No.</span><span class="ciVal muted">―</span></div>'
+        // 案件品番の行は出さない（社内No.と紛らわしいため）。突き合わせには今までどおり productNo を使う。
+        '<div class="ciItem"><span class="ciLabel">社内No.</span><span class="ciVal muted">―</span></div>'
         + '<div class="ciItem"><span class="ciLabel">部品名</span><span class="ciVal muted">―</span></div>'
         + '<div class="ciItem"><span class="ciLabel">工程記号</span><span class="ciVal muted">バーコードを読み取ってください</span></div>'
         + '<div class="ciItem"><span class="ciLabel">識別BOX</span><span class="ciVal muted">―</span></div>'
@@ -507,8 +507,7 @@
       return;
     }
     curInfoEl.innerHTML =
-      '<div class="ciItem"><span class="ciLabel">品番（案件）</span><span class="ciVal">'+esc(current.productNo||'―')+'</span></div>'
-      + '<div class="ciItem"><span class="ciLabel">社内No.</span><span class="ciVal">'+esc(current.displayNo||current.productNo)+'</span></div>'
+      '<div class="ciItem"><span class="ciLabel">社内No.</span><span class="ciVal">'+esc(current.displayNo||current.productNo)+'</span></div>'
       + '<div class="ciItem"><span class="ciLabel">部品名</span><span class="ciVal">'+esc(current.partCode)+' '+esc(current.partName)+'</span></div>'
       + '<div class="ciItem"><span class="ciLabel">工程記号</span><span class="ciVal">'+esc(current.processCode||'―')+'</span></div>'
       + '<div class="ciItem"><span class="ciLabel">識別BOX</span><span class="ciVal ident">'+esc(current.processIdent||'―')+'</span></div>'
@@ -547,7 +546,7 @@
 
   if(doneBtn){
     doneBtn.addEventListener('click', ()=>{
-      if(!current){ alert('先にバーコードを読み取るか、品番から選んでください。'); focusScan(); return; }
+      if(!current){ alert('先にバーコードを読み取るか、社内No.から選んでください。'); focusScan(); return; }
       if(isDoneByBarcode(current.procId) || isDoneByLog(current.procId)){
         alert('この工程はすでに完了しています。');
         renderDoneRow();
@@ -664,7 +663,8 @@
   function populateManualProducts(){
     manualProductsCache = scanAllProducts();
     manualProductSel.innerHTML = '<option value="">選択してください</option>'
-      + manualProductsCache.map(bs=>'<option value="'+esc(bs.order.productNo)+'">'+esc(bs.order.productNo)+'　'+esc(bs.order.model||'')+'（'+esc(bs.order.customer||'')+'）</option>').join('');
+      // 選択肢の value は今までどおり案件品番（productNo）。見出しに出すのは社内No.にそろえる。
+      + manualProductsCache.map(bs=>'<option value="'+esc(bs.order.productNo)+'">'+esc(bs.order.orderNo||'')+'　'+esc(bs.order.model||'')+'（'+esc(bs.order.customer||'')+'）</option>').join('');
     manualPartSel.innerHTML = '<option value="">－</option>';
     manualProcSel.innerHTML = '<option value="">－</option>';
   }
@@ -691,7 +691,7 @@
     const bs = manualProductsCache.find(b=>b.order.productNo===manualProductSel.value);
     const part = bs && (bs.parts||[]).find(p=>p.id===manualPartSel.value);
     const proc = part && (part.processes||[]).find(p=>p.id===manualProcSel.value);
-    if(!bs || !part || !proc){ alert('品番・部品・工程をすべて選んでください。'); return; }
+    if(!bs || !part || !proc){ alert('社内No.・部品・工程をすべて選んでください。'); return; }
     closeCandidates();
     setCurrentFromMatch(makeMatch(bs, part, proc), '手動選択');
     manualCard.classList.remove('open');
@@ -714,7 +714,7 @@
   function numOrZero(el){ const v = Number(el.value); return isFinite(v) ? v : 0; }
 
   function commitEntry(){
-    if(!current){ alert('先にバーコードを読み取るか、品番から選んでください。'); focusScan(); return; }
+    if(!current){ alert('先にバーコードを読み取るか、社内No.から選んでください。'); focusScan(); return; }
     const entry = {
       id: uid(),
       date: dateInput.value || todayStr(),
@@ -789,7 +789,7 @@
       return;
     }
     logListArea.innerHTML = '<table class="logTable"><thead><tr>'
-      + '<th>日付</th><th>社員No</th><th>品番</th><th>客先／型式</th><th>部品</th><th>工程</th>'
+      + '<th>日付</th><th>社員No</th><th>社内No.</th><th>客先／型式</th><th>部品</th><th>工程</th>'
       + '<th>段取</th><th>有人</th><th>無人</th><th>夜間</th><th>数量</th><th>良否</th>'
       + '<th>設備</th><th>その他</th><th>状況</th><th></th>'
       + '</tr></thead><tbody>'

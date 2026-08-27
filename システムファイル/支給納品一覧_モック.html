@@ -602,7 +602,7 @@
     let html = '<tr class="prodRow" data-pn="'+esc(p.productNo)+'">';
     html += '<td '+fx('exp')+'><button type="button" class="expBtn" data-role="toggleExp" title="'+(open?'たたむ':'開く')+'">'+(open?'▼':'▶')+'</button></td>';
     html += '<td '+fx('orderNo')+'><span class="prodNo">'+esc(p.orderNo || p.productNo)+'</span>'
-      + (p.orderNo && p.orderNo!==p.productNo ? '<span class="prodSub">品番 '+esc(p.productNo)+'</span>' : '')
+      // 案件品番の副表示はやめる（社内No.と紛らわしいため）。並べ替え・保存には今までどおり productNo を使う。
       + (!p.orderNo ? '<span class="prodSub">社内No.未入力</span>' : '')
       + '</td>';
     html += '<td '+fx('customer')+'>'+esc(p.customer||'-')+'</td>';
