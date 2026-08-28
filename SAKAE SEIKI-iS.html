@@ -708,12 +708,115 @@
 
   function uid(){ return Math.random().toString(36).slice(2,9); }
 
-  function loadRecords(){
+  // ---- 削除の墓標（消したという事実を、全端末で永続的に覚えておく）----
+  // 案件を消しても、削除を知らない端末が古い一覧や古い案件データを後から送ってくると復活していた。
+  // 同期の仕組みからは「消えた」と「まだ送っていない」の区別が付かないため、
+  // 消えたことを「値」として残す必要がある。それがこの墓標。
+  //
+  //   削除イベント   sakaeIS_deletedRecord_v1_<recordId>_<deletionId>
+  //                  { recordId, productNo, deletionId, at }
+  //   取消イベント   sakaeIS_deletedRecordUndo_v1_<recordId>_<deletionId>
+  //                  { recordId, deletionId, at }
+  //
+  // どちらも「起きた事実」を1件1キーで置くだけで、書き換えも削除もしない（足すだけ）。
+  // まとめて1つの台帳にすると、古い台帳を持った端末がそれをまるごと上書きして
+  // 事実を消してしまう（案件一覧が配列まるごと1キーで上書きされて復活するのと同じ失敗）。
+  // 同じキーに後から書き足す形（例：取消の印を同じキーへ書き戻す）も、
+  // 古い端末が同じキーの古い値を送り直すと取消そのものが巻き戻るため採らない。
+  //
+  //   ★削除が効いているのは「削除イベントがあり、同じ recordId ＋ deletionId の取消イベントが無い」ときだけ。
+  //   ★deletionId は削除1回ごとに新しく作る。削除→取消→もう一度削除、では2回目は別の deletionId になり、
+  //     1回目の取消イベントは2回目の削除を邪魔しない。
+  //   ★判定に使うのは recordId と deletionId だけ。
+  //   ★productNo（＝社内No.）は、削除済み案件の古いデータキーを初回同期で送り返さないための
+  //     補助情報としてだけ使う（_sakaeSync.js 側）。同じ社内No.の新しい案件を巻き込まないため。
+  //   ★at は診断・監査用で、どちらが新しいかの判定には一切使わない（端末の時計ずれを持ち込まない）。
+  const TOMB_PREFIX = 'sakaeIS_deletedRecord_v1_';
+  const TOMB_UNDO_PREFIX = 'sakaeIS_deletedRecordUndo_v1_';
+  function tombKey(recordId, deletionId){ return TOMB_PREFIX + recordId + '_' + deletionId; }
+  function tombUndoKey(recordId, deletionId){ return TOMB_UNDO_PREFIX + recordId + '_' + deletionId; }
+  function isTombEventKey(key){
+    return !!key && (key.indexOf(TOMB_PREFIX)===0 || key.indexOf(TOMB_UNDO_PREFIX)===0);
+  }
+  // キー名から recordId と deletionId を取り出す（どちらも英数字だけなので最初の「_」で切れる）
+  function splitEventKey(key, prefix){
+    const rest = key.slice(prefix.length);
+    const i = rest.indexOf('_');
+    if(i < 1 || i === rest.length-1) return null;
+    return { recordId: rest.slice(0, i), deletionId: rest.slice(i+1) };
+  }
+  // いま効いている削除だけを集める（取消イベントのあるものは除く）
+  function activeDeletions(){
+    const dels = [];        // { recordId, deletionId, productNo }
+    const undone = new Set();
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(!k) continue;
+      if(k.indexOf(TOMB_UNDO_PREFIX)===0){
+        const p = splitEventKey(k, TOMB_UNDO_PREFIX);
+        if(p) undone.add(p.recordId + '_' + p.deletionId);
+      }else if(k.indexOf(TOMB_PREFIX)===0){
+        const p = splitEventKey(k, TOMB_PREFIX);
+        if(!p) continue;
+        let productNo = '';
+        try{ const v = JSON.parse(localStorage.getItem(k)); if(v && v.productNo) productNo = String(v.productNo); }catch(e){}
+        dels.push({ recordId: p.recordId, deletionId: p.deletionId, productNo: productNo });
+      }
+    }
+    return dels.filter(d=> !undone.has(d.recordId + '_' + d.deletionId));
+  }
+  function tombIds(){
+    const s = new Set();
+    activeDeletions().forEach(d=> s.add(d.recordId));
+    return s;
+  }
+  // 削除が効いている案件を落とす。records・storageイベント・同期・JSON読込のどこから来ても必ずここを通す。
+  function dropTombed(list){
+    const arr = Array.isArray(list) ? list : [];
+    const t = tombIds();
+    if(!t.size) return arr;
+    return arr.filter(r=> !(r && t.has(r.id)));
+  }
+  // 削除イベントを1件書く。戻り値はこの削除の deletionId（「元に戻す」で使う）
+  function writeTomb(rec){
+    const deletionId = uid();
+    localStorage.setItem(tombKey(rec.id, deletionId), JSON.stringify({
+      recordId: rec.id, productNo: rec.productNo || '', deletionId: deletionId, at: new Date().toISOString()
+    }));
+    return deletionId;
+  }
+  // 取消イベントを1件書く。削除イベントは消さない（消すと古い端末から再投入されて復活してしまう）
+  function writeTombUndo(recordId, deletionId){
+    localStorage.setItem(tombUndoKey(recordId, deletionId), JSON.stringify({
+      recordId: recordId, deletionId: deletionId, at: new Date().toISOString()
+    }));
+  }
+  // いま効いている削除が持つ社内No.の一覧。JSON読込のときに、消した案件のデータまで書き戻さないために使う。
+  function tombedProductNos(){
+    const s = new Set();
+    activeDeletions().forEach(d=>{ if(d.productNo) s.add(d.productNo); });
+    return s;
+  }
+  // 案件ごとのデータキーかどうかを、productDataKeys() から作った前方一致で判定する
+  // （判定の元を1か所にしておき、対象キーが増えた時に食い違わないようにする）
+  function productNoOfDataKey(key){
+    const prefixes = productDataKeys('#').map(k=> k.slice(0, k.length-1));
+    for(let i=0;i<prefixes.length;i++){
+      if(key.indexOf(prefixes[i])===0) return key.slice(prefixes[i].length);
+    }
+    return '';
+  }
+  // 保存されている一覧をそのまま読む（墓標で絞らない）。墓標が取り消された時に元の内容へ戻すために使う。
+  function loadRecordsRaw(){
     try{
       const raw = localStorage.getItem(STORAGE_KEY);
-      if(raw) return JSON.parse(raw);
+      if(raw){ const a = JSON.parse(raw); if(Array.isArray(a)) return a; }
     }catch(e){}
     return [];
+  }
+
+  function loadRecords(){
+    return dropTombed(loadRecordsRaw());
   }
   // ---- 自分がこの画面で案件一覧を変更した回数。増えるだけの番号 ----
   // 「届いた内容を取り込んでよいか」を、localStorage ではなくこの番号で判断する。
@@ -931,9 +1034,34 @@
         + 'こちらの内容はそのまま保存しています。相手の変更を見るには画面を読み込み直してください。');
       return;
     }
-    try{ records = JSON.parse(e.newValue); }catch(err){ return; }
+    // 墓標のある案件は、届いた一覧に入っていても取り込まない（表示も再保存もしない）。
+    // 保存先そのものは書き換えない。書き換えてしまうと、別の端末で「元に戻す」が行われて
+    // 墓標が取り消された時に、戻すべき内容がこの端末から失われるため。
+    try{ records = dropTombed(JSON.parse(e.newValue)); }catch(err){ return; }
     remoteBaseSeq = editSeq;   // いま取り込んだ内容が新しい基準になる
     render();
+  });
+
+  // ---- 削除イベント／取消イベントが他の端末から届いた時に、この画面へ反映する ----
+  // 届くたびに「いま効いている削除」を数え直し、消すべきものを消し、戻すべきものを戻す。
+  // 戻す時の中身は保存されている一覧から拾う（受信のたびに一覧を上書きしていないので残っている）。
+  function reconcileTombs(){
+    const active = tombIds();
+    let changed = false;
+    const before = records.length;
+    records = records.filter(r=> !(r && active.has(r.id)));
+    if(records.length !== before) changed = true;
+    loadRecordsRaw().forEach(r=>{
+      if(!r || !r.id || active.has(r.id)) return;
+      if(records.some(x=> x && x.id === r.id)) return;
+      records.unshift(r);
+      changed = true;
+    });
+    if(changed) render();
+  }
+  window.addEventListener('storage', (e)=>{
+    if(!isTombEventKey(e.key)) return;
+    reconcileTombs();
   });
 
   function seedRecords(){
@@ -1205,10 +1333,19 @@
       }
       const importCount = data.records.length;
       if(!window.confirm(importCount+'件の案件を読み込みます。\n今この画面にある案件は全部消えて、ファイルの内容にまるごと入れ替わります。よろしいですか？')) return;
-      records = data.records.slice();
+      // 墓標のある案件は、書き出した当時の内容が入っていても復活させない。
+      // JSON読込は「データの復元」であって「削除の取り消し」ではないため。
+      records = dropTombed(data.records.slice());
       saveRecords();
       if(data.linkedData){
+        // 消した案件のデータは書き戻さない。カードを出さずにデータだけ戻すと、
+        // 残品表や各工程の日程表に持ち主のいない行が出るため。
+        // ただし同じ社内No.を今の案件が使っているなら、それは今の案件のデータなので書き戻す。
+        const tombedNos = tombedProductNos();
+        const livingNos = new Set(records.map(r=> r && r.productNo).filter(Boolean).map(String));
         Object.keys(data.linkedData).forEach(key=>{
+          const no = productNoOfDataKey(key);
+          if(no && tombedNos.has(no) && !livingNos.has(no)) return;
           localStorage.setItem(key, data.linkedData[key]);
         });
       }
@@ -1216,7 +1353,7 @@
       filterMode = 'all';
       quickLinks.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b.dataset.filter==='all'));
       render();
-      alert(importCount+'件の案件を読み込みました。');
+      alert(records.length+'件の案件を読み込みました。');
     };
     reader.readAsText(file);
   });
@@ -1239,15 +1376,26 @@
       const v = localStorage.getItem(k);
       if(v != null) dataSnapshot[k] = v;
     });
+    // ---- 順序厳守：墓標を先に作ってから、これまでどおりの削除を行う ----
+    // 削除は押した時点で全端末へ届く。墓標を後回しにすると「削除だけ配られて墓標が無い」時間ができ、
+    // その間に他の端末が古い一覧を送ると復活する。画面を閉じればその墓標は永久に作られない。
+    const deletionId = writeTomb(rec);
     records = records.filter(r=>r.id!==id);
     saveRecords();
     dataKeys.forEach(k=> localStorage.removeItem(k));
     render();
     showUndo(label+'を削除しました', ()=>{
+      // ---- 順序厳守：先に「この削除を取り消した」という事実を書いてから戻す ----
+      // 逆にすると、戻した直後に自分の削除イベントでまた消える。
+      // 削除イベント自体は消さない。消すと、それを持っている端末が後日つないだ時に
+      // 送り直して、取り消したはずの削除がもう一度効いてしまうため。
+      writeTombUndo(id, deletionId);
       records.splice(Math.min(idx, records.length), 0, snapshot);
       saveRecords();
       Object.keys(dataSnapshot).forEach(k=> localStorage.setItem(k, dataSnapshot[k]));
       render();
+      // 戻したことを他の端末へすぐ伝える（500msまとめ送信を待たない）
+      if(window.sakaeSyncFlush){ try{ window.sakaeSyncFlush(); }catch(err){} }
     });
   }
 

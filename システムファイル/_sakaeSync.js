@@ -27,6 +27,56 @@
   const KEY_PREFIX = 'sakaeIS_';
   const LOGIN_PAGE = _sakaePathTo('ログイン.html');
 
+  // ---- 削除の墓標 ----
+  // 削除された案件を全端末で永続的に覚えておくためのキー（案件1件につき1キー）。
+  // 中身の意味づけと作成・取り消しは SAKAE SEIKI-iS.html 側にあり、ここでやるのは次の2つだけ。
+  //   ① 初回同期では墓標を最初に取り込む（あとの判断がすべて墓標の上で行われるようにする）
+  //   ② 墓標のある案件の古いデータキーを、共有側へ送り返さない
+  // ②が必要なのは、下の initialSync が「共有に無い＝まだ送っていない」と決め打っているため。
+  // 削除で消したキーと、まだ送っていないキーが区別できず、削除を知らない端末が
+  // ページを開いただけで消したはずのデータを共有へ戻していた。
+  const TOMB_PREFIX = 'sakaeIS_deletedRecord_v1_';
+  const TOMB_UNDO_PREFIX = 'sakaeIS_deletedRecordUndo_v1_';
+  const RECORDS_KEY = 'sakaeIS_records_v1';
+  // 案件（社内No.）ごとに作られるキーの一覧。SAKAE SEIKI-iS.html の productDataKeys() と同じ並び。
+  // 「末尾が社内No.かどうか」で判定すると sakaeIS_ncGanttMock_bars_v1_<工程コード> のような
+  // 案件と無関係のキーまで巻き込むため、必ずこの明示リストの前方一致で判定する。
+  const PRODUCT_KEY_PREFIXES = [
+    'sakaeIS_buhinhyoMock_v1_',
+    'sakaeIS_kobetsuMock_memos_v1_',
+    'sakaeIS_kobetsuMock_view_v1_',
+    'sakaeIS_kobetsuMock_rowcounts_v1_',
+    'sakaeIS_kobetsuMock_laneassign_v1_',
+    'sakaeIS_kobetsuMock_legacybars_v1_',
+    'sakaeIS_kobetsuMock_checks_v1_',
+    'sakaeIS_kobetsuMock_confirm_v1_',
+    'sakaeIS_shikyuNouhinBoard_v2_'
+  ];
+  // 削除イベントと取消イベントの両方をまとめて「墓標の記録」として扱う
+  function isTombKey(key){
+    return typeof key === 'string'
+      && (key.indexOf(TOMB_PREFIX) === 0 || key.indexOf(TOMB_UNDO_PREFIX) === 0);
+  }
+  function splitEventKey(key, prefix){
+    const rest = key.slice(prefix.length);
+    const i = rest.indexOf('_');
+    if(i < 1 || i === rest.length-1) return null;
+    return { recordId: rest.slice(0, i), deletionId: rest.slice(i+1) };
+  }
+  function productNoOfKey(key){
+    for(let i=0;i<PRODUCT_KEY_PREFIXES.length;i++){
+      const p = PRODUCT_KEY_PREFIXES[i];
+      if(key.indexOf(p) === 0) return key.slice(p.length);
+    }
+    return '';
+  }
+  function parseRecordList(v){
+    try{
+      const a = (typeof v === 'string') ? JSON.parse(v) : v;
+      return Array.isArray(a) ? a : [];
+    }catch(e){ return []; }
+  }
+
   // ---- ページ上のどこにあっても、システムファイル直下の共通ファイルを指せるようにする ----
   function _sakaePathTo(filename){
     // このスクリプト自身のsrc（システムファイル直下 or 各工程の日程表からの相対パス）から、
@@ -266,18 +316,82 @@
   }
 
   // ---- 初回：Supabase側にある分は取り込み、Supabaseにまだ無い（＝このブラウザにしか無い）分は送る ----
+  // 順序を必ず「墓標を取り込む → 墓標を確定 → それ以外を取り込む → 生きている社内No.を出す → 送る」にする。
+  // 長い間つないでいなかった端末が、削除を知らないまま古い案件データを持って戻ってきても、
+  // 先に墓標を読んでいれば「これは消された案件だ」と分かり、共有へ送り返さずに済む。
   async function initialSync(){
     const { data, error } = await sb.from('kv_store').select('key, value');
     if(error){ console.warn('[sakaeSync] 初回取得に失敗:', error); return; }
+    const rows = data || [];
     const remoteKeys = new Set();
-    (data||[]).forEach(row=>{ remoteKeys.add(row.key); applyRemoteRow(row); });
+    rows.forEach(row=> remoteKeys.add(row.key));
 
-    for(let i=0;i<localStorage.length;i++){
-      const key = localStorage.key(i);
-      if(isSyncKey(key) && !remoteKeys.has(key)){
-        pushKey(key, localStorage.getItem(key));
+    // ① 墓標を最初に取り込む
+    rows.forEach(row=>{ if(isTombKey(row.key)) applyRemoteRow(row); });
+
+    // ② いま効いている削除を確定する（①で取り込んだ分＋この端末に元からある分）。
+    //    削除イベントがあり、同じ recordId ＋ deletionId の取消イベントが無いものだけが効いている。
+    const tombRecordIds = new Set();
+    const tombProductNos = new Set();
+    {
+      const dels = [];
+      const undone = new Set();
+      for(let i=0;i<localStorage.length;i++){
+        const k = localStorage.key(i);
+        if(!k) continue;
+        if(k.indexOf(TOMB_UNDO_PREFIX) === 0){
+          const p = splitEventKey(k, TOMB_UNDO_PREFIX);
+          if(p) undone.add(p.recordId + '_' + p.deletionId);
+        }else if(k.indexOf(TOMB_PREFIX) === 0){
+          const p = splitEventKey(k, TOMB_PREFIX);
+          if(!p) continue;
+          let productNo = '';
+          try{ const v = JSON.parse(localStorage.getItem(k)); if(v && v.productNo) productNo = String(v.productNo); }catch(e){}
+          dels.push({ recordId: p.recordId, deletionId: p.deletionId, productNo: productNo });
+        }
       }
+      dels.forEach(d=>{
+        if(undone.has(d.recordId + '_' + d.deletionId)) return;
+        tombRecordIds.add(d.recordId);
+        if(d.productNo) tombProductNos.add(d.productNo);
+      });
     }
+
+    // ③ 墓標以外を取り込む（案件一覧から墓標のある案件を外すのは各ページ側の役目）
+    rows.forEach(row=>{ if(!isTombKey(row.key)) applyRemoteRow(row); });
+
+    // ④ いま生きている案件が使っている社内No.を集める。
+    //    共有側とこの端末の両方から集めるのは、この端末で作ったばかりでまだ共有に無い案件を守るため。
+    //    社内No.が作り直されている場合は、その社内No.のデータを止めてはいけない。
+    const livingProductNos = new Set();
+    const remoteRecordsRow = rows.filter(r=> r.key === RECORDS_KEY)[0];
+    parseRecordList(remoteRecordsRow && remoteRecordsRow.value)
+      .concat(parseRecordList(localStorage.getItem(RECORDS_KEY)))
+      .forEach(r=>{
+        if(r && r.productNo && !tombRecordIds.has(r.id)) livingProductNos.add(String(r.productNo));
+      });
+
+    // ⑤ 共有側にまだ無いものを送る。
+    //    applyRemoteDelete でこの端末のキーを消すので、先に一覧を作ってから回す。
+    const localKeys = [];
+    for(let i=0;i<localStorage.length;i++) localKeys.push(localStorage.key(i));
+    localKeys.forEach(key=>{
+      if(!isSyncKey(key) || remoteKeys.has(key)) return;
+      if(isTombKey(key)){
+        // 削除イベントも取消イベントも必ず全員へ伝える。
+        // つないでいなかった端末で起きた削除・取り消しを、確実に全員へ届けるため。
+        // 古い削除イベントが後から届いても、取消イベントが残っているので再削除にはならない。
+        pushKey(key, localStorage.getItem(key));
+        return;
+      }
+      const productNo = productNoOfKey(key);
+      if(productNo && tombProductNos.has(productNo) && !livingProductNos.has(productNo)){
+        // 消された案件の古いデータ。送り返さず、この端末からも消す
+        applyRemoteDelete(key);
+        return;
+      }
+      pushKey(key, localStorage.getItem(key));
+    });
   }
 
   // ---- 以後は他の人の更新をリアルタイムに受け取る ----
