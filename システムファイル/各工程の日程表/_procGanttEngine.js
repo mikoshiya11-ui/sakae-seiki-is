@@ -328,6 +328,8 @@ window.ProcGantt = (function(){
               // 分類（この日程表に出るかどうか）は上の proc.code === CODE だけで決まる。
               // ident は同じ工程記号の中で見分けるための文字で、表示にだけ使う（例：MI＋2オモテ → MI2オモテ）。
               procId: proc.id, code: proc.code, ident: proc.ident || '',
+              // 工数の正本は作業票データの processes[].hours。この画面はそれを読むだけで、独自には持たない。
+              hours: (proc.hours == null) ? '' : String(proc.hours),
               date: (ov ? ov.date : proc.date) || '',
               ampm: (ov ? ov.ampm : proc.ampm) || 'AM',
               days: (ov && ov.days != null) ? ov.days : (proc.days || 3),
@@ -518,8 +520,12 @@ window.ProcGantt = (function(){
 
     function colValHtml(job, col){
       if(col.editable){
-        const val = (extra[job.procId] && extra[job.procId].manHour) || '';
-        return '<input data-field="manHour" data-procid="'+job.procId+'" value="'+esc(val)+'" placeholder="h">';
+        // ---- 工数は作業票データの processes[].hours が唯一の正本。
+        // 以前はこのページだけの仮項目（extra[procId].manHour）を読み書きしていたが、
+        // 個別日程表・残品表・作業票印刷と食い違うため正本へ一本化した。
+        // extra の古い値は消していないが、業務表示ではもう参照しない。 ----
+        return '<input data-field="manHour" data-procid="'+esc(job.procId)+'" data-productno="'+esc(job.productNo)+'"'
+          + ' value="'+esc(job.hours||'')+'" placeholder="h" title="予定工数（H）。作業票の工程データに保存されます">';
       }
       if(col.key === 'completeDeadline'){
         if(!job.deadline){
@@ -902,14 +908,45 @@ window.ProcGantt = (function(){
       cancelLabelPicker();
     });
 
-    // ---- 工数（ローカル仮項目）の直接編集 ----
-    ganttInner.addEventListener('input', (e)=>{
+    // ---- 工数の直接編集：作業票データの processes[].hours（正本）へ書く ----
+    // 打っている途中では保存しない（共有データを1文字ごとに書き換えないため）。欄から離れた時に1回だけ保存する。
+    // 0以上の数だけを受け付け、負数や数値でないものは保存せず元の値へ戻す。空欄は「未入力」として保存する。
+    function saveHoursToBuhin(productNo, procId, raw){
+      if(!productNo || !procId) return false;
+      const t = (raw==null ? '' : String(raw)).trim();
+      if(t !== ''){
+        const n = Number(t);
+        if(!isFinite(n) || n < 0) return false;
+      }
+      const key = 'sakaeIS_buhinhyoMock_v1_' + productNo;
+      let bs;
+      try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ return false; }
+      if(!bs) return false;
+      let hit = null;
+      (bs.parts||[]).forEach(part=>{
+        (part.processes||[]).forEach(pr=>{ if(pr && pr.id === procId) hit = pr; });
+      });
+      if(!hit) return false;
+      hit.hours = t;                       // 打った通りの文字列のまま（小数の桁を丸めない）
+      localStorage.setItem(key, JSON.stringify(bs));
+      return true;
+    }
+    ganttInner.addEventListener('change', (e)=>{
       const field = e.target.dataset.field;
       if(field !== 'manHour') return;
       const procId = e.target.dataset.procid;
-      extra[procId] = extra[procId] || {};
-      extra[procId].manHour = e.target.value;
-      saveExtra();
+      const productNo = e.target.dataset.productno;
+      const ok = saveHoursToBuhin(productNo, procId, e.target.value);
+      if(!ok){
+        window.alert('工数は0以上の数で入れてください（例：6、6.5、0）。空欄にすると未入力になります。');
+        const job = jobs.find(j=>j.procId === procId);
+        e.target.value = job ? (job.hours||'') : '';
+        e.target.focus();
+        return;
+      }
+      // 自分の操作の結果は、共有からの通知を待たずにその場で反映する
+      refreshJobs();
+      render();
     });
 
     render();

@@ -315,6 +315,15 @@
     font-size:14px; font-family:inherit; margin-bottom:9px;
   }
   .labelPicker input[type=text]:focus{ outline:none; border-color:#173a68; }
+  /* 工数（予定工数）。正本は作業票データの processes[].hours で、この画面はそこへ直接書く。 */
+  .lpHours{ display:flex; align-items:center; gap:6px; margin-bottom:9px; }
+  .lpHours label{ font-size:12px; font-weight:700; color:#5b6b84; flex:0 0 auto; }
+  .lpHours input{
+    flex:1 1 auto; min-width:0; box-sizing:border-box; border:1.5px solid #dfe4ec; border-radius:7px;
+    padding:7px 9px; font-size:14px; font-family:inherit;
+  }
+  .lpHours input:focus{ outline:none; border-color:#173a68; }
+  .lpHours .lpHoursUnit{ font-size:12px; font-weight:700; color:#5b6b84; flex:0 0 auto; }
   .lpList{ display:flex; flex-direction:column; gap:4px; max-height:230px; overflow-y:auto; overscroll-behavior:contain; }
   .lpItem{
     display:flex; align-items:center; gap:9px; border:1.5px solid transparent; border-radius:7px;
@@ -441,6 +450,14 @@
 
   <div class="labelPicker" id="labelPicker">
     <input type="text" id="lpInput" placeholder="工程名を入力 or 下から選択">
+    <div class="lpHours">
+      <label for="lpHoursInput">工数</label>
+      <!-- type="number" にすると、数字でない文字を打った瞬間にブラウザが欄を空にしてしまい、
+           「6.5x」と打ち間違えただけで工数が黙って消える。打った内容をそのまま受け取って
+           こちらで確かめられるよう、text にして inputmode だけ数字向けにしてある。 -->
+      <input type="text" id="lpHoursInput" inputmode="decimal" placeholder="未入力">
+      <span class="lpHoursUnit">H</span>
+    </div>
     <div id="lpGroups"></div>
     <div class="lpFoot">
       <div class="lpFootLeft">
@@ -1665,9 +1682,47 @@
     lpGroups.innerHTML = html;
   })();
 
+  // ---- 工数（予定工数）----
+  // 正本は作業票データの processes[].hours ひとつだけ。この画面はそこへ直接読み書きする。
+  // 工程の特定は必ず procId で行う（工程コードや配列の順番で探すと別の工程へ書いてしまう）。
+  const lpHoursInput = document.getElementById('lpHoursInput');
+  function findProcByBar(key, rangeId){
+    if(!handoff) return null;
+    const bar = (barsData[key]||[]).find(b=>b.id===rangeId);
+    if(!bar || !bar.procId) return null;
+    const pIdx = Number(String(key).split('_')[0]);
+    const part = PARTS[pIdx];
+    const bs = part && buhinState.parts.find(p=>p.id===part.partId);
+    if(!bs) return null;
+    return (bs.processes||[]).find(pr=>pr.id===bar.procId) || null;
+  }
+  // 入力された工数を保存できる形にそろえる。
+  //   空欄 → ''（未入力）。0 とは別の状態として扱う
+  //   0以上の数 → 打った通りの文字列のまま保存する（小数の桁を勝手に丸めない）
+  //   負数・数値でないもの → null を返す（＝保存しない）
+  function normalizeHoursInput(raw){
+    const t = (raw==null ? '' : String(raw)).trim();
+    if(t === '') return '';
+    const n = Number(t);
+    if(!isFinite(n) || n < 0) return null;
+    return t;
+  }
+  function readHoursInput(){
+    const v = normalizeHoursInput(lpHoursInput.value);
+    if(v === null){
+      window.alert('工数は0以上の数で入れてください（例：6、6.5、0）。空欄にすると未入力になります。');
+      lpHoursInput.focus();
+      lpHoursInput.select();
+      return null;
+    }
+    return v;
+  }
+
   function openLabelPicker(key, rangeId, currentLabel, anchorRect, isNew){
     lpTarget = { key, rangeId, isNew: !!isNew };
     lpInput.value = currentLabel || '';
+    const proc0 = isNew ? null : findProcByBar(key, rangeId);
+    lpHoursInput.value = (proc0 && proc0.hours != null) ? String(proc0.hours) : '';
     const pickerW = 300;
     let left = anchorRect.left;
     let top = anchorRect.bottom + 6;
@@ -1711,6 +1766,9 @@
     if(!checkEditable()){ cancelLabelPicker(); return; }
     const { key, rangeId, isNew } = lpTarget;
     const label = (newLabel||'').trim();
+    // 工数が不正なときは、工程名も含めて何も保存せずポップアップを開いたままにする
+    const hoursVal = readHoursInput();
+    if(hoursVal === null) return;
 
     if(handoff && isNew){
       // ドラッグで新規作成したバーに工程名を確定＝作業票側に新しい工程として追加する
@@ -1728,7 +1786,7 @@
         // 項目の持ち方は作業票側の仕様にそろえる（独自形式は作らない）。
         const { code: newCode, ident: newIdent } = splitLabelInput(label);
         const newProc = { id: uid(), code: newCode, ident: newIdent, machine:'', date: dateStr, note: '',
-                          ampm: d.isPM?'PM':'AM', hours:'', days: Math.max(1, bar.end - bar.start + 1) };
+                          ampm: d.isPM?'PM':'AM', hours: hoursVal, days: Math.max(1, bar.end - bar.start + 1) };
         bs.processes = bs.processes || [];
         bs.processes.push(newProc);
         const laneIdx = Number(key.split('_')[1]);
@@ -1760,6 +1818,8 @@
             const { code: newCode, ident: newIdent } = splitLabelInput(label);
             proc.code = newCode;
             proc.ident = newIdent;
+            // 工数の正本は processes[].hours。この工程（procId）だけを書き換える。
+            proc.hours = hoursVal;
           }
           saveBuhinState();
         }

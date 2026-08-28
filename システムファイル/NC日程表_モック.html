@@ -648,6 +648,8 @@
               // 以前はここで備考(note)を工程名へ連結していたが、識別BOX(ident)を入れる前の名残なので取りやめた。
               // 備考は作業票印刷の備考欄へ出す項目で、工程名には混ぜない。
               procId: proc.id, code: proc.code, ident: proc.ident || '', date: ov ? ov.date : proc.date, ampm: ov ? ov.ampm : (proc.ampm || 'AM'), note: proc.note || '',
+              // 工数の正本は作業票データの processes[].hours。この画面は読むだけ（入力欄は増やさない）。
+              hours: (proc.hours == null) ? '' : String(proc.hours),
               days: proc.days || 3 // 個別日程表と同じ「半日単位のバー長さ」。ここでの意味は暦日数ではなく半日コマ数（個別日程表のバー幅と揃えるため）
             });
           }
@@ -723,7 +725,8 @@
         start: Math.max(1, endUnit-widthInQuarterUnits+1), end: endUnit,
         // 案件の識別は社内No.で出す（案件品番は社内No.と紛らわしいため画面には出さない）
         label: (job.customer?job.customer+' ':'')+(job.orderNo?job.orderNo+' ':'')+job.partName+'（'+job.code+(job.ident||'')+'）',
-        customer: job.customer
+        customer: job.customer,
+        hours: job.hours || ''
       });
     });
     return data;
@@ -886,7 +889,9 @@
     const conflictCls = isConflict ? ' conflict' : '';
     const lightCls = isLinked ? '' : ' light';
     const ctxHint = '\n（右クリックで'+(isLinked?'割り当て解除':'編集・削除')+'メニュー）';
-    return '<div class="bar'+conflictCls+lightCls+'" data-range="'+bar.id+'" data-procid="'+(bar.procId||'')+'" style="left:'+left+'px;width:'+width+'px;background:'+color+';" title="'+esc(bar.label||'')+dateHint+ctxHint+conflictHint+'">'
+    // 工数（予定工数）は作業票データの processes[].hours を読むだけ。バーの大きさ・配置は変えず、説明文にだけ出す。
+    const hoursHint = bar.hours ? ('\n工数 '+bar.hours+'H') : '';
+    return '<div class="bar'+conflictCls+lightCls+'" data-range="'+bar.id+'" data-procid="'+(bar.procId||'')+'" data-hours="'+esc(bar.hours||'')+'" style="left:'+left+'px;width:'+width+'px;background:'+color+';" title="'+esc(bar.label||'')+hoursHint+dateHint+ctxHint+conflictHint+'">'
       + handleLeftHtml
       + '<span class="barLabel">'+linkIcon+esc(bar.label||'')+'</span>'
       + handleRightHtml
@@ -956,7 +961,9 @@
       const identPart = j.ident ? esc(j.ident) : '';
       return '<div class="unassignedItem">'
         // 案件の識別は社内No.で出す（案件品番は社内No.と紛らわしいため画面には出さない）
-        + '<span>'+(j.orderNo?'<b>'+esc(j.orderNo)+'</b> ':'')+esc(j.partName)+'（'+esc(j.code)+identPart+'）　'+esc(dateShort)+custPart+'</span>'
+        // 工数（予定工数）は作業票データの processes[].hours を読むだけ。ここも表示のみで入力欄は増やさない。
+        + '<span>'+(j.orderNo?'<b>'+esc(j.orderNo)+'</b> ':'')+esc(j.partName)+'（'+esc(j.code)+identPart+'）　'+esc(dateShort)+custPart
+          +(j.hours?'　工数 '+esc(j.hours)+'H':'')+'</span>'
         + '<button type="button" class="uiAssignBtn" data-role="assignBtn" data-procid="'+esc(j.procId)+'">配置する</button>'
         + '</div>';
     }).join('');

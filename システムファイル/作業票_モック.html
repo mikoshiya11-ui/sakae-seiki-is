@@ -627,7 +627,7 @@
   }
   // ---- 共有テスト（_sakaeSync.js）が有効な場合、ページ読み込み直後はまだSupabase側の初回同期（initialSync）が
   // 終わっていないことがある。その状態でここを実行すると、まだ取り込んでいないリモートの正しいデータより先に
-  // ローカルの（古いかもしれない）内容で上書き保存してしまう恐れがあるため、下のclearStaleHoursOnce()と同じく
+  // ローカルの（古いかもしれない）内容で上書き保存してしまう恐れがあるため、
   // 同期の初回読み込みが終わる（window.sakaeSupabaseが使えるようになる）のを待ってから実行する ----
   (function scheduleUpgradeDaysOnce(){
     const syncOff = (typeof window.SAKAE_SYNC_ENABLED !== 'undefined' && !window.SAKAE_SYNC_ENABLED)
@@ -643,44 +643,19 @@
     }, 500);
   })();
 
-  // ---- 一度だけの移行処理：見積工数(hours)は今のところどの画面からも編集できず、元のExcel移行時の
-  // 数値がそのまま残っているだけで、今後の実態を表すものではないため、既存データからは一律で消しておく。
-  // （編集画面を用意するまでの間、根拠のない数値が印刷物に出てしまうのを防ぐ）
+  // ---- 🔴 ここにあった「見積工数(hours)を全件空にする一度だけの移行処理」は廃止した（2026-08-28）。
+  // 工数を正式に運用することになったため、hours は消してはいけない値になった。
   //
-  // 共有テスト（_sakaeSync.js）が有効な場合、ページ読み込み直後はまだSupabase側の古い値を
-  // 取り込んでいる最中のことがあり、そのタイミングでここを実行すると、消したそばから
-  // 古い値で上書きされてしまう。そのため、同期の初回読み込みが終わる（window.sakaeSupabaseが
-  // 使えるようになる）のを少し待ってから実行し、消した内容が確実にSupabase側にも反映されるようにする ----
-  const HOURS_CLEAR_KEY = 'sakaeIS_hoursClear_v1';
-  function clearStaleHoursOnce(){
-    if(localStorage.getItem(HOURS_CLEAR_KEY)) return;
-    for(let i=0;i<localStorage.length;i++){
-      const k = localStorage.key(i);
-      if(!k || k.indexOf('sakaeIS_buhinhyoMock_v1_')!==0) continue;
-      let bs;
-      try{ bs = JSON.parse(localStorage.getItem(k)); }catch(e){ continue; }
-      if(!bs) continue;
-      let changed = false;
-      (bs.parts||[]).forEach(p=>(p.processes||[]).forEach(pr=>{
-        if(pr.hours){ pr.hours = ''; changed = true; }
-      }));
-      if(changed) localStorage.setItem(k, JSON.stringify(bs));
-    }
-    localStorage.setItem(HOURS_CLEAR_KEY, '1');
-  }
-  (function scheduleClearStaleHours(){
-    const syncOff = (typeof window.SAKAE_SYNC_ENABLED !== 'undefined' && !window.SAKAE_SYNC_ENABLED)
-      || !window.SAKAE_SUPABASE_URL || !window.SAKAE_SUPABASE_ANON_KEY;
-    if(syncOff){ clearStaleHoursOnce(); return; } // 共有オフなら待たずにすぐ実行
-    let tries = 0;
-    const timer = setInterval(()=>{
-      tries++;
-      if(window.sakaeSupabase || tries>40){ // 準備できた、または最大20秒待っても来なければ諦めて実行
-        clearInterval(timer);
-        clearStaleHoursOnce();
-      }
-    }, 500);
-  })();
+  // 廃止した理由（同じものを二度と作らないために残す）：
+  //   ・実行済みかどうかを sakaeIS_hoursClear_v1 という「ブラウザごとのフラグ」で判定していた。
+  //   ・そのため、まだ一度も実行していない端末（新しいPC・ブラウザのデータを消した端末・別ブラウザ）で
+  //     作業票を開いただけで、全品番の全部品の全工程の hours が空になった。
+  //   ・しかも共有の初回読み込みを待ってから実行する作りだったため、その消去が共有側にも反映され、
+  //     ほかの人が入力した工数まで消える経路になっていた。
+  //
+  // 既に sakaeIS_hoursClear_v1 が入っている端末のフラグは、そのまま残しても害が無いので掃除しない
+  // （消す処理そのものが無くなったため、フラグの有無で挙動は変わらない）。
+  // hours の正本は今までどおり processes[].hours。残品表の「工数」列と作業票印刷の「見積H」が読んでいる。 ----
 
   // ---- 過去の不具合（品番なしで戻ってしまい共有キーを汚染していた）で溜まった品番なしデータを一度だけ掃除する ----
   // 正規のキーは必ず「sakaeIS_buhinhyoMock_v1_品番」の形なので、サフィックス無しのこのキーが残っていること自体が不具合の痕跡
