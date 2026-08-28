@@ -1561,16 +1561,23 @@
     renderConfirmRow();
   }
 
+  // ---- 確定／解除したら render() を呼ぶこと。renderConfirmRow() だけではバッジしか変わらない。
+  // バーを半透明にする confirmedMode は render() の中でしか付け外ししていないため、
+  // ここで renderConfirmRow() だけを呼ぶと、確定したのに半透明にならない・解除したのに
+  // 半透明のまま、という状態になる（読み込み直すと直るので気づきにくい）。
+  // 以前は自分の保存が共有から返ってきて下の storage ハンドラが render() を呼んでいたため
+  // たまたま直っていたが、自分が送った更新を取り込まないようにしたことで表に出た。
+  // 自分の操作の結果は、共有からの通知を待たずにその場で画面へ反映する。 ----
   document.getElementById('confirmRow').addEventListener('click', (e)=>{
     if(e.target.id === 'confirmPlanBtn'){
       confirmState = { confirmedAt: new Date().toISOString() };
       saveConfirm();
-      renderConfirmRow();
+      render();
     }else if(e.target.id === 'confirmUnlockBtn'){
       if(!window.confirm('確定を解除して、計画を編集できるようにしますか？')) return;
       confirmState = null;
       saveConfirm();
-      renderConfirmRow();
+      render();
     }
   });
 
