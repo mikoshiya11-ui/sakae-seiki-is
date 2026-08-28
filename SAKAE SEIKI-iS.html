@@ -715,7 +715,20 @@
     }catch(e){}
     return [];
   }
+  // ---- 自分がこの画面で案件一覧を変更した回数。増えるだけの番号 ----
+  // 「届いた内容を取り込んでよいか」を、localStorage ではなくこの番号で判断する。
+  // localStorage は正本に使えない。同期の受け側が、この画面へ知らせるより先に localStorage を
+  // 届いた内容へ書き換えてしまうため、そこを見ても新旧が分からない。
+  // 作業票_モック.html・個別日程表_モック.html で既に使っている考え方をそのまま移植したもので、意味も同じ。
+  //   editSeq === remoteBaseSeq → こちらは何も変えていない → 届いた内容を取り込んでよい
+  //   editSeq !== remoteBaseSeq → こちらに未共有の変更がある → 取り込むと変更が巻き戻る → 捨てる
+  // 案件の削除も「この画面での変更」に含まれるため、削除の直後に古い一覧が届いても巻き戻らない。
+  // 保存はしない（新しいlocalStorageキー・Supabase項目・削除の印は作らない）。
+  let editSeq = 0;
+  let remoteBaseSeq = 0;   // いまの records が共有内容と同じだった時点の editSeq
+
   function saveRecords(){
+    editSeq++;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
     markUpdated();
   }
@@ -908,7 +921,18 @@
   window.addEventListener('storage', (e)=>{
     if(e.key !== STORAGE_KEY) return;
     if(e.newValue == null) return;
+    if(editSeq !== remoteBaseSeq){
+      // こちらに未共有の変更がある（案件を消した直後など）。
+      // 取り込むと消した案件が戻ってしまうため捨てる。
+      // ただし保存先には届いた古い内容が既に書かれている（同期の受け側が、この画面へ
+      // 知らせるより先に書き換えてしまうため）。こちらの内容で保存し直しておく。
+      saveRecords();
+      console.warn('[受注に関する連絡書一覧] 届いた他の人の変更は、こちらの変更を巻き戻さないため取り込みませんでした。'
+        + 'こちらの内容はそのまま保存しています。相手の変更を見るには画面を読み込み直してください。');
+      return;
+    }
     try{ records = JSON.parse(e.newValue); }catch(err){ return; }
+    remoteBaseSeq = editSeq;   // いま取り込んだ内容が新しい基準になる
     render();
   });
 
@@ -1947,12 +1971,14 @@
       r.orderDate = o.orderDate||''; r.orderNo = o.orderNo||'';
       r.itemName = o.itemName||''; r.qty = o.qty||'';
     }else{
-      records.unshift({
-        id: uid(), productNo: o.productNo, orderNo: o.orderNo||'', customer: o.customer||'',
-        modelName: o.model||'', itemName: o.itemName||'', category:'型', subject:'新作',
-        orderDate: o.orderDate||'', dueDate: o.dueDate||'', qty: o.qty||'',
-        amount:'', manhour:'', drafter:'', note:'作業票から自動作成', status:'inprogress'
-      });
+      // ---- 🔴 ここにあった「カードが無ければ作業票データから新しいカードを作る」処理は廃止した（2026-08-28）。
+      // この関数の役割は「既にある案件カードへ作業票の最新情報を反映する」ところまでで、作ることは役割外。
+      // 案件を削除すると作業票データも消えるが、削除を知らない端末が持っていた古い作業票データが
+      // 同期で戻ってくると、ここが呼ばれて削除した案件のカードを作り直していた
+      // （利用者は何も操作していないのに、この画面を開いているだけで復活していた）。
+      // 案件の新規登録は「＋ 新規作成」から行う。作業票を先に作る運用は、作業票側が
+      // 案件カードの有無を見て判断する（作業票_モック.html の syncToOrderRecords）。 ----
+      return;
     }
     saveRecords();
     render();
