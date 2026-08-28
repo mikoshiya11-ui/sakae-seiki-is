@@ -421,6 +421,7 @@
         <input type="date" id="viewStartInput">
         <span class="rangeTilde">～</span>
         <input type="date" id="viewEndInput">
+        <button type="button" class="rangeResetBtn" id="rangeExpandBtn" title="いちばん後ろの工程バーより先まで表示期間を広げ、バーを動かせるようにします">表示期間を広げる</button>
         <button type="button" class="rangeResetBtn" id="rangeResetBtn" title="最初の工程ガントバーから1ヶ月分の表示に戻す">初期表示に戻す</button>
       </div>
       <div class="monthToggle" id="zoomToggle">
@@ -595,9 +596,19 @@
   function showUndo(message, undoFn){
     lastUndo = { undo: undoFn };
     undoToastTextEl.textContent = message;
+    if(undoToastBtn) undoToastBtn.style.display = '';   // 通知だけを出した後でも「元に戻す」を復帰させる
     undoToastEl.classList.add('show');
     if(undoToastTimer) clearTimeout(undoToastTimer);
     undoToastTimer = setTimeout(()=>{ undoToastEl.classList.remove('show'); lastUndo = null; }, 8000);
+  }
+  // 戻す操作が無い、ただのお知らせ。同じ帯を使い、「元に戻す」ボタンだけ隠す
+  function showNotice(message){
+    lastUndo = null;
+    undoToastTextEl.textContent = message;
+    if(undoToastBtn) undoToastBtn.style.display = 'none';
+    undoToastEl.classList.add('show');
+    if(undoToastTimer) clearTimeout(undoToastTimer);
+    undoToastTimer = setTimeout(()=>{ undoToastEl.classList.remove('show'); }, 4000);
   }
   if(undoToastBtn){
     undoToastBtn.addEventListener('click', ()=>{
@@ -708,13 +719,15 @@
     d.setDate(d.getDate()-1);
     return d;
   }
+  // この案件に表示期間が保存されていたかどうか。保存済みの案件へ既定値を勝手に上書きしないために使う
+  let viewWasSaved = false;
   function loadView(){
     try{
       const raw = localStorage.getItem(VIEW_KEY);
       if(raw){
         const v = JSON.parse(raw);
         const s = parseDateStr(v.start), e = parseDateStr(v.end);
-        if(s && e && e>=s) return { start:s, end:e };
+        if(s && e && e>=s){ viewWasSaved = true; return { start:s, end:e }; }
       }
     }catch(e){}
     return { start: defaultViewStart(), end: defaultViewEnd() };
@@ -1170,6 +1183,47 @@
   }
 
   let barsData = deriveBars();
+
+  // ---- 表示期間の右端に工程バーが来ると、clamp のせいで移動も伸縮もできなくなる。
+  // それを避けるため「いちばん後ろの工程バー（または納期）＋余白」を必要な終了日とする。
+  // clamp 自体は、表示していない期間へバーを飛ばさないための安全機構なので変更しない。
+  // ここは PHASE_MAP / SIDE_BOX_CODES を使うため、それらの定義より後ろに置いてある
+  // （前に置くと、この画面を開いた時点でまだ定義されておらず参照できない）。 ----
+  const VIEW_MARGIN_DAYS = 14;
+  function maxBarProcDate(){
+    if(!handoff) return null;
+    let max = null;
+    (buhinState.parts||[]).forEach(p=>{
+      (p.processes||[]).forEach(pr=>{
+        if(!pr) return;
+        if(SIDE_BOX_CODES.indexOf(pr.code) >= 0) return; // DE/SU/PN は左のミニ表で、バーにはならない
+        if(phaseOf(pr.code) === 0) return;               // 準備工程もバーにはならない
+        const d = parseDateStr(pr.date);
+        if(d && (!max || d > max)) max = d;
+      });
+    });
+    return max;
+  }
+  // 必要な表示終了日 ＝ max(納期, 工程バーの最大日) ＋ 余白。
+  // 押すたびに増えないよう、この値は「今の終了日」とは無関係に決まる（毎回同じ答えになる）。
+  function requiredViewEnd(){
+    const due = handoff ? parseDateStr(buhinState.order && buhinState.order.dueDate) : null;
+    const barMax = maxBarProcDate();
+    let base = null;
+    if(due && barMax) base = (due > barMax) ? due : barMax;
+    else base = due || barMax;
+    if(!base) return null;
+    const d = new Date(base);
+    d.setDate(d.getDate() + VIEW_MARGIN_DAYS);
+    return d;
+  }
+  // 表示期間が保存されていない案件だけ、初期表示を必要な終了日まで広げる。
+  // 保存済みの案件は勝手に変えない（「表示期間を広げる」を人が押したときだけ広げる）。
+  // ここでは保存しない。保存するのは人が表示期間を操作したときだけ、という既存の作法を変えないため。
+  if(!viewWasSaved){
+    const needAtLoad = requiredViewEnd();
+    if(needAtLoad && viewEnd < needAtLoad) viewEnd = needAtLoad;
+  }
   // 作業票側の最新データからPARTSとbarsDataを両方作り直す（保存・外部変更の反映後に呼ぶ）
   function refreshFromBuhin(){
     PARTS = handoff ? convertBuhinParts(buhinState) : DEMO_PARTS;
@@ -1642,9 +1696,42 @@
   }
   viewStartInput.addEventListener('change', ()=> applyViewChange(parseDateStr(viewStartInput.value), viewEnd));
   viewEndInput.addEventListener('change', ()=> applyViewChange(viewStart, parseDateStr(viewEndInput.value)));
+  // ---- 表示期間を広げる（保存済みの案件を救済する）----
+  // 必要な終了日は requiredViewEnd() だけで決まるため、何度押しても同じ位置で止まる（14日ずつ増え続けない）。
+  // 今の終了日の方が後ろなら、短くはしない。開始日は変えない。
+  const rangeExpandBtn = document.getElementById('rangeExpandBtn');
+  if(rangeExpandBtn) rangeExpandBtn.addEventListener('click', ()=>{
+    const need = requiredViewEnd();
+    if(!need){
+      showNotice('工程の日付がまだ入っていないため、広げる範囲を決められません。');
+      return;
+    }
+    if(viewEnd >= need){
+      showNotice('表示期間はすでに十分広いので、そのままにしました。');
+      return;
+    }
+    const prevEnd = new Date(viewEnd);
+    viewEnd = need;
+    saveView();
+    updateRangeInputsUI();
+    applyWeekendBackground();
+    render();
+    showUndo('表示期間を '+(need.getMonth()+1)+'/'+need.getDate()+' まで広げました', ()=>{
+      viewEnd = prevEnd;
+      saveView();
+      updateRangeInputsUI();
+      applyWeekendBackground();
+      render();
+    });
+  });
+
   document.getElementById('rangeResetBtn').addEventListener('click', ()=>{
     viewStart = defaultViewStart();
     viewEnd = defaultViewEnd();
+    // 初期表示にも、いちばん後ろの工程バーを動かせるだけの余白を残す
+    // （ここを入れないと、初期表示に戻した瞬間に納期日の工程がまた動かせなくなる）
+    const needOnReset = requiredViewEnd();
+    if(needOnReset && viewEnd < needOnReset) viewEnd = needOnReset;
     saveView();
     updateRangeInputsUI();
     applyWeekendBackground();
