@@ -1358,7 +1358,7 @@
     reader.readAsText(file);
   });
 
-  function deleteRecord(id){
+  async function deleteRecord(id){
     const rec = records.find(r=>r.id===id);
     if(!rec) return;
     const label = rec.orderNo ? '社内No.「'+rec.orderNo+'」' : 'このカード';
@@ -1397,6 +1397,15 @@
       // 戻したことを他の端末へすぐ伝える（500msまとめ送信を待たない）
       if(window.sakaeSyncFlush){ try{ window.sakaeSyncFlush(); }catch(err){} }
     });
+    // ---- 削除も、この場ですぐ送り切る ----
+    // 共有への送信は500msぶんまとめてから行うため、削除した直後に画面を移動・終了すると
+    // 送信前にページが破棄され、削除・墓標・案件データの削除が共有へ届かないことがあった。
+    // 削除は「押した時点で確定して全端末へ配る」操作なので、まとめ送信を待たずにここで送り切る。
+    // 1回の削除で起きた変更（墓標・一覧・案件データの削除）は同じ待ち行列に入っているので、
+    // まとめて送られる。片方だけ届く状態にはならない。
+    if(window.sakaeSyncFlush){
+      try{ await window.sakaeSyncFlush(); }catch(err){}
+    }
   }
 
   // ---- 案件カードの主ボタン：実務では作業票を先に作る／開くため、案件一覧からはここに直接遷移する（同じタブ）----
