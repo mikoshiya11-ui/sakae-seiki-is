@@ -30,39 +30,37 @@
   }
 
   .toolRow{ display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
-  .procToggle{ display:flex; gap:4px; background:#fff; border-radius:10px; padding:4px; box-shadow:0 2px 8px rgba(20,35,70,.06); }
-  .procToggle button{
-    border:none; background:transparent; color:#5b6b84; font-size:13.5px; font-weight:700; padding:8px 16px;
-    border-radius:7px; cursor:pointer; font-family:inherit;
+
+  /* ---- 週の移動 ---- */
+  .weekNav{
+    display:flex; align-items:center; gap:6px; background:#fff; border-radius:10px; padding:5px 8px;
+    box-shadow:0 2px 8px rgba(20,35,70,.06);
   }
-  .procToggle button.active{ background:#173a68; color:#fff; }
+  .weekNav button{
+    border:1.5px solid #dfe4ec; background:#fff; color:#5b6b84; font-size:13px; font-weight:700;
+    padding:7px 14px; border-radius:7px; cursor:pointer; font-family:inherit;
+  }
+  .weekNav button:hover{ border-color:#173a68; color:#173a68; }
+  .weekNav button.thisWeek{ background:#173a68; color:#fff; border-color:#173a68; }
+  .weekLabel{ font-size:14px; font-weight:800; color:#173a68; padding:0 8px; white-space:nowrap; }
 
   .searchBox{
-    flex:0 1 220px; min-width:160px; border:1.5px solid #dfe4ec; border-radius:9px; padding:9px 13px;
+    flex:0 1 240px; min-width:170px; border:1.5px solid #dfe4ec; border-radius:9px; padding:9px 13px;
     font-size:13.5px; font-family:inherit; background:#fff;
   }
   .searchBox:focus{ outline:none; border-color:#173a68; }
 
-  .rangeToggle{
-    display:flex; align-items:center; gap:6px; background:#fff; border-radius:10px; padding:7px 12px;
-    box-shadow:0 2px 8px rgba(20,35,70,.06); font-size:12.5px; color:#5b6b84; font-weight:700;
+  .printBtn{
+    border:1.5px solid #dfe4ec; background:#fff; color:#5b6b84; font-size:13px; font-weight:700;
+    padding:9px 14px; border-radius:7px; cursor:pointer; font-family:inherit;
   }
-  .rangeToggle input[type=date]{
-    border:1.5px solid #dfe4ec; border-radius:6px; padding:4px 6px; font-size:12.5px; font-family:inherit;
-  }
-  .rangeResetBtn, .expandAllBtn{
-    border:1.5px solid #dfe4ec; background:#fff; color:#5b6b84; font-size:12px; font-weight:700; padding:5px 10px;
-    border-radius:7px; cursor:pointer; font-family:inherit;
-  }
-  .rangeResetBtn:hover, .expandAllBtn:hover{ border-color:#173a68; color:#173a68; }
-  .expandAllBtn{ padding:9px 14px; font-size:13px; }
+  .printBtn:hover{ border-color:#173a68; color:#173a68; }
 
   .summaryRow{ display:flex; gap:10px; align-items:center; font-size:12.5px; color:#5b6b84; margin-left:auto; flex-wrap:wrap; }
   .sumChip{ background:#fff; border-radius:20px; padding:6px 14px; box-shadow:0 2px 8px rgba(20,35,70,.06); }
   .sumChip b{ color:#173a68; font-size:14px; }
 
   .legendRow{ font-size:12px; color:#5b6b84; margin-bottom:10px; display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
-  .legendDot{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
 
   .boardCard{
     background:#fff; border-radius:14px; box-shadow:0 2px 10px rgba(20,35,70,.06); overflow:hidden;
@@ -70,9 +68,6 @@
   .boardScroll{ overflow:auto; max-height:74vh; }
   table.board{ border-collapse:separate; border-spacing:0; table-layout:fixed; }
   .board th, .board td{ overflow:hidden; text-overflow:ellipsis; }
-  .board th.itemNameCol, .board td.itemNameCol,
-  .board th.statusCol, .board td.statusCol,
-  .board th.noteCol, .board td.noteCol,
   .board td.dayCell{ overflow:visible; }
 
   /* ---- 固定（左）列。theadの日付行と両方stickyになるコーナー部分はz-indexを高くする ---- */
@@ -84,154 +79,73 @@
     position:sticky; top:0; background:#f7f9fc; font-weight:700; color:#5b6b84; z-index:2; font-size:11px;
   }
   .board thead th:not(.frozen){ padding:6px 4px; font-size:13px; overflow:visible; text-overflow:clip; text-align:center; }
-  .board thead th.dateCol{ font-size:10px; letter-spacing:-.2px; }
   .board thead tr.dateRow th{ top:0; }
   .board thead tr.dowRow th{ top:27px; font-weight:400; color:#a4adbc; }
   .board .frozen{ position:sticky; background:#fff; z-index:1; }
   .board thead .frozen{ z-index:4; background:#f7f9fc; }
   .board .frozen.lastFrozen{ box-shadow:2px 0 4px rgba(20,35,70,.08); }
 
-  /* ---- 製品カードの行（TOPの案件カード1件＝この1行） ---- */
-  tr.prodRow td{ background:#f7f9fc; border-bottom:1.5px solid #dfe4ec; }
-  tr.prodRow td.frozen{ background:#f7f9fc; }
+  /* ---- 納品行（案件1件＝この1行） ---- */
+  tr.nouhinRow td{ background:#f7f9fc; border-bottom:1px solid #dfe4ec; }
+  tr.nouhinRow td.frozen{ background:#f7f9fc; }
   .prodNo{ font-weight:800; color:#173a68; font-size:13px; }
   .prodSub{ font-size:10.5px; color:#a4adbc; display:block; }
-  .expBtn{
-    border:none; background:transparent; color:#5b6b84; cursor:pointer; font-size:12px; padding:2px 4px; font-family:inherit;
+  .itemNameVal{ white-space:normal; word-break:break-word; line-height:1.35; }
+
+  /* ---- 支給行（＋支給 を押したときだけ、納品行の直下に出る） ---- */
+  tr.shikyuRow td{ background:#fff; border-bottom:1.5px solid #dfe4ec; }
+  tr.shikyuRow td.frozen{ background:#fff; }
+  tr.shikyuRow td.orderNoCol{ border-left:3px solid #c0392b; }
+  .shikyuTag{ font-weight:800; color:#c0392b; font-size:12.5px; display:block; }
+  .shikyuDateWrap{ display:flex; align-items:center; gap:4px; margin-top:3px; }
+  .shikyuDateWrap label{ font-size:10.5px; color:#8592a6; font-weight:700; }
+  .shikyuDateWrap input[type=date]{
+    border:1.5px solid #dfe4ec; border-radius:6px; padding:3px 4px; font-size:11px; font-family:inherit; width:120px;
   }
-  .expBtn:hover{ color:#173a68; }
-  .kubunChip{
-    display:inline-block; border-radius:10px; padding:1px 7px; font-size:10.5px; font-weight:800; color:#fff; margin-right:3px;
+  .shikyuDateWrap input[type=date]:focus{ outline:none; border-color:#173a68; }
+  .shikyuOffBtn{
+    border:none; background:transparent; color:#a4adbc; font-size:10.5px; cursor:pointer;
+    font-family:inherit; padding:2px 0 0; text-decoration:underline;
   }
-  .kubunChip.zero{ background:#cbd3df; }
+  .shikyuOffBtn:hover{ color:#c0392b; }
+
   .miniBtn{
     border:1.5px solid #dfe4ec; background:#fff; color:#5b6b84; font-size:11px; font-weight:700; padding:3px 8px;
     border-radius:6px; cursor:pointer; font-family:inherit;
   }
   .miniBtn:hover{ border-color:#173a68; color:#173a68; }
-  .memoBtn.has{ border-color:#173a68; color:#173a68; }
+  .addShikyuBtn{ margin-top:4px; display:inline-block; }
 
-  /* ---- 明細（部品単位）の行。製品カードを開いたときだけ出る ---- */
-  tr.itemRow td.frozen{ background:#fff; }
-  tr.itemRow td.itemIndent{ border-left:3px solid #dfe4ec; }
-
-  .board .delBtn{
-    border:none; background:transparent; color:#c0392b; cursor:pointer; font-size:12px; padding:2px 4px;
-  }
-
-  .cellInput{
-    width:100%; border:1.5px solid transparent; border-radius:5px; padding:4px 5px; font-size:12px;
-    font-family:inherit; background:transparent; color:#2a3446;
-  }
-  .cellInput:hover{ border-color:#e6eaf1; }
-  .cellInput:focus{ outline:none; border-color:#173a68; background:#fff; }
-  input.cellInput[type=date]{ font-size:11px; padding:3px 3px; }
-  select.cellInput{ font-weight:800; }
-  textarea.cellInput{
-    resize:none; overflow-y:hidden; line-height:1.35; height:40px; box-sizing:border-box; white-space:pre-wrap; word-break:break-word;
-  }
-  .unknownChk{ display:flex; align-items:center; gap:3px; font-size:10px; color:#8592a6; margin-top:2px; }
-
-  /* 欠品チェック済みの明細：グレーの半透明を重ねる（日程表のBOXは読みにくくなるので対象外） */
-  tr.checkedRow td:not(.dayCell){ position:relative; }
-  tr.checkedRow td:not(.dayCell)::after{
-    content:''; position:absolute; inset:0; background:rgba(90,98,115,.5); pointer-events:none; z-index:5;
-  }
-  tr.checkedRow td.itemNameCol, tr.checkedRow td.statusCol{ text-decoration:line-through; }
-
+  /* ---- 日付の欄 ---- */
   td.dayCell{ position:relative; text-align:left; padding:3px; vertical-align:top; }
   td.dayCell.weekend{ background:#fafbfd; }
   td.dayCell.today{ background:rgba(250,204,21,.28); }
-  tr.prodRow td.dayCell{ background:#f7f9fc; }
-  tr.prodRow td.dayCell.weekend{ background:#f2f5f9; }
-  tr.prodRow td.dayCell.today{ background:rgba(250,204,21,.28); }
-  .board th.monthStart, .board td.monthStart{ border-left:2px solid #1a2233; }
+  tr.nouhinRow td.dayCell{ background:#f7f9fc; }
+  tr.nouhinRow td.dayCell.weekend{ background:#f2f5f9; }
+  tr.nouhinRow td.dayCell.today{ background:rgba(250,204,21,.28); }
 
-  /* 予定日のBOX。普段は列幅に収まる分だけ省略し、ホバー中だけ広がって全文を出す */
-  .dayBox{
-    display:inline-flex; align-items:center; justify-content:flex-start; gap:4px;
-    width:140px; height:32px; overflow:hidden; position:relative; z-index:0; margin:2px 0 9px 3px;
-    border-radius:5px; color:#fff; font-size:12px; font-weight:700; cursor:pointer; padding:0 6px;
-    box-shadow:0 1px 2px rgba(20,35,70,.25); border:1.5px solid rgba(255,255,255,.6); white-space:nowrap;
+  /* 自動で出る文字（納品行＝品名／支給行＝支給品）。
+     利用者は消せない。自由入力とは別の要素で、保存もしない。 */
+  .autoLine{
+    font-size:12px; font-weight:800; line-height:1.3; padding:3px 5px 4px;
+    white-space:normal; word-break:break-word; border-bottom:1px dashed #c7cfdc;
   }
-  .dayBox.small{ height:24px; font-size:11px; margin:1px 0 4px 3px; }
-  .dayBox .dbText{ display:inline-block; max-width:110px; overflow:hidden; text-overflow:ellipsis; }
-  .dayBox:hover{
-    width:max-content; height:auto; min-height:22px; overflow:visible; padding:2px 5px;
-    z-index:20; filter:brightness(1.08);
-  }
-  .dayBox:hover .dbText{ max-width:none; overflow:visible; }
-  .dayBox::after{
-    content:''; position:absolute; left:10px; bottom:-6px;
-    width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent;
-    border-top:6px solid var(--tailColor, #173a68);
-  }
-  .dayBox .cBadge{
-    background:rgba(255,255,255,.85); color:#173a68; border-radius:8px; font-size:9px; font-weight:800;
-    padding:0 4px; min-width:13px; display:inline-flex;
-  }
+  .autoLine.nouhinAuto{ color:#1a2233; }
+  .autoLine.shikyuAuto{ color:#c0392b; }
 
-  /* ---- 日付メモ（付箋）。日付の欄（td.dayCell）そのものを土台にして置く。
-     z-index は 0〜1 に収める。1 より大きくすると、横スクロールで左の固定列の上に、
-     上スクロールで見出しの上に付箋が乗ってしまう（左固定列=1／見出し=2／見出しの角=4）。
-     つかんで動かしている間だけ一時的に上げる。 ---- */
-  .dayNote{
-    position:absolute; z-index:1; box-sizing:border-box;
-    background:#fff6c2; border:1px solid #e2cf7a; border-radius:5px;
-    box-shadow:0 1px 3px rgba(20,35,70,.22);
-    display:flex; flex-direction:column; overflow:hidden;
+  /* 自由入力。自動表示の下に置く */
+  .dayInput{
+    width:100%; border:1.5px solid transparent; border-radius:5px; padding:3px 4px; font-size:11.5px;
+    font-family:inherit; background:transparent; color:#2a3446; resize:none; line-height:1.35;
+    height:52px; white-space:pre-wrap; word-break:break-word;
   }
-  .dayNote.dragging{ z-index:30; box-shadow:0 6px 16px rgba(20,35,70,.32); opacity:.92; }
-  .dayNote .dnHandle{
-    flex:0 0 auto; height:14px; background:#f0e2a0; cursor:move; display:flex; align-items:center;
-    justify-content:space-between; padding:0 3px; font-size:9px; color:#8a6d1a; user-select:none;
-  }
-  .dayNote .dnDate{ font-weight:700; }
-  .dayNote .dnDel{ border:none; background:transparent; color:#c0392b; cursor:pointer; font-size:10px; padding:0 2px; line-height:1; }
-  .dayNote textarea{
-    flex:1 1 auto; width:100%; border:none; background:transparent; resize:none; outline:none;
-    font-family:inherit; font-size:11px; line-height:1.3; padding:2px 4px; color:#3a2f0b;
-  }
-  /* 付箋は絶対配置なので行の高さに数えられない。見えない下敷きで行を持ち上げる */
-  .noteSpacer{ width:1px; pointer-events:none; }
-  .addNoteBtn{
-    position:absolute; right:2px; bottom:2px; z-index:1;
-    border:1px solid #dfe4ec; background:#fff; color:#8592a6; border-radius:5px;
-    font-size:10px; line-height:1; padding:2px 4px; cursor:pointer; font-family:inherit; opacity:0;
-  }
-  tr.prodRow td.dayCell:hover .addNoteBtn{ opacity:1; }
-  .addNoteBtn:hover{ border-color:#173a68; color:#173a68; }
-  .outsideChip{ background:#fff7ec; border:1px solid #f3dcb8; color:#8a5a1a; }
+  .dayInput:hover{ border-color:#e6eaf1; }
+  .dayInput:focus{ outline:none; border-color:#173a68; background:#fff; }
 
   .emptyState{ padding:60px 20px; text-align:center; color:#a4adbc; font-size:13px; line-height:1.8; }
   .emptyState a{ color:#173a68; font-weight:700; }
 
   .footNote{ font-size:12.5px; color:#a4adbc; text-align:center; margin-top:20px; line-height:1.7; }
-
-  /* ---- 製品カードのメモ（掲示板）ポップオーバー ---- */
-  .commentPicker{
-    position:fixed; z-index:500; background:#fff; border-radius:10px; box-shadow:0 8px 28px rgba(20,35,70,.28);
-    padding:14px; width:280px; display:none; border:1px solid #e6eaf1;
-  }
-  .commentPicker.open{ display:block; }
-  .commentPicker .cpTitle{ font-size:12px; font-weight:700; color:#5b6b84; margin-bottom:8px; }
-  .commentPicker .cpList{ max-height:200px; overflow-y:auto; margin-bottom:10px; display:flex; flex-direction:column; gap:8px; }
-  .commentPicker .cpItem{ background:#f7f9fc; border-radius:8px; padding:8px 10px; font-size:12px; position:relative; }
-  .commentPicker .cpItem .cpMeta{ font-size:10px; color:#a4adbc; margin-bottom:3px; display:flex; justify-content:space-between; gap:6px; }
-  .commentPicker .cpItem .cpText{ color:#2a3446; white-space:pre-wrap; word-break:break-word; }
-  .commentPicker .cpDel{ border:none; background:transparent; color:#c0392b; cursor:pointer; font-size:11px; }
-  .commentPicker .cpEmpty{ color:#a4adbc; font-size:12px; text-align:center; padding:10px 0; }
-  .commentPicker input[type=text], .commentPicker textarea{
-    width:100%; box-sizing:border-box; border:1.5px solid #dfe4ec; border-radius:7px; padding:7px 9px;
-    font-size:12.5px; font-family:inherit; margin-bottom:7px; resize:vertical;
-  }
-  .commentPicker input[type=text]:focus, .commentPicker textarea:focus{ outline:none; border-color:#173a68; }
-  .cpFoot{ display:flex; justify-content:space-between; gap:8px; }
-  .cpFoot button{
-    border:none; border-radius:7px; padding:7px 12px; font-size:12.5px; font-weight:700; cursor:pointer; font-family:inherit;
-  }
-  .cpAddBtn{ background:#173a68; color:#fff; }
-  .cpCloseBtn{ background:#f4f6fa; color:#5b6b84; }
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
@@ -242,41 +156,33 @@
     <a class="backLink" href="../SAKAE SEIKI-iS.html" title="SAKAE SEIKI-iSトップへ">← トップへ</a>
     <span class="brand"><span class="sakae">SAKAE SEIKI</span><span class="is">-iS</span></span>
     <span class="sep">｜</span>
-    <span class="pageName">支給・納品一覧（製品単位）</span>
+    <span class="pageName">支給・納品一覧（週間）</span>
   </div>
 
   <div class="wrap">
 
     <div class="noteBar">
-      客先とのやり取りに関わる「支給」（客先から材料等を引き取る）と「納品」（客先へ納める）を、<b>製品（案件）ごと</b>にまとめた一覧です。1行がトップ画面の案件カード1件にあたります。行を開くと、その製品の支給・納品の明細を1件ずつ入力でき、右の日程表に予定日のBOXが出ます。<br>
-      <b>製品の並びは「次に一番早く来る予定日」の早い順</b>です（支給・納品の区別なく、その製品の予定日のうち最も早い日。予定日が無ければ納期、それも無ければ末尾）。社内No.・客先・型式・納期はトップ画面の内容をそのまま表示します。この画面で製品を増やすことはできません。新しい案件はトップ画面から登録してください。<br>
-      日付の欄にカーソルを合わせると出る<b>「＋メモ」</b>で、その日に付箋を貼れます。付箋はつかんで動かせ、<b>隣の日へ動かすとその日のメモになります</b>。
+      客先とのやり取りに関わる<b>「納品」（客先へ納める）</b>と<b>「支給」（客先から材料等を引き取る）</b>を、案件ごとに1週間単位で見る一覧です。<br>
+      案件は1件につき<b>納品行が1行</b>。<b>納期の日</b>のBOXに<b>品名</b>が自動で出ます（この文字は消せません）。その下に、その日の連絡事項を自由に書けます。<br>
+      客先から材料を受け取る案件は<b>「＋支給」</b>を押すと、その案件の直下に<b>支給行</b>が増えます。支給日を入れると、その日のBOXに<b>支給品</b>（赤）が自動で出ます。
     </div>
 
     <div class="toolRow">
-      <div class="procToggle" id="procToggle">
-        <button type="button" data-kubun="all" class="active">すべて</button>
-        <button type="button" data-kubun="納品">納品</button>
-        <button type="button" data-kubun="支給">支給</button>
+      <div class="weekNav" id="weekNav">
+        <button type="button" data-move="prev">＜ 前週</button>
+        <button type="button" class="thisWeek" data-move="this">今週</button>
+        <button type="button" data-move="next">翌週 ＞</button>
+        <span class="weekLabel" id="weekLabel"></span>
       </div>
       <input type="text" class="searchBox" id="searchBox" placeholder="社内No・客先・型式・品名で検索">
-      <div class="rangeToggle" id="rangeToggle">
-        表示期間
-        <input type="date" id="viewStartInput">
-        〜
-        <input type="date" id="viewEndInput">
-        <button type="button" class="rangeResetBtn" id="rangeResetBtn">今日から30日</button>
-      </div>
-      <button type="button" class="expandAllBtn" id="expandAllBtn">すべてたたむ</button>
-      <button type="button" class="expandAllBtn" id="printBtn" title="画面の表示期間に関わらず、全期間を月ごとのページに分けて印刷します">🖨 印刷（全期間）</button>
+      <button type="button" class="printBtn" id="printBtn" title="いま画面に出ている1週間をそのまま印刷します">🖨 印刷（この週）</button>
       <div class="summaryRow" id="summaryRow"></div>
     </div>
 
     <div class="legendRow">
-      <span><span class="legendDot" style="background:#c0392b;"></span>納品</span>
-      <span><span class="legendDot" style="background:#1a2233;"></span>支給</span>
-      <span><span class="legendDot" style="background:#94a3b8;"></span>区分が未選択</span>
-      <span style="color:#a4adbc;">BOXをクリックでその製品のメモを開く</span>
+      <span><b style="color:#1a2233;">品名</b>　＝ 納期の日に自動で出ます（消せません）</span>
+      <span><b style="color:#c0392b;">支給品</b>　＝ 支給日に自動で出ます（消せません）</span>
+      <span style="color:#a4adbc;">その下の欄は自由入力です</span>
     </div>
 
     <div class="boardCard">
@@ -294,20 +200,9 @@
     </div>
 
     <div class="footNote">
-      製品の一覧はトップ画面の案件データ（sakaeIS_records_v1）を、支給・納品の明細とメモは製品ごと（sakaeIS_shikyuNouhinBoard_v2_品番）に保存しています。
+      案件の一覧はトップ画面の案件データ（sakaeIS_records_v1）を、支給日と日付ごとの自由入力は案件ごと（sakaeIS_shikyuNouhinBoard_v2_品番）に保存しています。
     </div>
 
-  </div>
-
-  <div class="commentPicker" id="commentPicker">
-    <div class="cpTitle" id="cpTitle">メモ</div>
-    <div class="cpList" id="cpList"></div>
-    <input type="text" id="cpNameInput" placeholder="名前（任意）">
-    <textarea id="cpTextInput" rows="2" placeholder="メモを入力"></textarea>
-    <div class="cpFoot">
-      <button type="button" class="cpAddBtn" id="cpAddBtn">書き込む</button>
-      <button type="button" class="cpCloseBtn" id="cpCloseBtn">閉じる</button>
-    </div>
   </div>
 
 <script>
@@ -318,17 +213,21 @@
   function uid(){ return Math.random().toString(36).slice(2,9); }
 
   // ---- 保存先 ----
-  // 製品の一覧は案件データ（records）が正本。この画面では製品を作らない・消さない・書き換えない。
+  // 案件の一覧は案件データ（records）が正本。この画面では案件を作らない・消さない・書き換えない。
   const RECORDS_KEY = 'sakaeIS_records_v1';
   const BUHIN_PREFIX = 'sakaeIS_buhinhyoMock_v1_';
-  // 支給・納品の明細とメモは製品（品番）ごとに保存する。全件を1つのキーに入れない。
+  // 支給日と日付ごとの自由入力は案件（品番）ごとに保存する。全件を1つのキーに入れない。
   const DETAIL_PREFIX = 'sakaeIS_shikyuNouhinBoard_v2_';
   const VIEW_KEY = 'sakaeIS_shikyuNouhinBoard_view_v1';
-  // ---- 旧「部品単位」の一覧データ（sakaeIS_shikyuNouhinBoard_items_v1）は、この画面からは読みも書きもしない。
-  // 本番に入っている8件はサンプルがそのまま保存されたもので現場の入力実績ではないことを確認済み
-  // （tools/field_requests/T4_SAMPLE_DATA_EVIDENCE.md ／ 検証器 verify_t4_sample.mjs）。
-  // 引き継ぐと架空の支給・納品予定が製品カードに混ざるため、製品カードへは取り込まない。
-  // キーそのものの削除はこのコードでは行わない（誰かがページを開いた瞬間に消えると、実行者と時刻が残らないため）。 ----
+  // ---- 旧「部品単位」の一覧データ（sakaeIS_shikyuNouhinBoard_items_v1）は、この画面からは読みも書きもしない。 ----
+
+  // ---- 2026-08-27 週間運用への再構成（v2）で使わなくなった旧データについて ----
+  // items[]（明細）／memo[]（製品ごとのメモ）／line の付いていない dayNotes[]（旧・付箋）は
+  // この画面から読まないが、【消さない・保存操作で欠落させない】。
+  // loadDetail / saveDetail の両方でそのまま持ち回ること。片方だけ直すと、保存のたびに旧データが消える。
+  const LINE_NOUHIN = 'nouhin';
+  const LINE_SHIKYU = 'shikyu';
+  function isValidLine(v){ return v === LINE_NOUHIN || v === LINE_SHIKYU; }
 
   function fmtDateForInput(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
   function parseDateStr(s){
@@ -339,13 +238,9 @@
     return isNaN(d) ? null : d;
   }
   const TODAY = new Date(); TODAY.setHours(0,0,0,0);
+  function sameDay(a,b){ return a && b && a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
 
-  // ---- 区分は自由入力の「状況」から推測せず、明示的に持つ ----
-  // 空（未選択）は勝手にどちらかへ寄せない。色を分けて、決めるべき明細が見えるようにする。
-  const KUBUN_COLORS = { '納品':'#c0392b', '支給':'#1a2233', '':'#94a3b8' };
-  function kubunColor(k){ return KUBUN_COLORS[k] || KUBUN_COLORS['']; }
-
-  // ================= 製品（案件）側：読み取り専用 =================
+  // ================= 案件（記録）側：読み取り専用 =================
   function loadRecords(){
     try{ const raw = localStorage.getItem(RECORDS_KEY); if(raw) return JSON.parse(raw) || []; }catch(e){}
     return [];
@@ -359,7 +254,7 @@
     return null;
   }
   // トップ画面のカードと同じ見え方にするため、作業票側（bs.order）の値を優先して重ねる。
-  // トップ画面の mergedRecForForm と同じ考え方で、ここで新しい調停規則は作らない。
+  // 社内No.・客先・型式・納期・品名の正本は常にこちら側で、この画面は持たない。
   function productsFromRecords(){
     return loadRecords().map(r=>{
       const o = loadBuhinOrder(r.productNo) || {};
@@ -369,101 +264,105 @@
         customer: o.customer || r.customer || '',
         model: o.model || r.modelName || '',
         itemName: o.itemName || r.itemName || '',
-        dueDate: o.dueDate || r.dueDate || '',
-        status: r.status || ''
+        dueDate: o.dueDate || r.dueDate || ''
       };
     }).filter(p=>p.productNo);
   }
 
-  // ================= 明細・メモ：製品（品番）ごとに保存 =================
+  // ================= 保存領域：案件（品番）ごと =================
   function detailKey(productNo){ return DETAIL_PREFIX + productNo; }
   function loadDetail(productNo){
     try{
       const raw = localStorage.getItem(detailKey(productNo));
       if(raw){
         const d = JSON.parse(raw) || {};
+        const sh = (d.shikyu && typeof d.shikyu === 'object') ? d.shikyu : {};
         return {
+          // ---- 旧データ。この画面では読まないが、そのまま持ち回って保存し直す ----
           items: Array.isArray(d.items) ? d.items : [],
           memo: Array.isArray(d.memo) ? d.memo : [],
-          // 日付メモ（付箋）。古いデータには無いので空配列にする（移行処理はしない）。
-          dayNotes: Array.isArray(d.dayNotes) ? d.dayNotes : []
+          // ---- 日付ごとの自由入力。line が付いているものだけが新画面の対象 ----
+          dayNotes: Array.isArray(d.dayNotes) ? d.dayNotes : [],
+          // ---- 支給行を出すかどうかと、その支給日 ----
+          shikyu: { enabled: !!sh.enabled, date: (typeof sh.date === 'string') ? sh.date : '' }
         };
       }
     }catch(e){}
-    return { items: [], memo: [], dayNotes: [] };
+    return { items: [], memo: [], dayNotes: [], shikyu: { enabled:false, date:'' } };
   }
   function saveDetail(productNo, d){
     if(!productNo) return;
-    // ---- 書き戻す項目を1つでも落とすと、その項目は保存のたびに消える。
-    // dayNotes を足したときは必ずここにも足すこと（loadDetail と対で直す）。 ----
+    // ---- 🔴 書き戻す項目を1つでも落とすと、その項目は保存のたびに消える。
+    // items / memo / dayNotes は旧データを含むため必ず全部書き戻すこと。
+    // 項目を足したときは loadDetail と対で直す。 ----
     localStorage.setItem(detailKey(productNo), JSON.stringify({
-      items: d.items||[], memo: d.memo||[], dayNotes: d.dayNotes||[]
+      items: d.items || [],
+      memo: d.memo || [],
+      dayNotes: d.dayNotes || [],
+      shikyu: { enabled: !!(d.shikyu && d.shikyu.enabled), date: (d.shikyu && d.shikyu.date) || '' }
     }));
   }
-  function newItem(kubun){
-    // 区分は既定値を入れない。どちらかへ勝手に寄せると、決めていないことが見えなくなる。
-    // ただし「＋支給予定」「＋納品予定」から作った場合は、人がその場で選んでいるので入れてよい。
-    return { id:uid(), kubun:kubun||'', itemName:'', status:'', date:'', dateUnknown:false, checked:false, note:'' };
+
+  // ---- 日付ごとの自由入力を引く／作る ----
+  // 「何月何日の、どちらの行か」は date と line の2つだけで決まる。
+  // 自動表示の文字（品名・支給品）はここに保存しない（自由入力と混ざらないようにするため）。
+  function findNote(d, dateStr, line){
+    return (d.dayNotes||[]).find(n=> n && n.date === dateStr && n.line === line) || null;
+  }
+  function setNoteText(productNo, dateStr, line, text){
+    if(!productNo || !dateStr || !isValidLine(line)) return;
+    const d = loadDetail(productNo);
+    let n = findNote(d, dateStr, line);
+    if(!n){
+      if(!text) return;                       // 空のまま触っただけなら何も作らない
+      n = { id: uid(), date: dateStr, line: line, text: '' };
+      d.dayNotes.push(n);
+    }
+    n.text = text;
+    saveDetail(productNo, d);
   }
 
-  // ---- 日付メモ（付箋）----
-  // date が正本。「何月何日のメモか」は必ずこの1項目で決まる。
-  // dx / dy は、その日の欄の中での見た目の微調整だけに使う（完全な自由座標にはしない）。
-  // 隣の日の欄へ動かしたときは、見た目だけでなく date そのものを書き換える。
-  const NOTE_W = 140, NOTE_H = 56;
-  function newDayNote(dateStr){
-    return { id:uid(), date:dateStr, text:'', name:'', at:new Date().toISOString(), dx:0, dy:0, w:NOTE_W, h:NOTE_H };
+  // ================= 表示する週 =================
+  // 週は月曜はじまり。保存キーは従来と同じ {start, end} の形なので、旧データもそのまま読める。
+  function weekStartOf(d){
+    const s = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const dow = s.getDay();                   // 0=日
+    s.setDate(s.getDate() - ((dow + 6) % 7));  // 月曜へ寄せる
+    return s;
   }
-  function clampNote(n, cellW, cellH){
-    const w = n.w || NOTE_W, h = n.h || NOTE_H;
-    n.dx = Math.max(0, Math.min(Math.round(n.dx||0), Math.max(0, cellW - w)));
-    n.dy = Math.max(0, Math.min(Math.round(n.dy||0), Math.max(0, (cellH||h) - h)));
-    return n;
-  }
-
-  // ================= 表示期間 =================
-  function defaultViewStart(){ return new Date(TODAY); }
-  function defaultViewEnd(){ const d = new Date(TODAY); d.setDate(d.getDate()+29); return d; }
-  function loadView(){
+  function weekEndOf(start){ const e = new Date(start); e.setDate(e.getDate()+6); return e; }
+  function loadWeekStart(){
     try{
       const raw = localStorage.getItem(VIEW_KEY);
       if(raw){
         const v = JSON.parse(raw);
-        const s = parseDateStr(v.start), e = parseDateStr(v.end);
-        if(s && e && e>=s) return { start:s, end:e };
+        const s = parseDateStr(v.start);
+        if(s) return weekStartOf(s);           // 旧データが週の途中でも、その週の月曜へそろえる
       }
     }catch(e){}
-    return { start: defaultViewStart(), end: defaultViewEnd() };
+    return weekStartOf(TODAY);
   }
-  function saveView(){ localStorage.setItem(VIEW_KEY, JSON.stringify({ start: fmtDateForInput(viewStart), end: fmtDateForInput(viewEnd) })); }
-  let _v = loadView();
-  let viewStart = _v.start, viewEnd = _v.end;
-
+  let weekStart = loadWeekStart();
+  function saveWeek(){
+    localStorage.setItem(VIEW_KEY, JSON.stringify({
+      start: fmtDateForInput(weekStart), end: fmtDateForInput(weekEndOf(weekStart))
+    }));
+  }
   function dayList(){
     const days = [];
-    let cur = new Date(viewStart);
-    while(cur <= viewEnd){ days.push(new Date(cur)); cur.setDate(cur.getDate()+1); }
+    for(let i=0;i<7;i++){ const d = new Date(weekStart); d.setDate(d.getDate()+i); days.push(d); }
     return days;
   }
-  function sameDay(a,b){ return a && b && a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
 
   // ================= 列の定義 =================
   // ※ 固定列の left は CSS に数値を直書きせず、ここの幅から積み上げて計算する。
-  //    直書きすると幅を1つ変えただけで全部ずれる（作業票表紙で同じ事故を起こしたため）。
+  // 現場要望（2026-08-27）により、左に残すのは次の5項目だけ。案件品番は出さない。
   const FIXED_COLS = [
-    { key:'exp',      w:30,  label:'' },
-    { key:'orderNo',  w:110, label:'社内№' },
-    { key:'customer', w:90,  label:'客先' },
-    { key:'model',    w:100, label:'型式' },
+    { key:'orderNo',  w:130, label:'社内No.' },
+    { key:'customer', w:100, label:'客先' },
+    { key:'model',    w:110, label:'型式' },
     { key:'due',      w:84,  label:'納期' },
-    { key:'chk',      w:40,  label:'欠品' },
-    { key:'kubun',    w:76,  label:'区分' },
-    { key:'itemName', w:150, label:'品名' },
-    { key:'status',   w:140, label:'状況' },
-    // 「支給日」という欄は無く、区分＝支給の明細の予定日がそれにあたる。
-    // 画面だけを見てどこへ入力すればよいか分かるよう、見出しにその旨を書く。
-    { key:'date',     w:150, label:'予定日（支給日・納品日）' },
-    { key:'note',     w:140, label:'備考' }
+    { key:'itemName', w:180, label:'品名' }
   ];
   const COL_LEFT = (function(){
     const m = {}; let acc = 0;
@@ -475,82 +374,51 @@
   const DAY_COL_W = 150;
 
   function fx(key, extraCls, extraStyle){
-    // 固定列のセルに付ける class と style をまとめて作る
     const cls = 'frozen ' + key + 'Col' + (key===LAST_FIXED ? ' lastFrozen' : '') + (extraCls ? ' '+extraCls : '');
     return 'class="'+cls+'" style="left:'+COL_LEFT[key]+'px;'+(extraStyle||'')+'"';
   }
 
-  let currentKubun = 'all';
+  // ================= 状態 =================
   let searchTerm = '';
-  const collapsed = {};   // { [productNo]: true } 画面を開いている間だけの開閉状態（保存しない）
 
-  const tableBody = document.getElementById('tableBody');
   const colGroup = document.getElementById('colGroup');
+  const tableBody = document.getElementById('tableBody');
   const dateHeadRow = document.getElementById('dateHeadRow');
   const dowHeadRow = document.getElementById('dowHeadRow');
   const emptyState = document.getElementById('emptyState');
   const summaryRow = document.getElementById('summaryRow');
   const boardTable = document.getElementById('boardTable');
-  const viewStartInput = document.getElementById('viewStartInput');
-  const viewEndInput = document.getElementById('viewEndInput');
+  const weekLabel = document.getElementById('weekLabel');
 
-  // ================= 絞り込み =================
+  // ================= 絞り込み・並び順 =================
+  // 検索は 社内No.／客先／型式／品名 が対象。案件そのものを週で絞り込むことはしない
+  // （その週に予定が無い案件も行としては必ず出す）。
   function matchProduct(p, t){
     return (p.orderNo||'').toLowerCase().includes(t)
-      || (p.productNo||'').toLowerCase().includes(t)
       || (p.customer||'').toLowerCase().includes(t)
-      || (p.model||'').toLowerCase().includes(t);
+      || (p.model||'').toLowerCase().includes(t)
+      || (p.itemName||'').toLowerCase().includes(t);
   }
-  function matchItem(it, t){
-    return (it.itemName||'').toLowerCase().includes(t) || (it.status||'').toLowerCase().includes(t);
-  }
-  // 画面に出す「製品＋その明細」を組み立てる。
-  // 区分で絞り込んでいる間は、その区分の明細を持たない製品は出さない（探しているものだけが並ぶようにする）。
-  function buildView(){
-    const t = searchTerm.toLowerCase();
-    return productsFromRecords().map(p=>{
-      const d = loadDetail(p.productNo);
-      let items = d.items;
-      if(currentKubun !== 'all') items = items.filter(it=> it.kubun === currentKubun);
-      if(t && !matchProduct(p, t)) items = items.filter(it=> matchItem(it, t));
-      return { p, d, items, hidden: (function(){
-        if(currentKubun !== 'all' && items.length === 0) return true;
-        if(t && !matchProduct(p, t) && items.length === 0) return true;
-        return false;
-      })() };
-    }).filter(x=> !x.hidden).sort(compareByRepDate);
-  }
-
-  // ---- 並び順：その製品で次に一番早く来る予定日（代表日）の昇順 ----
-  // 代表日は「表示中の明細」ではなく "全明細" から決める。
-  // 区分で絞り込んでいても並びが変わらず、印刷（全期間・全明細）とも食い違わないため。
-  //   ① 有効な items[].date（未定・空を除く）の最小日
-  //   ② 無ければ 納期（bs.order.dueDate）
-  //   ③ それも無ければ 代表日なし → 末尾
-  function repDateOf(x){
-    const ds = (x.d.items||[])
-      .filter(it=> it && !it.dateUnknown && it.date)
-      .map(it=> it.date)
-      .sort();
-    if(ds.length) return ds[0];
-    if(x.p.dueDate) return x.p.dueDate;
-    return '';
-  }
-  // 同じ代表日のときに並びが揺れないよう、決着がつくまで比較を続ける。
-  // ここを決定的にしないと、再描画のたびに行の上下が入れ替わる。
-  function compareByRepDate(a, b){
-    const ra = repDateOf(a), rb = repDateOf(b);
-    if(ra !== rb){
-      if(!ra) return 1;      // 代表日なしは末尾
-      if(!rb) return -1;
-      return ra < rb ? -1 : 1;
-    }
+  // 並び順は納期の若い順。納期が無いものは末尾。
+  // 同じ納期のときに並びが揺れないよう、決着がつくまで比較を続ける。
+  function compareByDueDate(a, b){
     const da = a.p.dueDate||'', db = b.p.dueDate||'';
-    if(da !== db){ if(!da) return 1; if(!db) return -1; return da < db ? -1 : 1; }
+    if(da !== db){
+      if(!da) return 1;
+      if(!db) return -1;
+      return da < db ? -1 : 1;
+    }
     const oa = a.p.orderNo || a.p.productNo || '', ob = b.p.orderNo || b.p.productNo || '';
     const c = oa.localeCompare(ob, 'ja', { numeric:true });
     if(c !== 0) return c;
     return (a.p.productNo||'').localeCompare(b.p.productNo||'', 'ja', { numeric:true });
+  }
+  function buildView(){
+    const t = searchTerm.toLowerCase();
+    return productsFromRecords()
+      .filter(p=> !t || matchProduct(p, t))
+      .map(p=> ({ p: p, d: loadDetail(p.productNo) }))
+      .sort(compareByDueDate);
   }
 
   // ================= 見出し =================
@@ -566,126 +434,84 @@
     let dowHtml = FIXED_COLS.map(c=>'<th class="frozen '+c.key+'Col'+(c.key===LAST_FIXED?' lastFrozen':'')+'" style="left:'+COL_LEFT[c.key]+'px; top:27px;"></th>').join('');
 
     const dow = ['日','月','火','水','木','金','土'];
-    days.forEach((d,idx)=>{
+    days.forEach(d=>{
       const isToday = sameDay(d, TODAY);
       const isWeekend = d.getDay()===0 || d.getDay()===6;
-      const isMonthStart = idx>0 && d.getDate()===1;
-      const thCls = (isToday?'today ':'')+(isMonthStart?'monthStart':'');
+      const thCls = isToday ? 'today' : '';
       dateHtml += '<th class="'+thCls+'">'+(d.getMonth()+1)+'/'+d.getDate()+'</th>';
       dowHtml += '<th class="'+thCls+'" style="'+(isWeekend?'color:'+(d.getDay()===0?'#c0392b':'#2563eb')+';':'')+'">'+dow[d.getDay()]+'</th>';
     });
     dateHeadRow.innerHTML = dateHtml;
     dowHeadRow.innerHTML = dowHtml;
+
+    const e = weekEndOf(weekStart);
+    weekLabel.textContent = (weekStart.getMonth()+1)+'/'+weekStart.getDate()+' 〜 '+(e.getMonth()+1)+'/'+e.getDate()
+      + '（'+weekStart.getFullYear()+'年）';
   }
 
-  function dayCellCls(d, idx){
+  function dayCellCls(d){
     const isToday = sameDay(d, TODAY);
     const isWeekend = d.getDay()===0 || d.getDay()===6;
-    const isMonthStart = idx>0 && d.getDate()===1;
-    return 'dayCell'+(isWeekend?' weekend':'')+(isToday?' today':'')+(isMonthStart?' monthStart':'');
+    return 'dayCell'+(isWeekend?' weekend':'')+(isToday?' today':'');
   }
-  function boxHtml(item, small){
-    const color = kubunColor(item.kubun);
-    const label = (item.kubun ? item.kubun+'　' : '') + (item.itemName || item.status || '');
-    return '<div class="dayBox'+(small?' small':'')+'" data-role="openMemo" style="background:'+color+'; --tailColor:'+color+';"'
-      + ' title="クリックでこの製品のメモを開く">'
-      + '<span class="dbText">'+esc(label)+'</span></div>';
+
+  // ---- 日付の欄の中身 ----
+  // autoText があるときは、自由入力の上に「消せない文字」として出す。
+  // autoText は保存しない（案件データと固定文字から毎回組み立てる）ので、自由入力で上書きされることがない。
+  function dayCellHtml(d, pn, line, autoText, autoCls, noteText){
+    const ds = fmtDateForInput(d);
+    return '<td class="'+dayCellCls(d)+'" data-date="'+ds+'">'
+      + (autoText ? '<div class="autoLine '+autoCls+'">'+esc(autoText)+'</div>' : '')
+      + '<textarea class="dayInput" data-role="dayInput" data-pn="'+esc(pn)+'" data-line="'+line+'" data-date="'+ds+'"'
+      + ' placeholder="">'+esc(noteText||'')+'</textarea>'
+      + '</td>';
   }
 
   // ================= 行の組み立て =================
-  function prodRowHtml(x){
+  function nouhinRowHtml(x){
     const p = x.p, days = dayList();
-    const open = !collapsed[p.productNo];
-    const nShikyu = x.items.filter(i=>i.kubun==='支給').length;
-    const nNouhin = x.items.filter(i=>i.kubun==='納品').length;
-    const memoCount = (x.d.memo||[]).length;
-    let html = '<tr class="prodRow" data-pn="'+esc(p.productNo)+'">';
-    html += '<td '+fx('exp')+'><button type="button" class="expBtn" data-role="toggleExp" title="'+(open?'たたむ':'開く')+'">'+(open?'▼':'▶')+'</button></td>';
-    html += '<td '+fx('orderNo')+'><span class="prodNo">'+esc(p.orderNo || p.productNo)+'</span>'
-      // 案件品番の副表示はやめる（社内No.と紛らわしいため）。並べ替え・保存には今までどおり productNo を使う。
+    const due = parseDateStr(p.dueDate);
+    const hasShikyu = !!(x.d.shikyu && x.d.shikyu.enabled);
+    let html = '<tr class="nouhinRow" data-pn="'+esc(p.productNo)+'" data-line="'+LINE_NOUHIN+'">';
+    html += '<td '+fx('orderNo')+'><span class="prodNo">'+esc(p.orderNo || '-')+'</span>'
       + (!p.orderNo ? '<span class="prodSub">社内No.未入力</span>' : '')
+      + (hasShikyu ? '' : '<button type="button" class="miniBtn addShikyuBtn" data-role="addShikyu" title="この案件に支給行を追加します">＋支給</button>')
       + '</td>';
     html += '<td '+fx('customer')+'>'+esc(p.customer||'-')+'</td>';
     html += '<td '+fx('model')+'>'+esc(p.model||'-')+'</td>';
     html += '<td '+fx('due')+'>'+esc(p.dueDate ? p.dueDate.slice(5).replace('-','/') : '-')+'</td>';
-    html += '<td '+fx('chk')+'></td>';
-    html += '<td '+fx('kubun')+'>'
-      + '<span class="kubunChip'+(nShikyu?'':' zero')+'" style="'+(nShikyu?'background:'+KUBUN_COLORS['支給']+';':'')+'">支'+nShikyu+'</span>'
-      + '<span class="kubunChip'+(nNouhin?'':' zero')+'" style="'+(nNouhin?'background:'+KUBUN_COLORS['納品']+';':'')+'">納'+nNouhin+'</span>'
-      + '</td>';
-    // 「支給日」という欄は無く、区分＝支給の明細の予定日がそれにあたる。
-    // どこへ入力すればよいかを画面だけで分かるよう、区分を選んだ状態で作れる入口を並べる。
-    // 区分を決めずに作る従来の「＋明細を追加」も残す（決めていないことが見える状態を保つため）。
-    html += '<td '+fx('itemName')+'>'
-      + '<button type="button" class="miniBtn" data-role="addItem" data-kubun="支給" title="区分＝支給の明細を追加して予定日へ進みます">＋支給予定</button> '
-      + '<button type="button" class="miniBtn" data-role="addItem" data-kubun="納品" title="区分＝納品の明細を追加して予定日へ進みます">＋納品予定</button> '
-      + '<button type="button" class="miniBtn" data-role="addItem" title="区分を決めずに明細だけ追加します">＋明細を追加</button>'
-      + '</td>';
-    html += '<td '+fx('status')+'></td>';
-    html += '<td '+fx('date')+'></td>';
-    html += '<td '+fx('note')+'><button type="button" class="miniBtn memoBtn'+(memoCount?' has':'')+'" data-role="openMemo">💬 メモ'+(memoCount?' '+memoCount:'')+'</button></td>';
+    html += '<td '+fx('itemName')+'><span class="itemNameVal">'+esc(p.itemName||'-')+'</span></td>';
 
-    // 日付メモ（付箋）は製品行の日付の欄に置く。
-    // 明細行は開閉で消えるため、そちらには置かない（閉じた瞬間に付箋も見えなくなるのを避ける）。
-    const notesByDate = {};
-    (x.d.dayNotes||[]).forEach(n=>{ if(n && n.date){ (notesByDate[n.date] = notesByDate[n.date] || []).push(n); } });
-
-    days.forEach((d,idx)=>{
-      const hits = x.items.filter(it=> !it.dateUnknown && it.date && sameDay(parseDateStr(it.date), d));
-      const ds = fmtDateForInput(d);
-      const notes = notesByDate[ds] || [];
-      // 付箋は絶対配置なので、そのままだと行の高さに数えられず下の行へはみ出す。
-      // 一番下にくる付箋の高さぶんだけ、見えない下敷きを通常の流れに置いて行を持ち上げる。
-      const needH = notes.reduce((m,n)=> Math.max(m, Math.round(n.dy||0) + (n.h||NOTE_H)), 0);
-      html += '<td class="'+dayCellCls(d,idx)+(notes.length?' hasNote':'')+'" data-date="'+ds+'">'
-        + hits.map(it=>boxHtml(it, true)).join('')
-        + notes.map(n=>dayNoteHtml(n)).join('')
-        + (needH ? '<div class="noteSpacer" style="height:'+needH+'px;"></div>' : '')
-        + '<button type="button" class="addNoteBtn" data-role="addNote" title="この日にメモを貼る">＋メモ</button>'
-        + '</td>';
+    days.forEach(d=>{
+      // 納期の日にだけ品名を自動表示する。品名が未入力の案件では何も出さない。
+      const auto = (due && sameDay(due, d) && p.itemName) ? p.itemName : '';
+      const n = findNote(x.d, fmtDateForInput(d), LINE_NOUHIN);
+      html += dayCellHtml(d, p.productNo, LINE_NOUHIN, auto, 'nouhinAuto', n ? n.text : '');
     });
     html += '</tr>';
     return html;
   }
 
-  function dayNoteHtml(n){
-    const w = n.w || NOTE_W, h = n.h || NOTE_H;
-    const dx = Math.max(0, Math.round(n.dx||0)), dy = Math.max(0, Math.round(n.dy||0));
-    return '<div class="dayNote" data-role="dayNote" data-nid="'+esc(n.id)+'"'
-      + ' style="left:'+dx+'px; top:'+dy+'px; width:'+w+'px; height:'+h+'px;">'
-      + '<div class="dnHandle" data-role="noteHandle" title="つかんで動かす／隣の日へ移すとその日のメモになります">'
-      + '<span class="dnDate">'+esc((n.date||'').slice(5).replace('-','/'))+'</span>'
-      + '<button type="button" class="dnDel" data-role="delNote" title="このメモを削除">✕</button>'
-      + '</div>'
-      + '<textarea data-role="noteText" placeholder="メモ">'+esc(n.text||'')+'</textarea>'
-      + '</div>';
-  }
-
-  function itemRowHtml(x, item){
-    const days = dayList();
-    const due = (!item.dateUnknown && item.date) ? parseDateStr(item.date) : null;
-    let html = '<tr class="itemRow'+(item.checked?' checkedRow':'')+'" data-pn="'+esc(x.p.productNo)+'" data-id="'+esc(item.id)+'">';
-    html += '<td '+fx('exp')+'><button type="button" class="delBtn" data-role="delItem" title="この明細を削除">✕</button></td>';
-    html += '<td '+fx('orderNo','itemIndent')+'></td>';
+  function shikyuRowHtml(x){
+    const p = x.p, days = dayList();
+    const sd = parseDateStr(x.d.shikyu.date);
+    let html = '<tr class="shikyuRow" data-pn="'+esc(p.productNo)+'" data-line="'+LINE_SHIKYU+'">';
+    html += '<td '+fx('orderNo')+'>'
+      + '<span class="shikyuTag">支給</span>'
+      + '<span class="shikyuDateWrap"><label>支給日</label>'
+      + '<input type="date" data-role="shikyuDate" value="'+esc(x.d.shikyu.date||'')+'"></span>'
+      + '<button type="button" class="shikyuOffBtn" data-role="removeShikyu" title="支給行を閉じます（入力した内容は消えません）">支給を解除</button>'
+      + '</td>';
     html += '<td '+fx('customer')+'></td>';
     html += '<td '+fx('model')+'></td>';
     html += '<td '+fx('due')+'></td>';
-    html += '<td '+fx('chk')+' align="center"><input type="checkbox" data-role="fCheck" '+(item.checked?'checked':'')+'></td>';
-    html += '<td '+fx('kubun')+'><select class="cellInput" data-field="kubun" style="color:'+kubunColor(item.kubun)+';">'
-      + '<option value=""'+(item.kubun===''?' selected':'')+'>—</option>'
-      + '<option value="支給"'+(item.kubun==='支給'?' selected':'')+'>支給</option>'
-      + '<option value="納品"'+(item.kubun==='納品'?' selected':'')+'>納品</option>'
-      + '</select></td>';
-    html += '<td '+fx('itemName')+'><textarea rows="2" class="cellInput" data-field="itemName" placeholder="例）下型入子 2ヶ">'+esc(item.itemName)+'</textarea></td>';
-    html += '<td '+fx('status')+'><textarea rows="2" class="cellInput" data-field="status" placeholder="例）14：00納品、支給材未着">'+esc(item.status)+'</textarea></td>';
-    html += '<td '+fx('date')+'>'
-      + '<input type="date" class="cellInput" data-field="date" value="'+esc(item.date||'')+'" '+(item.dateUnknown?'disabled':'')+'>'
-      + '<label class="unknownChk"><input type="checkbox" data-role="fUnknown" '+(item.dateUnknown?'checked':'')+'>未定</label>'
-      + '</td>';
-    html += '<td '+fx('note')+'><input type="text" class="cellInput" data-field="note" value="'+esc(item.note)+'"></td>';
+    html += '<td '+fx('itemName')+'></td>';
 
-    days.forEach((d,idx)=>{
-      html += '<td class="'+dayCellCls(d,idx)+'">' + ((due && sameDay(due,d)) ? boxHtml(item, false) : '') + '</td>';
+    days.forEach(d=>{
+      // 支給日にだけ「支給品」を赤で自動表示する。
+      const auto = (sd && sameDay(sd, d)) ? '支給品' : '';
+      const n = findNote(x.d, fmtDateForInput(d), LINE_SHIKYU);
+      html += dayCellHtml(d, p.productNo, LINE_SHIKYU, auto, 'shikyuAuto', n ? n.text : '');
     });
     html += '</tr>';
     return html;
@@ -699,14 +525,14 @@
     if(allProducts.length === 0){
       boardTable.style.display = 'none';
       emptyState.style.display = 'block';
-      emptyState.innerHTML = 'トップ画面に案件がまだありません。<br>この一覧は案件カードと同じ製品を並べるため、まず <a href="../SAKAE SEIKI-iS.html">トップ画面</a> から案件を登録してください。';
+      emptyState.innerHTML = 'トップ画面に案件がまだありません。<br>この一覧は案件カードと同じ案件を並べるため、まず <a href="../SAKAE SEIKI-iS.html">トップ画面</a> から案件を登録してください。';
       summaryRow.innerHTML = '';
       return;
     }
     if(view.length === 0){
       boardTable.style.display = 'none';
       emptyState.style.display = 'block';
-      emptyState.textContent = '条件に合う製品がありません。';
+      emptyState.textContent = '条件に合う案件がありません。';
     }else{
       boardTable.style.display = '';
       emptyState.style.display = 'none';
@@ -714,43 +540,35 @@
 
     let html = '';
     view.forEach(x=>{
-      html += prodRowHtml(x);
-      if(!collapsed[x.p.productNo]) x.items.forEach(it=>{ html += itemRowHtml(x, it); });
+      html += nouhinRowHtml(x);
+      // 支給行は必ずその案件の納品行の直下に置く。別の案件の行が間に入ることはない。
+      if(x.d.shikyu && x.d.shikyu.enabled) html += shikyuRowHtml(x);
     });
     tableBody.innerHTML = html;
 
-    let shikyu = 0, nouhin = 0, undecided = 0;
+    const ws = fmtDateForInput(weekStart), we = fmtDateForInput(weekEndOf(weekStart));
+    let nouhinThisWeek = 0, shikyuThisWeek = 0;
     allProducts.forEach(p=>{
-      loadDetail(p.productNo).items.forEach(it=>{
-        if(it.kubun==='支給') shikyu++;
-        else if(it.kubun==='納品') nouhin++;
-        else undecided++;
-      });
+      const d = loadDetail(p.productNo);
+      if(p.dueDate && p.dueDate >= ws && p.dueDate <= we) nouhinThisWeek++;
+      if(d.shikyu.enabled && d.shikyu.date && d.shikyu.date >= ws && d.shikyu.date <= we) shikyuThisWeek++;
     });
-    // 日付メモは表示期間の外にあると画面から消える。黙って消えると「メモが無くなった」と見えるので件数を出す。
-    let outside = 0;
-    const vs = fmtDateForInput(viewStart), ve = fmtDateForInput(viewEnd);
-    allProducts.forEach(p=>{
-      (loadDetail(p.productNo).dayNotes||[]).forEach(n=>{
-        if(!n || !n.date) return;
-        if(n.date < vs || n.date > ve) outside++;
-      });
-    });
-
     summaryRow.innerHTML =
-      '<span class="sumChip">製品 <b>'+view.length+'</b> / 全<b>'+allProducts.length+'</b>件</span>'
-      + '<span class="sumChip">支給 <b>'+shikyu+'</b>件</span>'
-      + '<span class="sumChip">納品 <b>'+nouhin+'</b>件</span>'
-      + (undecided ? '<span class="sumChip">区分未選択 <b>'+undecided+'</b>件</span>' : '')
-      + (outside ? '<span class="sumChip outsideChip" title="表示期間を広げると出てきます">表示期間外にメモ <b>'+outside+'</b>件</span>' : '');
+      '<span class="sumChip">案件 <b>'+view.length+'</b> / 全<b>'+allProducts.length+'</b>件</span>'
+      + '<span class="sumChip">この週の納品 <b>'+nouhinThisWeek+'</b>件</span>'
+      + '<span class="sumChip">この週の支給 <b>'+shikyuThisWeek+'</b>件</span>';
   }
 
   // ================= 操作 =================
-  document.getElementById('procToggle').addEventListener('click', (e)=>{
-    const btn = e.target.closest('button[data-kubun]');
+  document.getElementById('weekNav').addEventListener('click', (e)=>{
+    const btn = e.target.closest('button[data-move]');
     if(!btn) return;
-    currentKubun = btn.dataset.kubun;
-    document.querySelectorAll('#procToggle button').forEach(b=> b.classList.toggle('active', b===btn));
+    const m = btn.dataset.move;
+    if(m === 'prev') weekStart.setDate(weekStart.getDate()-7);
+    else if(m === 'next') weekStart.setDate(weekStart.getDate()+7);
+    else weekStart = weekStartOf(TODAY);
+    weekStart = weekStartOf(weekStart);
+    saveWeek();
     render();
   });
 
@@ -759,321 +577,56 @@
     render();
   });
 
-  const expandAllBtn = document.getElementById('expandAllBtn');
-  expandAllBtn.addEventListener('click', ()=>{
-    const anyOpen = productsFromRecords().some(p=> !collapsed[p.productNo]);
-    productsFromRecords().forEach(p=>{ if(anyOpen) collapsed[p.productNo] = true; else delete collapsed[p.productNo]; });
-    expandAllBtn.textContent = anyOpen ? 'すべて開く' : 'すべてたたむ';
-    render();
-  });
-
-  // ---- 印刷（全期間）----
-  // 画面の表示期間には依存しない。全製品の予定日と日付メモから期間を出し、月ごとのページに分けて刷る。
-  // 印刷は表示専用の別ページで組み立てる（この画面は入力欄だらけで、そのまま刷ると紙で読めないため）。
+  // 画面に出ている週をそのまま印刷する。印刷側で今日から計算し直さないよう、週の開始日をURLで渡す。
   document.getElementById('printBtn').addEventListener('click', ()=>{
-    const all = productsFromRecords();
-    let min = '', max = '';
-    all.forEach(p=>{
-      const d = loadDetail(p.productNo);
-      (d.items||[]).forEach(it=>{ if(it && !it.dateUnknown && it.date){ if(!min||it.date<min) min=it.date; if(!max||it.date>max) max=it.date; } });
-      (d.dayNotes||[]).forEach(n=>{ if(n && n.date){ if(!min||n.date<min) min=n.date; if(!max||n.date>max) max=n.date; } });
-    });
-    if(!min || !max){
-      window.alert('印刷できる予定日・日付メモがまだありません。\n予定日を入れてから印刷してください。');
-      return;
-    }
-    const a = parseDateStr(min), b = parseDateStr(max);
-    const months = (b.getFullYear()*12 + b.getMonth()) - (a.getFullYear()*12 + a.getMonth()) + 1;
-    const fmt = s => s.replace(/-/g,'/');
-    // 日付の打ち間違い（例 2099-01-01）が1件あるだけで数十年ぶんになる。そのまま大量に刷らせない。
-    if(months > 24){
-      const ok = window.confirm(
-        '対象期間：'+fmt(min)+' 〜 '+fmt(max)+'\n想定ページ数：'+months+'ページ（月ごと）\n\n'
-        + '⚠ 期間が '+months+' か月と非常に長くなっています。\n'
-        + '予定日の打ち間違い（年の入力ミスなど）が混ざっている可能性があります。\n'
-        + '一覧で日付を確認してから印刷することをおすすめします。\n\n'
-        + 'それでも印刷用の画面を開きますか？');
-      if(!ok) return;
-    }else{
-      const ok = window.confirm('対象期間：'+fmt(min)+' 〜 '+fmt(max)+'\n想定ページ数：'+months+'ページ（月ごと）\n\n印刷用の画面を開きますか？');
-      if(!ok) return;
-    }
-    // 書きかけの内容を共有へ送り切ってから別ページを開く（送信は500ms待ちでまとめられるため）
     if(window.sakaeSyncFlush){ try{ window.sakaeSyncFlush(); }catch(err){} }
-    window.open('支給納品印刷_モック.html', '_blank');
+    window.open('支給納品印刷_モック.html?week=' + encodeURIComponent(fmtDateForInput(weekStart)), '_blank');
   });
-
-  function updateRangeInputsUI(){
-    viewStartInput.value = fmtDateForInput(viewStart);
-    viewEndInput.value = fmtDateForInput(viewEnd);
-  }
-  function applyViewChange(newStart, newEnd){
-    if(!newStart || !newEnd || newEnd < newStart){ updateRangeInputsUI(); return; }
-    viewStart = newStart; viewEnd = newEnd;
-    saveView();
-    updateRangeInputsUI();
-    render();
-  }
-  viewStartInput.addEventListener('change', ()=> applyViewChange(parseDateStr(viewStartInput.value), viewEnd));
-  viewEndInput.addEventListener('change', ()=> applyViewChange(viewStart, parseDateStr(viewEndInput.value)));
-  document.getElementById('rangeResetBtn').addEventListener('click', ()=>{
-    viewStart = defaultViewStart();
-    viewEnd = defaultViewEnd();
-    saveView();
-    updateRangeInputsUI();
-    render();
-  });
-  updateRangeInputsUI();
 
   tableBody.addEventListener('click', (e)=>{
     const tr = e.target.closest('tr[data-pn]');
     if(!tr) return;
     const pn = tr.dataset.pn;
 
-    if(e.target.closest('[data-role="toggleExp"]')){
-      if(collapsed[pn]) delete collapsed[pn]; else collapsed[pn] = true;
-      render();
-      return;
-    }
-    const addBtn = e.target.closest('[data-role="addItem"]');
-    if(addBtn){
+    if(e.target.closest('[data-role="addShikyu"]')){
       const d = loadDetail(pn);
-      const it = newItem(addBtn.dataset.kubun || '');
-      d.items.push(it);
-      saveDetail(pn, d);
-      delete collapsed[pn];   // 追加した明細がすぐ見えるように開く
-      render();
-      // 追加したらそのまま日付を入れられるよう、予定日の欄へ移動する
-      const row = tableBody.querySelector('tr.itemRow[data-pn="'+CSS.escape(pn)+'"][data-id="'+CSS.escape(it.id)+'"]');
-      const dateInput = row && row.querySelector('[data-field="date"]');
-      if(dateInput){ dateInput.focus(); try{ dateInput.showPicker && dateInput.showPicker(); }catch(err){} }
-      return;
-    }
-    // 日付メモ（付箋）を、その日の欄に貼る
-    const addNoteBtn = e.target.closest('[data-role="addNote"]');
-    if(addNoteBtn){
-      const cell = addNoteBtn.closest('td.dayCell');
-      if(!cell || !cell.dataset.date) return;
-      const d = loadDetail(pn);
-      d.dayNotes = d.dayNotes || [];
-      const n = newDayNote(cell.dataset.date);
-      // 同じ日に何枚でも貼れる。重ならないよう少しずつずらす。
-      const same = d.dayNotes.filter(z=> z.date === n.date).length;
-      n.dy = same * 12;
-      d.dayNotes.push(n);
+      d.shikyu.enabled = true;                 // 支給日は空のまま。日付は利用者が入れる
       saveDetail(pn, d);
       render();
-      const ta = tableBody.querySelector('[data-nid="'+CSS.escape(n.id)+'"] [data-role="noteText"]');
-      if(ta) ta.focus();
+      const input = tableBody.querySelector('tr.shikyuRow[data-pn="'+CSS.escape(pn)+'"] [data-role="shikyuDate"]');
+      if(input){ input.focus(); try{ input.showPicker && input.showPicker(); }catch(err){} }
       return;
     }
-    const delNoteBtn = e.target.closest('[data-role="delNote"]');
-    if(delNoteBtn){
-      const noteEl = delNoteBtn.closest('[data-nid]');
-      if(!noteEl) return;
-      if(!window.confirm('この日付メモを削除しますか？')) return;
+    if(e.target.closest('[data-role="removeShikyu"]')){
+      // ---- 支給行を閉じるだけ。支給日も自由入力も消さない（もう一度「＋支給」を押せばそのまま出る）----
+      if(!window.confirm('この案件の支給行を閉じますか？\n\n支給日と入力した文章は消えません。もう一度「＋支給」を押すと元どおり出ます。')) return;
       const d = loadDetail(pn);
-      d.dayNotes = (d.dayNotes||[]).filter(z=> z.id !== noteEl.dataset.nid);
+      d.shikyu.enabled = false;
       saveDetail(pn, d);
       render();
-      return;
-    }
-    const delBtn = e.target.closest('[data-role="delItem"]');
-    if(delBtn){
-      const d = loadDetail(pn);
-      const item = d.items.find(x=>x.id===tr.dataset.id);
-      const label = item ? (item.itemName || item.status || '') : '';
-      if(!window.confirm('この明細を削除しますか？'+(label?'（'+label+'）':''))) return;
-      d.items = d.items.filter(x=>x.id!==tr.dataset.id);
-      saveDetail(pn, d);
-      render();
-      return;
-    }
-    const memoBtn = e.target.closest('[data-role="openMemo"]');
-    if(memoBtn){
-      openMemoPicker(pn, memoBtn.getBoundingClientRect());
       return;
     }
   });
 
-  // 明細の編集。行の data-pn / data-id から、その製品の保存領域だけを読み書きする。
-  function updateItem(tr, mutate){
-    const pn = tr.dataset.pn;
-    const d = loadDetail(pn);
-    const item = d.items.find(x=>x.id===tr.dataset.id);
-    if(!item) return null;
-    mutate(item);
-    saveDetail(pn, d);
-    return item;
-  }
   tableBody.addEventListener('change', (e)=>{
-    const tr = e.target.closest('tr.itemRow[data-id]');
+    const tr = e.target.closest('tr[data-pn]');
     if(!tr) return;
-    if(e.target.dataset.role === 'fCheck'){ updateItem(tr, it=>{ it.checked = e.target.checked; }); render(); return; }
-    if(e.target.dataset.role === 'fUnknown'){ updateItem(tr, it=>{ it.dateUnknown = e.target.checked; }); render(); return; }
-    const f = e.target.dataset.field;
-    if(!f) return;
-    if(f === 'date' || f === 'kubun'){ updateItem(tr, it=>{ it[f] = e.target.value; }); render(); }
+    if(e.target.dataset.role === 'shikyuDate'){
+      const d = loadDetail(tr.dataset.pn);
+      d.shikyu.date = e.target.value || '';
+      saveDetail(tr.dataset.pn, d);
+      render();
+    }
   });
+
+  // 自由入力は打つたびに保存する。ここで再描画はしない（打っている途中でフォーカスが飛ぶため）。
   tableBody.addEventListener('input', (e)=>{
-    // 日付メモ（付箋）の本文。再描画はしない（打っている途中でフォーカスが飛ぶため）
-    const noteEl = e.target.closest('[data-role="dayNote"]');
-    if(noteEl && e.target.dataset.role === 'noteText'){
-      const pn = noteEl.closest('tr[data-pn]').dataset.pn;
-      const d = loadDetail(pn);
-      const n = (d.dayNotes||[]).find(z=> z.id === noteEl.dataset.nid);
-      if(n){ n.text = e.target.value; saveDetail(pn, d); }
-      return;
-    }
-    const tr = e.target.closest('tr.itemRow[data-id]');
-    if(!tr) return;
-    const f = e.target.dataset.field;
-    // 日付と区分は change 側で扱う（入力中に再描画するとフォーカスが飛ぶため）
-    if(!f || f === 'date' || f === 'kubun') return;
-    updateItem(tr, it=>{ it[f] = e.target.value; });
+    const ta = e.target.closest('[data-role="dayInput"]');
+    if(!ta) return;
+    setNoteText(ta.dataset.pn, ta.dataset.date, ta.dataset.line, ta.value);
   });
 
-  // ================= 日付メモ（付箋）をつかんで動かす =================
-  // ・動かしている間は保存しない。離した瞬間に1回だけ保存する
-  //   （動かすたびに保存すると共有の送信が多発し、他の端末の画面がちらつくため）
-  // ・同じ日の欄の中で動かしたときは、見た目の位置（dx/dy）だけを直す
-  // ・隣の日の欄まで動かしたときは、日付（date）そのものを書き換える。
-  //   「何月何日のメモか」は必ず date で決まり、位置だけで決まることはない
-  let noteDrag = null;
-  tableBody.addEventListener('mousedown', (e)=>{
-    const handle = e.target.closest('[data-role="noteHandle"]');
-    if(!handle) return;
-    const noteEl = handle.closest('[data-role="dayNote"]');
-    const cell = noteEl && noteEl.closest('td.dayCell');
-    const tr = noteEl && noteEl.closest('tr[data-pn]');
-    if(!noteEl || !cell || !tr) return;
-    e.preventDefault();
-    noteDrag = {
-      pn: tr.dataset.pn, nid: noteEl.dataset.nid, el: noteEl,
-      startX: e.clientX, startY: e.clientY,
-      origDx: parseFloat(noteEl.style.left) || 0,
-      origDy: parseFloat(noteEl.style.top) || 0
-    };
-    noteEl.classList.add('dragging');
-  });
-  document.addEventListener('mousemove', (e)=>{
-    if(!noteDrag) return;
-    // 保存はしない。見た目だけ動かす
-    noteDrag.el.style.left = (noteDrag.origDx + (e.clientX - noteDrag.startX)) + 'px';
-    noteDrag.el.style.top  = (noteDrag.origDy + (e.clientY - noteDrag.startY)) + 'px';
-  });
-  document.addEventListener('mouseup', (e)=>{
-    if(!noteDrag) return;
-    const drag = noteDrag; noteDrag = null;
-    drag.el.classList.remove('dragging');
-    // 離した場所がどの日の欄かを調べる（同じ製品の行の中だけを対象にする）
-    drag.el.style.pointerEvents = 'none';
-    const under = document.elementFromPoint(e.clientX, e.clientY);
-    drag.el.style.pointerEvents = '';
-    const dropCell = under && under.closest ? under.closest('td.dayCell[data-date]') : null;
-    const dropRow = dropCell && dropCell.closest('tr[data-pn]');
-
-    const d = loadDetail(drag.pn);
-    const n = (d.dayNotes||[]).find(z=> z.id === drag.nid);
-    if(!n){ render(); return; }
-
-    if(dropCell && dropRow && dropRow.dataset.pn === drag.pn){
-      const r = dropCell.getBoundingClientRect();
-      n.date = dropCell.dataset.date;                    // ← 日付そのものを書き換える
-      n.dx = e.clientX - r.left - 20;
-      n.dy = e.clientY - r.top - 7;
-      clampNote(n, dropCell.clientWidth, Math.max(dropCell.clientHeight, (n.h||NOTE_H)));
-    }else{
-      // 行の外や日付の欄以外で離したときは、動かさなかったことにする（日付は変えない）
-      n.dx = drag.origDx; n.dy = drag.origDy;
-    }
-    saveDetail(drag.pn, d);   // ← 離した時の1回だけ
-    render();
-  });
-
-  // ================= 製品カードのメモ（掲示板） =================
-  const commentPicker = document.getElementById('commentPicker');
-  const cpList = document.getElementById('cpList');
-  const cpTitle = document.getElementById('cpTitle');
-  const cpNameInput = document.getElementById('cpNameInput');
-  const cpTextInput = document.getElementById('cpTextInput');
-  let cpProductNo = null;
-
-  function fmtAt(iso){
-    const d = new Date(iso);
-    if(isNaN(d.getTime())) return '';
-    const pad = n=>String(n).padStart(2,'0');
-    return (d.getMonth()+1)+'/'+d.getDate()+' '+pad(d.getHours())+':'+pad(d.getMinutes());
-  }
-  function renderCpList(){
-    const memo = cpProductNo ? (loadDetail(cpProductNo).memo || []) : [];
-    if(memo.length === 0){
-      cpList.innerHTML = '<div class="cpEmpty">まだメモはありません。</div>';
-      return;
-    }
-    cpList.innerHTML = memo.slice().reverse().map(c=>
-      '<div class="cpItem" data-cid="'+esc(c.id)+'">'
-      + '<div class="cpMeta"><span>'+esc(c.name||'名無し')+'　'+esc(fmtAt(c.at))+'</span><button type="button" class="cpDel" data-role="delMemo" data-cid="'+esc(c.id)+'">削除</button></div>'
-      + '<div class="cpText">'+esc(c.text)+'</div>'
-      + '</div>'
-    ).join('');
-  }
-  function openMemoPicker(productNo, anchorRect){
-    cpProductNo = productNo;
-    const p = productsFromRecords().find(x=>x.productNo===productNo);
-    cpTitle.textContent = 'メモ　' + (p ? (p.orderNo || p.productNo) : productNo);
-    cpTextInput.value = '';
-    renderCpList();
-    const pickerW = 280;
-    let left = anchorRect.left;
-    let top = anchorRect.bottom + 6;
-    if(left + pickerW > window.innerWidth - 10) left = window.innerWidth - pickerW - 10;
-    if(left < 10) left = 10;
-    if(top + 340 > window.innerHeight){ top = Math.max(10, anchorRect.top - 346); }
-    commentPicker.style.left = left+'px';
-    commentPicker.style.top = top+'px';
-    commentPicker.classList.add('open');
-    cpTextInput.focus();
-  }
-  function closeMemoPicker(){
-    commentPicker.classList.remove('open');
-    cpProductNo = null;
-  }
-  document.getElementById('cpAddBtn').addEventListener('click', ()=>{
-    if(!cpProductNo) return;
-    const text = cpTextInput.value.trim();
-    if(!text) return;
-    const d = loadDetail(cpProductNo);
-    d.memo = d.memo || [];
-    d.memo.push({ id:uid(), name: cpNameInput.value.trim(), text, at: new Date().toISOString() });
-    saveDetail(cpProductNo, d);
-    cpTextInput.value = '';
-    renderCpList();
-    render();
-  });
-  cpTextInput.addEventListener('keydown', (e)=>{
-    if(e.key==='Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); document.getElementById('cpAddBtn').click(); }
-  });
-  cpList.addEventListener('click', (e)=>{
-    const btn = e.target.closest('[data-role="delMemo"]');
-    if(!btn || !cpProductNo) return;
-    if(!window.confirm('このメモを削除しますか？')) return;
-    const d = loadDetail(cpProductNo);
-    d.memo = (d.memo||[]).filter(c=>c.id!==btn.dataset.cid);
-    saveDetail(cpProductNo, d);
-    renderCpList();
-    render();
-  });
-  document.getElementById('cpCloseBtn').addEventListener('click', closeMemoPicker);
-  document.addEventListener('mousedown', (e)=>{
-    if(!commentPicker.classList.contains('open')) return;
-    if(commentPicker.contains(e.target)) return;
-    if(e.target.closest('[data-role="openMemo"]')) return;
-    closeMemoPicker();
-  });
-
-  // ---- 他のタブ・他の端末での変更を反映する（案件側の変更も、明細の変更も対象） ----
-  // ※ これは表示を追随させるためのもので、同時編集の取り合い（既知の課題）を解決するものではない。
+  // ---- 他のタブ・他の端末での変更を反映する（案件側の変更も、この画面の入力も対象） ----
   window.addEventListener('storage', (e)=>{
     if(!e.key) return;
     const related = e.key === RECORDS_KEY
@@ -1082,13 +635,16 @@
     if(!related) return;
     // 入力中の欄があるときは、打っている内容を消さないように再描画を見送る
     const ae = document.activeElement;
-    if(ae && ae.classList && ae.classList.contains('cellInput')) return;
-    // 付箋を書いている最中・つかんで動かしている最中も同じ理由で見送る
-    if(ae && ae.dataset && ae.dataset.role === 'noteText') return;
-    if(noteDrag) return;
+    if(ae && ae.dataset && ae.dataset.role === 'dayInput') return;
+    if(ae && ae.dataset && ae.dataset.role === 'shikyuDate') return;
     render();
   });
 
+  // 開いただけで毎回保存すると、そのたびに共有へ送信が飛ぶ。中身が変わるときだけ書く。
+  (function saveWeekIfChanged(){
+    const next = JSON.stringify({ start: fmtDateForInput(weekStart), end: fmtDateForInput(weekEndOf(weekStart)) });
+    if(localStorage.getItem(VIEW_KEY) !== next) saveWeek();
+  })();
   render();
 })();
 </script>

@@ -43,46 +43,46 @@
   }
 
   .sheetArea{ padding:0 20px 60px; }
-  .monthSheet{
+  .weekSheet{
     background:#fff; border:1px solid #222; border-radius:0; margin:0 auto 20px;
     box-shadow:0 2px 10px rgba(20,35,70,.10); padding:8px 10px 10px;
     width:1512px;   /* A3横 - 余白8mm 相当（画面で仕上がりの幅を確かめるため） */
   }
   .sheetHead{ display:flex; align-items:baseline; gap:14px; border-bottom:1.5px solid #222; padding-bottom:5px; margin-bottom:6px; }
   .sheetTitle{ font-size:15px; font-weight:800; color:#1a2233; }
-  .sheetMonth{ font-size:18px; font-weight:800; color:#173a68; }
+  .sheetWeek{ font-size:18px; font-weight:800; color:#173a68; }
   .sheetMeta{ margin-left:auto; font-size:10.5px; color:#5b6b84; }
 
   table.pboard{ border-collapse:collapse; table-layout:fixed; width:100%; }
   table.pboard th, table.pboard td{
-    border:1px solid #9aa8b8; padding:2px 4px; font-size:9.5px; vertical-align:top;
+    border:1px solid #9aa8b8; padding:2px 4px; font-size:10px; vertical-align:top;
     color:#1a2233; background:#fff; word-break:break-word;
   }
-  table.pboard thead th{ background:#f0f3f8; font-weight:700; font-size:9px; text-align:center; }
+  table.pboard thead th{ background:#f0f3f8; font-weight:700; font-size:10px; text-align:center; }
   table.pboard thead th.fixedHead{ text-align:left; }
-  table.pboard td.pFixed{ font-size:9.5px; white-space:normal; }
+  table.pboard td.pFixed{ font-size:10px; white-space:normal; }
   table.pboard td.pOrderNo{ font-weight:800; color:#173a68; }
   table.pboard th.pDay.weekend, table.pboard td.pDay.weekend{ background:#f4f6fa; }
-  table.pboard th.pDay.sun, table.pboard td.pDay.sun{ color:#c0392b; }
-  table.pboard td.pDay{ padding:1px 2px; }
+  table.pboard th.pDay.sun{ color:#c0392b; }
+  table.pboard td.pDay{ padding:2px 3px; }
   tbody tr{ page-break-inside:avoid; break-inside:avoid; }
 
-  .pBox{
-    display:block; border-radius:3px; color:#fff; font-size:8.5px; font-weight:700;
-    padding:1px 3px; margin-bottom:1px; line-height:1.25; word-break:break-word;
-  }
-  /* 欠品・完了は紙で黒ベタに潰さない。取り消し線と枠だけで表す */
-  .pBox.done{ background:#fff !important; color:#5b6b84 !important; border:1px dashed #8592a6; text-decoration:line-through; }
-  .pNote{
-    display:block; background:#fffbe6; border:1px solid #d9c680; border-radius:3px;
-    font-size:8.5px; line-height:1.25; padding:1px 3px; margin-bottom:1px; color:#3a2f0b; word-break:break-word;
-  }
-  .pNote b{ color:#8a6d1a; }
+  /* 支給行は納品行の直下。行の区切りが紙でも分かるように、支給行の下を太くする */
+  tr.pShikyu td{ background:#fcfdff; }
+  tr.pShikyu td.pFixed:first-child{ border-left:2px solid #c0392b; }
+  tr.pShikyuLast td{ border-bottom:1.5px solid #222; }
+  .pLineTag{ font-weight:800; font-size:9.5px; }
+  .pLineTag.nouhin{ color:#1a2233; }
+  .pLineTag.shikyu{ color:#c0392b; }
 
-  .undecided{ margin-top:8px; border:1px solid #9aa8b8; }
-  .undecided .udTitle{ background:#f0f3f8; font-size:9.5px; font-weight:700; padding:3px 6px; border-bottom:1px solid #9aa8b8; }
-  .undecided table{ width:100%; border-collapse:collapse; }
-  .undecided td{ border-top:1px solid #dfe4ec; padding:2px 6px; font-size:9px; }
+  /* 自動で出る文字（納品行＝品名／支給行＝支給品）。画面と同じく消せない固定表示 */
+  .pAuto{
+    display:block; font-weight:800; font-size:10px; line-height:1.3;
+    padding-bottom:2px; margin-bottom:2px; border-bottom:1px dashed #9aa8b8; word-break:break-word;
+  }
+  .pAuto.nouhin{ color:#1a2233; }
+  .pAuto.shikyu{ color:#c0392b; }
+  .pFree{ display:block; font-size:9.5px; line-height:1.3; white-space:pre-wrap; word-break:break-word; color:#2a3446; }
 
   .emptyState{ padding:60px 20px; text-align:center; color:#a4adbc; font-size:13px; line-height:1.8; }
 
@@ -92,11 +92,10 @@
     body{ background:#fff; }
     .topbar, .controlBar, .noteBar, .warnBar{ display:none !important; }
     .sheetArea{ padding:0; }
-    .monthSheet{
+    .weekSheet{
       width:auto; margin:0; border:none; border-radius:0; box-shadow:none; padding:0;
-      page-break-after:always; break-after:page;
+      page-break-after:auto; break-after:auto;
     }
-    .monthSheet:last-child{ page-break-after:auto; break-after:auto; }
     table.pboard thead{ display:table-header-group; }
     table.pboard thead th{ background:#f0f3f8 !important; }
   }
@@ -107,23 +106,23 @@
 <body>
 
   <div class="topbar">
-    <a class="backLink" href="支給納品一覧_モック.html">← 支給・納品一覧へ</a>
+    <a class="backLink" id="backLink" href="支給納品一覧_モック.html">← 支給・納品一覧へ</a>
     <span class="brand"><span class="sakae">SAKAE SEIKI</span><span class="is">-iS</span></span>
     <span class="sep">｜</span>
-    <span class="pageName">支給・納品一覧 印刷（全期間）</span>
+    <span class="pageName">支給・納品一覧 印刷（1週間）</span>
   </div>
 
   <div class="controlBar">
-    <span class="rangeText" id="rangeText">対象期間：—</span>
-    <span class="pageText" id="pageText">想定ページ数：—</span>
+    <span class="rangeText" id="rangeText">対象の週：—</span>
+    <span class="pageText">1ページ＝1週間（A3横）</span>
     <button type="button" class="printBtn" id="doPrintBtn">🖨 印刷する</button>
   </div>
 
   <div class="warnBar" id="warnBar" style="display:none;"></div>
 
   <div class="noteBar">
-    画面の表示期間には関係なく、<b>全期間</b>を対象にしています。<b>1ページ＝1か月</b>で、月をまたぐ場合は複数ページになります。<br>
-    支給・納品の予定と日付メモを<b>同じ日付の並びの上</b>で確認できます（表示専用です。ここでは入力できません）。予定日が「未定」または空の明細は、各ページの下に一覧で出します。
+    一覧の画面で見ていた<b>その1週間</b>をそのまま印刷します（週はURLで受け取っており、この画面で計算し直しません）。<br>
+    案件ごとに<b>納品行</b>、支給がある案件はその直下に<b>支給行</b>が並びます。<b>品名</b>は納期の日、<b>支給品</b>（赤）は支給日に出ます。表示専用です。
   </div>
 
   <div class="sheetArea" id="sheetArea"></div>
@@ -138,17 +137,21 @@
   const RECORDS_KEY = 'sakaeIS_records_v1';
   const BUHIN_PREFIX = 'sakaeIS_buhinhyoMock_v1_';
   const DETAIL_PREFIX = 'sakaeIS_shikyuNouhinBoard_v2_';
-  const KUBUN_COLORS = { '納品':'#c0392b', '支給':'#1a2233', '':'#94a3b8' };
-  function kubunColor(k){ return KUBUN_COLORS[k] || KUBUN_COLORS['']; }
+  const LINE_NOUHIN = 'nouhin';
+  const LINE_SHIKYU = 'shikyu';
 
-  function pad2(n){ return String(n).padStart(2,'0'); }
-  function fmtKey(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+  function fmtKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
   function parseDateStr(s){
     if(!s) return null;
     const p = String(s).split('-').map(Number);
     if(p.length!==3 || !p[0] || !p[1] || !p[2]) return null;
     const d = new Date(p[0], p[1]-1, p[2]);
     return isNaN(d) ? null : d;
+  }
+  function weekStartOf(d){
+    const s = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    s.setDate(s.getDate() - ((s.getDay() + 6) % 7));   // 月曜へ寄せる
+    return s;
   }
 
   function loadRecords(){
@@ -163,21 +166,6 @@
     }catch(e){}
     return null;
   }
-  function loadDetail(productNo){
-    try{
-      const raw = localStorage.getItem(DETAIL_PREFIX + productNo);
-      if(raw){
-        const d = JSON.parse(raw) || {};
-        return {
-          items: Array.isArray(d.items) ? d.items : [],
-          memo: Array.isArray(d.memo) ? d.memo : [],
-          dayNotes: Array.isArray(d.dayNotes) ? d.dayNotes : []
-        };
-      }
-    }catch(e){}
-    return { items: [], memo: [], dayNotes: [] };
-  }
-  // 一覧画面と同じ見え方にする（作業票側の値を優先）
   function productsFromRecords(){
     return loadRecords().map(r=>{
       const o = loadBuhinOrder(r.productNo) || {};
@@ -186,21 +174,31 @@
         orderNo: o.orderNo || r.orderNo || '',
         customer: o.customer || r.customer || '',
         model: o.model || r.modelName || '',
+        itemName: o.itemName || r.itemName || '',
         dueDate: o.dueDate || r.dueDate || ''
       };
     }).filter(p=>p.productNo);
   }
-
-  // ---- 一覧画面と同じ並び（次に一番早く来る予定日の昇順・同日は決定的に決める） ----
-  function repDateOf(x){
-    const ds = (x.d.items||[]).filter(it=> it && !it.dateUnknown && it.date).map(it=> it.date).sort();
-    if(ds.length) return ds[0];
-    if(x.p.dueDate) return x.p.dueDate;
-    return '';
+  function loadDetail(productNo){
+    try{
+      const raw = localStorage.getItem(DETAIL_PREFIX + productNo);
+      if(raw){
+        const d = JSON.parse(raw) || {};
+        const sh = (d.shikyu && typeof d.shikyu === 'object') ? d.shikyu : {};
+        return {
+          dayNotes: Array.isArray(d.dayNotes) ? d.dayNotes : [],
+          shikyu: { enabled: !!sh.enabled, date: (typeof sh.date === 'string') ? sh.date : '' }
+        };
+      }
+    }catch(e){}
+    return { dayNotes: [], shikyu: { enabled:false, date:'' } };
   }
-  function compareByRepDate(a,b){
-    const ra = repDateOf(a), rb = repDateOf(b);
-    if(ra !== rb){ if(!ra) return 1; if(!rb) return -1; return ra < rb ? -1 : 1; }
+  function noteTextOf(d, dateStr, line){
+    const n = (d.dayNotes||[]).find(z=> z && z.date === dateStr && z.line === line);
+    return n ? (n.text || '') : '';
+  }
+  // 並び順は一覧の画面と同じ（納期の若い順）。紙と画面で並びが食い違わないようにする。
+  function compareByDueDate(a, b){
     const da = a.p.dueDate||'', db = b.p.dueDate||'';
     if(da !== db){ if(!da) return 1; if(!db) return -1; return da < db ? -1 : 1; }
     const oa = a.p.orderNo || a.p.productNo || '', ob = b.p.orderNo || b.p.productNo || '';
@@ -212,156 +210,124 @@
   const sheetArea = document.getElementById('sheetArea');
   const emptyState = document.getElementById('emptyState');
   const rangeText = document.getElementById('rangeText');
-  const pageText = document.getElementById('pageText');
   const warnBar = document.getElementById('warnBar');
+  const backLink = document.getElementById('backLink');
+
+  // ---- 印刷する週は、一覧の画面から URL（?week=YYYY-MM-DD）で受け取る。
+  // ここで「今日から1週間」を計算し直すと、画面で見ていた週と紙が食い違うため絶対にしない。 ----
+  const params = new URLSearchParams(location.search);
+  const weekParam = (params.get('week') || '').trim();
+  const parsed = parseDateStr(weekParam);
+  let weekStart = parsed ? weekStartOf(parsed) : null;
 
   function build(){
-    const rows = productsFromRecords().map(p=> ({ p, d: loadDetail(p.productNo) })).sort(compareByRepDate);
-
-    // ---- 全期間（画面の表示期間には依存しない）----
-    // 明細の予定日と日付メモの日付、両方から最小日〜最大日を出す。
-    // メモだけ帯の外に出ると、同じ日付の並びで確認できなくなるため。
-    let min = '', max = '';
-    rows.forEach(x=>{
-      (x.d.items||[]).forEach(it=>{ if(it && !it.dateUnknown && it.date){ if(!min||it.date<min) min=it.date; if(!max||it.date>max) max=it.date; } });
-      (x.d.dayNotes||[]).forEach(n=>{ if(n && n.date){ if(!min||n.date<min) min=n.date; if(!max||n.date>max) max=n.date; } });
-    });
-
-    if(!min || !max){
+    if(!weekStart){
       sheetArea.innerHTML = '';
       emptyState.style.display = 'block';
-      emptyState.innerHTML = '印刷できる予定日・日付メモがまだありません。<br><a href="支給納品一覧_モック.html">支給・納品一覧</a> で予定日を入れてください。';
-      rangeText.textContent = '対象期間：—';
-      pageText.textContent = '想定ページ数：—';
+      emptyState.innerHTML = 'どの週を印刷するかが指定されていません。<br>'
+        + '<a href="支給納品一覧_モック.html">支給・納品一覧</a> の「🖨 印刷（この週）」から開いてください。';
+      rangeText.textContent = '対象の週：—';
       return;
     }
-    const a = parseDateStr(min), b = parseDateStr(max);
-    const months = (b.getFullYear()*12 + b.getMonth()) - (a.getFullYear()*12 + a.getMonth()) + 1;
-    rangeText.textContent = '対象期間：' + min.replace(/-/g,'/') + ' 〜 ' + max.replace(/-/g,'/');
-    pageText.textContent = '想定ページ数：' + months + 'ページ（1ページ＝1か月）';
-
-    if(months > 24){
-      warnBar.style.display = 'block';
-      warnBar.innerHTML = '⚠ 対象期間が <b>'+months+'か月</b>あります。予定日の打ち間違い（年の入力ミスなど）が混ざっている可能性があります。'
-        + '<a href="支給納品一覧_モック.html">一覧</a>で日付を確認してから印刷してください。';
-    }
-
-    // ---- 月ごとにページを作る ----
-    let html = '';
-    let cur = new Date(a.getFullYear(), a.getMonth(), 1);
-    const lastMonth = new Date(b.getFullYear(), b.getMonth(), 1);
-    while(cur <= lastMonth){
-      html += monthSheetHtml(rows, cur.getFullYear(), cur.getMonth(), min, max);
-      cur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
-    }
-    sheetArea.innerHTML = html;
     emptyState.style.display = 'none';
-  }
 
-  function monthSheetHtml(rows, year, month, minStr, maxStr){
     const days = [];
-    const last = new Date(year, month+1, 0).getDate();
-    for(let i=1;i<=last;i++) days.push(new Date(year, month, i));
-
+    for(let i=0;i<7;i++){ const d = new Date(weekStart); d.setDate(d.getDate()+i); days.push(d); }
+    const wEnd = days[6];
     const dow = ['日','月','火','水','木','金','土'];
-    // 固定列（印刷用に絞る。開閉・削除ボタンの列は紙では意味が無いので出さない）
-    const FIXED = [
-      { key:'orderNo',  w:'90px',  label:'社内№' },
-      { key:'customer', w:'70px',  label:'客先' },
-      { key:'model',    w:'80px',  label:'型式' },
-      { key:'due',      w:'52px',  label:'納期' }
-    ];
+
+    const label = weekStart.getFullYear()+'年 '+(weekStart.getMonth()+1)+'/'+weekStart.getDate()
+      + ' 〜 '+(wEnd.getMonth()+1)+'/'+wEnd.getDate();
+    rangeText.textContent = '対象の週：' + label;
+    backLink.href = '支給納品一覧_モック.html';
+
+    if(weekParam && parsed && fmtKey(weekStart) !== fmtKey(parsed)){
+      // 週の途中の日付が渡ってきたときは、その週の月曜へそろえたことを隠さず出す
+      warnBar.style.display = 'block';
+      warnBar.textContent = '指定された日（'+weekParam+'）はその週の途中だったため、同じ週の月曜（'+fmtKey(weekStart)+'）から7日間で印刷します。';
+    }
+
+    const rows = productsFromRecords().map(p=> ({ p: p, d: loadDetail(p.productNo) })).sort(compareByDueDate);
+
+    if(rows.length === 0){
+      sheetArea.innerHTML = '';
+      emptyState.style.display = 'block';
+      emptyState.textContent = 'トップ画面に案件がありません。';
+      return;
+    }
 
     let head = '<colgroup>'
-      + FIXED.map(c=>'<col style="width:'+c.w+';">').join('')
+      + '<col style="width:110px;"><col style="width:80px;"><col style="width:90px;"><col style="width:52px;"><col style="width:130px;">'
       + days.map(()=>'<col>').join('')
       + '</colgroup>';
 
     let thead = '<thead><tr>'
-      + FIXED.map(c=>'<th class="fixedHead">'+esc(c.label)+'</th>').join('')
+      + '<th class="fixedHead">社内No.</th><th class="fixedHead">客先</th><th class="fixedHead">型式</th>'
+      + '<th class="fixedHead">納期</th><th class="fixedHead">品名</th>'
       + days.map(d=>{
           const cls = 'pDay' + (d.getDay()===0||d.getDay()===6 ? ' weekend':'') + (d.getDay()===0?' sun':'');
-          return '<th class="'+cls+'">'+d.getDate()+'<br>'+dow[d.getDay()]+'</th>';
+          return '<th class="'+cls+'">'+(d.getMonth()+1)+'/'+d.getDate()+'<br>'+dow[d.getDay()]+'</th>';
         }).join('')
       + '</tr></thead>';
 
-    // その月に何か出る製品だけを載せる（空行で紙を埋めない）
-    const monthRows = [];
-    const undecided = [];
-    rows.forEach(x=>{
-      const cells = days.map(d=>{
-        const ds = fmtKey(d);
-        const its = (x.d.items||[]).filter(it=> it && !it.dateUnknown && it.date === ds);
-        const nts = (x.d.dayNotes||[]).filter(n=> n && n.date === ds);
-        return { its, nts };
-      });
-      const has = cells.some(c=> c.its.length || c.nts.length);
-      if(has) monthRows.push({ x, cells });
-      (x.d.items||[]).forEach(it=>{
-        if(it && (it.dateUnknown || !it.date)) undecided.push({ x, it });
-      });
-    });
+    function dayTd(d, autoText, autoCls, freeText){
+      const cls = 'pDay' + (d.getDay()===0||d.getDay()===6 ? ' weekend':'');
+      return '<td class="'+cls+'">'
+        + (autoText ? '<span class="pAuto '+autoCls+'">'+esc(autoText)+'</span>' : '')
+        + (freeText ? '<span class="pFree">'+esc(freeText)+'</span>' : '')
+        + '</td>';
+    }
 
     let body = '<tbody>';
-    if(monthRows.length === 0){
-      body += '<tr><td class="pFixed" colspan="'+(FIXED.length+days.length)+'" style="text-align:center; color:#8592a6;">この月に予定・メモはありません</td></tr>';
-    }
-    monthRows.forEach(r=>{
-      const p = r.x.p;
-      body += '<tr>';
-      body += '<td class="pFixed pOrderNo">'+esc(p.orderNo || p.productNo)+'</td>';
+    rows.forEach(r=>{
+      const p = r.p, d = r.d;
+      const due = parseDateStr(p.dueDate);
+      const hasShikyu = !!(d.shikyu && d.shikyu.enabled);
+      // ---- 納品行 ----
+      body += '<tr class="pNouhin'+(hasShikyu?'':' pShikyuLast')+'">';
+      body += '<td class="pFixed pOrderNo">'+esc(p.orderNo||'')+'<br><span class="pLineTag nouhin">納品</span></td>';
       body += '<td class="pFixed">'+esc(p.customer||'')+'</td>';
       body += '<td class="pFixed">'+esc(p.model||'')+'</td>';
       body += '<td class="pFixed">'+esc(p.dueDate ? p.dueDate.slice(5).replace('-','/') : '')+'</td>';
-      r.cells.forEach((c,i)=>{
-        const d = days[i];
-        const cls = 'pDay' + (d.getDay()===0||d.getDay()===6 ? ' weekend':'');
-        let inner = '';
-        c.its.forEach(it=>{
-          const label = (it.kubun||'未') + ' ' + (it.itemName || it.status || '');
-          // 欠品・完了は紙で黒ベタにせず、破線枠＋取り消し線で表す
-          inner += it.checked
-            ? '<span class="pBox done">'+esc(label)+'</span>'
-            : '<span class="pBox" style="background:'+kubunColor(it.kubun)+';">'+esc(label)+'</span>';
-        });
-        c.nts.forEach(n=>{
-          inner += '<span class="pNote"><b>メモ</b> '+esc(n.text||'')+'</span>';
-        });
-        body += '<td class="'+cls+'">'+inner+'</td>';
+      body += '<td class="pFixed">'+esc(p.itemName||'')+'</td>';
+      days.forEach(dd=>{
+        const ds = fmtKey(dd);
+        const auto = (due && ds === fmtKey(due) && p.itemName) ? p.itemName : '';
+        body += dayTd(dd, auto, 'nouhin', noteTextOf(d, ds, LINE_NOUHIN));
       });
       body += '</tr>';
+      // ---- 支給行（納品行の直下） ----
+      if(hasShikyu){
+        const sd = parseDateStr(d.shikyu.date);
+        body += '<tr class="pShikyu pShikyuLast">';
+        body += '<td class="pFixed"><span class="pLineTag shikyu">支給</span>'
+          + (d.shikyu.date ? '<br>'+esc(d.shikyu.date.slice(5).replace('-','/')) : '') + '</td>';
+        body += '<td class="pFixed"></td><td class="pFixed"></td><td class="pFixed"></td><td class="pFixed"></td>';
+        days.forEach(dd=>{
+          const ds = fmtKey(dd);
+          const auto = (sd && ds === fmtKey(sd)) ? '支給品' : '';
+          body += dayTd(dd, auto, 'shikyu', noteTextOf(d, ds, LINE_SHIKYU));
+        });
+        body += '</tr>';
+      }
     });
     body += '</tbody>';
 
-    // 予定日が未定・空の明細は、黙って落とさず各ページの下に必ず出す
-    let ud = '';
-    if(undecided.length){
-      ud = '<div class="undecided"><div class="udTitle">予定日が未定・未入力の明細（'+undecided.length+'件）</div><table>'
-        + undecided.map(u=>
-            '<tr><td style="width:110px;">'+esc(u.x.p.orderNo || u.x.p.productNo)+'</td>'
-            + '<td style="width:70px;">'+esc(u.it.kubun || '未')+'</td>'
-            + '<td>'+esc(u.it.itemName || u.it.status || '')+'</td>'
-            + '<td style="width:70px; text-align:right;">'+(u.it.dateUnknown?'未定':'未入力')+'</td></tr>'
-          ).join('')
-        + '</table></div>';
-    }
-
     const printedAt = new Date();
-    return '<div class="monthSheet">'
+    const pad = n=>String(n).padStart(2,'0');
+    sheetArea.innerHTML = '<div class="weekSheet">'
       + '<div class="sheetHead">'
       +   '<span class="sheetTitle">支給・納品一覧</span>'
-      +   '<span class="sheetMonth">'+year+'年'+(month+1)+'月</span>'
-      +   '<span class="sheetMeta">全期間 '+minStr.replace(/-/g,'/')+' 〜 '+maxStr.replace(/-/g,'/')
-      +     '　／　出力 '+printedAt.getFullYear()+'/'+pad2(printedAt.getMonth()+1)+'/'+pad2(printedAt.getDate())+'</span>'
+      +   '<span class="sheetWeek">'+esc(label)+'</span>'
+      +   '<span class="sheetMeta">出力：'+printedAt.getFullYear()+'/'+(printedAt.getMonth()+1)+'/'+printedAt.getDate()
+      +     ' '+pad(printedAt.getHours())+':'+pad(printedAt.getMinutes())+'　案件 '+rows.length+'件</span>'
       + '</div>'
       + '<table class="pboard">'+head+thead+body+'</table>'
-      + ud
       + '</div>';
   }
 
-  document.getElementById('doPrintBtn').addEventListener('click', ()=>{ window.print(); });
+  document.getElementById('doPrintBtn').addEventListener('click', ()=> window.print());
 
-  // 他タブで内容が変わったら組み直す（この画面は読み取りだけ）
   window.addEventListener('storage', (e)=>{
     if(!e.key) return;
     if(e.key === RECORDS_KEY || e.key.indexOf(BUHIN_PREFIX)===0 || e.key.indexOf(DETAIL_PREFIX)===0) build();
