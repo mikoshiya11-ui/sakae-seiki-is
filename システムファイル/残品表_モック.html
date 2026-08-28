@@ -500,15 +500,33 @@
     return base + (part.subNo ? ('-'+part.subNo) : '');
   }
 
+  // ---- 納品完了にした案件は、残品として追いかける必要がなくなるので残品表から丸ごと外す。
+  // 正本は受注側の records[].status（案件詳細の「納品完了にする」）で、こちらは表示条件として読むだけ。
+  // データは何も消していないので、納品完了を取り消せばそのまま元どおり出る ----
+  function loadDoneRecordProductNos(){
+    const set = new Set();
+    try{
+      const raw = localStorage.getItem(RECORDS_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      list.forEach(r=>{ if(r && r.status === 'done' && r.productNo) set.add(String(r.productNo)); });
+    }catch(e){}
+    return set;
+  }
+
   // ---- 全受注（作業票のlocalStorage）を横断して、部品ごとに「今の工程」を拾い、
   // その工程コードのタブに1行だけ出す（特定の工程だけに絞らない。1部品は必ずどこか1つのタブにしか出ない） ----
   function buildData(){
     const data = {};
     const doneIds = loadDoneProcIds();
+    const doneProductNos = loadDoneRecordProductNos();
     const todayStr = todayISO();
     for(let i=0;i<localStorage.length;i++){
       const key = localStorage.key(i);
       if(!key || key.indexOf(BUHIN_PREFIX)!==0) continue;
+      // 納品完了した案件は品番ごと読み飛ばす。
+      // ★必ず部品ループより前で外すこと。手配忘れ防止の注意行（isArrange）は部品ループの中で
+      // 「現在の工程」の判定より前に積まれるため、部品ループの中で外すと手配行だけが残ってしまう
+      if(doneProductNos.has(key.slice(BUHIN_PREFIX.length))) continue;
       let bs;
       try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
       if(!bs || !bs.order) continue;

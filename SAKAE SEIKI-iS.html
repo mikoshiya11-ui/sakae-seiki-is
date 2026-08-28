@@ -79,6 +79,12 @@
   .btn.accent:hover{ filter:brightness(1.08); }
   .btn.ghost{ background:#f2f4f8; color:#3a4a63; }
   .btn.ghost:hover{ background:#e8ecf3; }
+  /* ---- 納品完了（案件を残品表から外す操作）。通常操作と見分けが付くようグリーン系にする。
+     いつでも取り消せる操作なので、削除を連想する赤は使わない ---- */
+  .btn.deliver{ background:#0e7a5f; color:#fff; }
+  .btn.deliver:hover{ filter:brightness(1.12); }
+  .btn.deliverUndo{ background:#eaf5f1; color:#0e7a5f; border:1px solid #bcdfd2; box-shadow:none; }
+  .btn.deliverUndo:hover{ background:#dcebe5; box-shadow:none; }
 
   .linkRow{ display:flex; gap:10px; margin-top:20px; flex-wrap:wrap; justify-content:center; }
   .linkRow a.zanpinLink{
@@ -659,9 +665,7 @@
       <div class="mFoot" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
           <button class="btn ghost" id="templateToggleBtn" type="button">⭐ ひな形に登録</button>
-          <label style="font-size:12px;color:#5b6b84;display:flex;align-items:center;gap:6px;">
-            <input type="checkbox" id="f_toggleDone"> 完了（過去制作分）にする
-          </label>
+          <button class="btn deliver" id="f_toggleDone" type="button">納品完了にする</button>
         </div>
         <div style="display:flex; gap:10px;">
           <button class="btn ghost" id="viewFormBtn" type="button">📄 受注に関する連絡書を編集</button>
@@ -1715,7 +1719,7 @@
     html += '<div class="detailLinkRow"><a class="btn primary" href="'+partsUrl+'">'+partsLabel+'</a></div>';
     html += '<div class="noteBox">実務では作業票（さらに個別日程表）を先に作成し、そこで入力した客先名・型式名・納期などがこの受注に関する連絡書にも自動反映されます。どちらで編集しても、もう片方に反映されます。</div>';
     detailBody.innerHTML = html;
-    toggleDone.checked = rec.status === 'done';
+    renderDeliverBtn(rec);
     document.getElementById('templateToggleBtn').textContent = rec.isTemplate ? '★ ひな形から外す' : '⭐ ひな形に登録';
     detailOverlay.style.display = 'flex';
   }
@@ -1730,11 +1734,77 @@
     templateSourceProductNo = null;
     openForm(rec);
   });
-  toggleDone.addEventListener('change', ()=>{
+  // ---- 納品完了。案件の状態は従来どおり records[].status（'inprogress' / 'done'）だけで表し、
+  // 新しい保存キーもフラグも作らない。ここを 'done' にすると残品表から案件ごと外れる ----
+
+  // 工程が完了しているかの判定は、残品表（残品表_モック.html の loadDoneProcIds）と同じ規則にそろえる。
+  // 画面ごとに完了の判定がずれると現場が混乱するため。どちらも読み取りだけで、何も書き込まない
+  const PROC_DONE_KEY = 'sakaeIS_procDoneLog_v1';
+  const JISSEKI_LOG_KEY = 'sakaeIS_jissekiLog_v1';
+  function loadDoneProcIds(){
+    const set = new Set();
+    try{
+      const raw = localStorage.getItem(PROC_DONE_KEY);
+      const map = raw ? JSON.parse(raw) : null;
+      if(map && typeof map === 'object' && !Array.isArray(map)){
+        Object.keys(map).forEach(procId=>{ if(procId) set.add(procId); });
+      }
+    }catch(e){}
+    try{
+      const raw = localStorage.getItem(JISSEKI_LOG_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      list.forEach(e=>{ if(e && e.procId && e.completion !== '未完') set.add(e.procId); });
+    }catch(e){}
+    return set;
+  }
+
+  // まだ完了記録が付いていない工程を並べる。DE・SU・PN など実績入力でバーコードを読まない工程は
+  // いつまでも完了にならないので、これは「押させない条件」ではなく確認のために見せるだけ
+  function pendingProcessLabels(rec){
+    const bs = loadBuhinState(rec && rec.productNo);
+    if(!bs) return [];
+    const doneIds = loadDoneProcIds();
+    const out = [];
+    (bs.parts||[]).forEach(part=>{
+      (part.processes||[]).forEach(proc=>{
+        if(!proc || !proc.id || doneIds.has(proc.id)) return;
+        const code = (proc.code||'') + (proc.ident||'');
+        if(!code) return;
+        out.push('・' + (part.name || '部品') + '　' + code);
+      });
+    });
+    return out;
+  }
+
+  function renderDeliverBtn(rec){
+    const isDone = !!rec && rec.status === 'done';
+    toggleDone.textContent = isDone ? '納品完了を取り消す' : '納品完了にする';
+    toggleDone.className = isDone ? 'btn deliverUndo' : 'btn deliver';
+  }
+
+  toggleDone.addEventListener('click', ()=>{
     const rec = records.find(r=>r.id===currentDetailId);
     if(!rec) return;
-    rec.status = toggleDone.checked ? 'done' : 'inprogress';
+    if(rec.status === 'done'){
+      if(!confirm('この案件の納品完了を取り消します。よろしいですか？\n\n進行中案件に戻り、残品表にも再び表示されます。\n作業票・工程の完了記録・実績・工数は変わりません。')) return;
+      rec.status = 'inprogress';
+    }else{
+      const pending = pendingProcessLabels(rec);
+      let msg;
+      if(pending.length){
+        // 数が多いときは全部並べても読めないので、先頭だけ見せて残りは件数で伝える
+        const MAX = 20;
+        const shown = pending.slice(0, MAX);
+        if(pending.length > MAX) shown.push('…ほか ' + (pending.length - MAX) + '件');
+        msg = '未完了工程があります。\n\n' + shown.join('\n') + '\n\nそれでも納品完了しますか？';
+      }else{
+        msg = 'この案件を納品完了にします。よろしいですか？\n\n完了案件に移り、残品表から外れます。';
+      }
+      if(!confirm(msg)) return;
+      rec.status = 'done';
+    }
     saveRecords();
+    renderDeliverBtn(rec);
     render();
   });
 
