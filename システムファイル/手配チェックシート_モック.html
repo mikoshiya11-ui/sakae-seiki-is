@@ -117,7 +117,7 @@
   }
 
   let bs = null;
-  let ac = null; // arrangementCheck（bsの参照。編集はこのオブジェクトを直接書き換えてsaveBs()する）
+  let ac = null; // arrangementCheck（bsの参照。編集はこのオブジェクトを直接書き換えてsaveArrangementCheck()で保存する）
 
   function esc(s){ return P.esc(s); }
 
@@ -197,8 +197,15 @@
   render();
 
   function doSave(){
-    if(!bs) return;
-    P.saveBs(productNo, bs);
+    if(!bs || !ac) return;
+    // この画面が担当するのは手配チェック（arrangementCheck）だけ。
+    // 開いた時点の作業票データを丸ごと書き戻すと、その間に個別日程表などで変わった
+    // 工程日程・工数まで巻き戻してしまうため、最新を読み直して自分の項目だけを載せて保存する。
+    const latest = P.saveArrangementCheck(productNo, ac);
+    if(!latest) return;
+    // 手元の参照も最新に入れ替えておく（ac は latest.arrangementCheck と同じものを指す）。
+    // 画面は作り直さない（入力中の文字を消さないため）。
+    bs = latest;
     const msg = document.getElementById('saveMsg');
     if(msg){
       const d = new Date();

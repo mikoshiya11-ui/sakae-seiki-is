@@ -33,9 +33,23 @@ window.sakaeWorkStartPrint = (function(){
     }catch(e){}
     return null;
   }
-  function saveBs(productNo, bs){
-    if(!productNo) return;
-    localStorage.setItem(storageKeyFor(productNo), JSON.stringify(bs));
+  // ---- 作業票データを丸ごと書き戻す saveBs() は廃止した（2026-08-28）。
+  // 画面が開いた時点の古い内容で全体を上書きするため、その間に別画面・別端末で変わった
+  // 工程日程・days・工数まで巻き戻していた。担当する項目だけを保存する形（下の関数）へ置き換え、
+  // 将来また同じ書き方が使われないよう、関数ごと残さないことにした。 ----
+
+  // ---- 手配チェック（arrangementCheck）だけを保存する。
+  // 保存の直前に作業票データを読み直し、そこへ arrangementCheck だけを載せて書き戻す。
+  // これにより、この画面を開いた後に別画面・別端末で変わった工程日程・工数・部品などを
+  // 巻き戻さない（この画面が担当しているのは arrangementCheck だけであるため）。
+  // 戻り値は書き込んだ最新の作業票データ。読み直せなかった場合は null を返し、何も書かない。 ----
+  function saveArrangementCheck(productNo, ac){
+    if(!productNo || !ac) return null;
+    const latest = loadBs(productNo);
+    if(!latest) return null;
+    latest.arrangementCheck = ac;
+    localStorage.setItem(storageKeyFor(productNo), JSON.stringify(latest));
+    return latest;
   }
   function ensureArrangementCheck(bs){
     bs.arrangementCheck = bs.arrangementCheck || { category:'新作', inputDate:'', items:{}, approvedBy:'', createdBy:'' };
@@ -91,5 +105,5 @@ window.sakaeWorkStartPrint = (function(){
     return sum;
   }
 
-  return { storageKeyFor, esc, ARRANGEMENT_CHECK_ITEMS, loadBs, saveBs, ensureArrangementCheck, addBusinessDays, fmtDateJp, sumActualHours };
+  return { storageKeyFor, esc, ARRANGEMENT_CHECK_ITEMS, loadBs, saveArrangementCheck, ensureArrangementCheck, addBusinessDays, fmtDateJp, sumActualHours };
 })();
