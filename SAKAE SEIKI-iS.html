@@ -133,6 +133,10 @@
   .badge.template{ background:#eef3fa; color:#173a68; }
   .cardTop .badgeRow{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; justify-content:flex-end; }
   .card .modelName{ font-size:13px; color:#1a2233; margin-top:6px; font-weight:600; }
+  /* 型式の直下に出す品名。型式だけでは何を作るのか分からないという現場要望（2026-08-28）。
+     既存の品名（records[].itemName）をそのまま出すだけで、新しい保存項目は作っていない。 */
+  .card .itemNameRow{ font-size:12px; color:#3a4a63; margin-top:2px; }
+  .card .itemNameRow b{ color:#7a879c; font-weight:700; }
   .card .meta{ font-size:11.5px; color:#7a879c; margin-top:4px; line-height:1.6; }
   .card .meta b{ color:#3a4a63; }
   .cardMainRow{ display:flex; align-items:center; gap:8px; margin-top:10px; }
@@ -1014,6 +1018,9 @@
       return '<div class="card" data-id="'+r0.id+'">'
         + '<div class="cardTop"><span class="productNo">'+esc(r.orderNo)+'</span><span class="badgeRow">'+tplBadge+statusBadge+'<button type="button" class="cardDelBtn" data-role="delCard" title="削除">✕</button></span></div>'
         + '<div class="modelName">'+esc(r.modelName || r.itemName || '(名称未設定)')+'</div>'
+        // 上の行が型式を出せている時だけ、その下に品名も出す。
+        // 型式が空の案件では上の行が品名そのものになるため、二重に出さない。
+        + ((r.itemName && r.modelName) ? '<div class="itemNameRow"><b>品名：</b>'+esc(r.itemName)+'</div>' : '')
         + '<div class="meta"><b>客先：</b>'+esc(r.customer||'-')+'　<b>納期：</b>'+esc(fmtDate(r.dueDate))+'</div>'
         + '<div class="cardMainRow"><button type="button" class="cardMainBtn" data-role="openSagyohyo">'+mainLabel+' →</button>'
         + '<button type="button" class="cardDetailLink" data-role="openDetail" title="受注に関する連絡書の詳細を見る">詳細</button></div>'

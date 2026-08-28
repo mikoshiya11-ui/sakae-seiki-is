@@ -126,7 +126,7 @@
   tr.nouhinRow td.dayCell.weekend{ background:#f2f5f9; }
   tr.nouhinRow td.dayCell.today{ background:rgba(250,204,21,.28); }
 
-  /* 自動で出る文字（納品行＝品名／支給行＝支給品）。
+  /* 自動で出る文字（納品行＝「型式 品名 納品」／支給行＝「型式 品名 支給」）。
      利用者は消せない。自由入力とは別の要素で、保存もしない。 */
   .autoLine{
     font-size:12px; font-weight:800; line-height:1.3; padding:3px 5px 4px;
@@ -165,8 +165,8 @@
 
     <div class="noteBar">
       客先とのやり取りに関わる<b>「納品」（客先へ納める）</b>と<b>「支給」（客先から材料等を引き取る）</b>を、案件ごとに1週間単位で見る一覧です。<br>
-      案件は1件につき<b>納品行が1行</b>。<b>納期の日</b>のBOXに<b>品名</b>が自動で出ます（この文字は消せません）。その下に、その日の連絡事項を自由に書けます。<br>
-      客先から材料を受け取る案件は<b>「＋支給」</b>を押すと、その案件の直下に<b>支給行</b>が増えます。支給日を入れると、その日のBOXに<b>支給品</b>（赤）が自動で出ます。
+      案件は1件につき<b>納品行が1行</b>。<b>納期の日</b>のBOXに<b>型式・品名と「納品」</b>が自動で出ます（この文字は消せません）。その下に、その日の連絡事項を自由に書けます。<br>
+      客先から材料を受け取る案件は<b>「＋支給」</b>を押すと、その案件の直下に<b>支給行</b>が増えます。支給行にも同じ客先・型式・品名が出ます。支給日を入れると、その日のBOXに<b>型式・品名と「支給」</b>（赤）が自動で出ます。
     </div>
 
     <div class="toolRow">
@@ -182,8 +182,8 @@
     </div>
 
     <div class="legendRow">
-      <span><b style="color:#1a2233;">品名</b>　＝ 納期の日に自動で出ます（消せません）</span>
-      <span><b style="color:#c0392b;">支給品</b>　＝ 支給日に自動で出ます（消せません）</span>
+      <span><b style="color:#1a2233;">型式 品名 納品</b>　＝ 納期の日に自動で出ます（消せません）</span>
+      <span><b style="color:#c0392b;">型式 品名 支給</b>　＝ 支給日に自動で出ます（消せません）</span>
       <span style="color:#a4adbc;">その下の欄は自由入力です</span>
     </div>
 
@@ -307,7 +307,7 @@
 
   // ---- 日付ごとの自由入力を引く／作る ----
   // 「何月何日の、どちらの行か」は date と line の2つだけで決まる。
-  // 自動表示の文字（品名・支給品）はここに保存しない（自由入力と混ざらないようにするため）。
+  // 自動表示の文字（型式・品名・納品／支給）はここに保存しない（自由入力と混ざらないようにするため）。
   function findNote(d, dateStr, line){
     return (d.dayNotes||[]).find(n=> n && n.date === dateStr && n.line === line) || null;
   }
@@ -469,6 +469,17 @@
       + '</td>';
   }
 
+  // ---- 日付セルに自動で出る文字。現場要望（2026-08-28）で、日付だけでは何の予定か分からないため
+  // 「型式 品名 区分」の並びにする。区分は納品行なら「納品」、支給行なら「支給」（旧「支給品」から変更）。
+  // 表示を組み立てているだけで、日付データにも案件データにも書き込まない。 ----
+  function autoCellText(p, kind){
+    const bits = [];
+    if(p.model) bits.push(p.model);
+    if(p.itemName) bits.push(p.itemName);
+    bits.push(kind);
+    return bits.join(' ');
+  }
+
   // ================= 行の組み立て =================
   function nouhinRowHtml(x){
     const p = x.p, days = dayList();
@@ -485,8 +496,8 @@
     html += '<td '+fx('itemName')+'><span class="itemNameVal">'+esc(p.itemName||'-')+'</span></td>';
 
     days.forEach(d=>{
-      // 納期の日にだけ品名を自動表示する。品名が未入力の案件では何も出さない。
-      const auto = (due && sameDay(due, d) && p.itemName) ? p.itemName : '';
+      // 納期の日にだけ自動表示する。品名が未入力でも「納品」と分かるように出す。
+      const auto = (due && sameDay(due, d)) ? autoCellText(p, '納品') : '';
       const n = findNote(x.d, fmtDateForInput(d), LINE_NOUHIN);
       html += dayCellHtml(d, p.productNo, LINE_NOUHIN, auto, 'nouhinAuto', n ? n.text : '');
     });
@@ -504,14 +515,17 @@
       + '<input type="date" data-role="shikyuDate" value="'+esc(x.d.shikyu.date||'')+'"></span>'
       + '<button type="button" class="shikyuOffBtn" data-role="removeShikyu" title="支給行を閉じます（入力した内容は消えません）">支給を解除</button>'
       + '</td>';
-    html += '<td '+fx('customer')+'></td>';
-    html += '<td '+fx('model')+'></td>';
+    // 支給行にも客先・型式・品名を出す。納品行と同じ案件データをそのまま読んでいるだけで、
+    // 支給用に別のデータを作ってはいない（保存されるのは従来どおり支給の有無と支給日だけ）。
+    // 納期は納品行の項目なので、支給行では空のままにする。
+    html += '<td '+fx('customer')+'>'+esc(p.customer||'-')+'</td>';
+    html += '<td '+fx('model')+'>'+esc(p.model||'-')+'</td>';
     html += '<td '+fx('due')+'></td>';
-    html += '<td '+fx('itemName')+'></td>';
+    html += '<td '+fx('itemName')+'><span class="itemNameVal">'+esc(p.itemName||'-')+'</span></td>';
 
     days.forEach(d=>{
-      // 支給日にだけ「支給品」を赤で自動表示する。
-      const auto = (sd && sameDay(sd, d)) ? '支給品' : '';
+      // 支給日にだけ赤で自動表示する。文言は現場要望により「支給品」→「支給」。
+      const auto = (sd && sameDay(sd, d)) ? autoCellText(p, '支給') : '';
       const n = findNote(x.d, fmtDateForInput(d), LINE_SHIKYU);
       html += dayCellHtml(d, p.productNo, LINE_SHIKYU, auto, 'shikyuAuto', n ? n.text : '');
     });

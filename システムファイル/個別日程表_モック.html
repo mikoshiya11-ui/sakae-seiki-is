@@ -143,7 +143,7 @@
   .ganttSideHead{ flex:0 0 280px; padding:3px 14px; font-size:12px; font-weight:700; color:#5b6b84; display:flex; align-items:center; border-right:1.5px solid #222; position:sticky; left:0; z-index:3; background:#f7f9fc; }
   .ganttMonthRow .ganttSideHead{ background:#eef1f6; }
   /* ---- DE/SU/PNなど「バーにせず日程だけ入れる」工程の欄（現物の作業票印刷にある、コード＋日付だけの固定ミニ表と同じ考え方）。作業票とリンク中の品番のみ表示 ---- */
-  .ganttDatesHead{ flex:0 0 140px; padding:3px 10px; font-size:10.5px; font-weight:700; color:#5b6b84; display:flex; align-items:center; border-right:1.5px solid #222; position:sticky; left:280px; z-index:3; background:#f7f9fc; }
+  .ganttDatesHead{ flex:0 0 156px; padding:3px 10px; font-size:10.5px; font-weight:700; color:#5b6b84; display:flex; align-items:center; border-right:1.5px solid #222; position:sticky; left:280px; z-index:3; background:#f7f9fc; }
   .ganttMonthRow .ganttDatesHead{ background:#eef1f6; }
   .monthCell{ font-size:11.5px; font-weight:700; color:#5b6b84; text-align:center; padding:4px 0; border-right:1.5px solid #8592a6; }
   .ganttDayCell{ width:var(--day-w); flex:0 0 var(--day-w); text-align:center; font-size:11.5px; color:#8592a6; padding:7px 0; }
@@ -160,17 +160,30 @@
   .ganttSideCell .pQty{ font-size:11px; color:#7a879c; margin-top:1px; }
   .ganttSideCell .pPrefix{ font-size:10px; color:#a4adbc; margin-top:1px; line-height:1.25; }
   .ganttDatesCell{
-    flex:0 0 140px; padding:4px 10px; border-right:1.5px solid #222; display:flex; flex-direction:column;
+    flex:0 0 156px; padding:4px 10px; border-right:1.5px solid #222; display:flex; flex-direction:column;
     justify-content:center; gap:2px; position:sticky; left:280px; z-index:2; background:#fff;
     box-shadow:2px 0 4px -2px rgba(20,35,70,.15);
   }
   .ganttPartGroup:nth-child(even) .ganttDatesCell{ background:#fbfcfe; }
-  .ganttDatesCell .dateTagRow{ display:flex; align-items:center; gap:5px; font-size:10.5px; }
-  .ganttDatesCell .dateTagCode{ font-weight:700; color:#5b6b84; flex:0 0 auto; }
+  .ganttDatesCell .dateTagRow{ display:flex; align-items:center; gap:5px; font-size:11.5px; }
+  /* 工程記号の幅を固定する。auto のままだと DE/SU と PN で文字幅が1pxだけ違い、
+     その分だけ日付欄の幅がズレる（3工程で見た目を完全にそろえるため） */
+  .ganttDatesCell .dateTagCode{ font-weight:700; color:#5b6b84; flex:0 0 24px; }
+  /* ---- DE / SU / PN の日付欄。現場から「カレンダーから選べない」という声があったため、
+     押しやすい大きさ（約106x25px）へ広げた。ここは3工程で共通の1か所なので、工程による表示差は出ない。
+     日付の保存処理・工程の作り方は一切変えていない。
+     この欄の高さが部品1件の行の高さを決めるため、大きくしすぎると一覧性が落ちる。
+     作業票と同じ13.5pxまで上げると部品1件が100pxになり、ノートPCで一度に見える部品が
+     7件から5件へ減るため、11.5px（部品1件 約88px・6件）で止めている（2026-08-28 裁定）。 ---- */
   .ganttDatesCell .dateTagInput{
     flex:1 1 auto; min-width:0; border:none; border-bottom:1px dashed #c7cfdc; background:transparent;
-    font-family:inherit; font-size:10px; color:#1a2233; padding:0;
+    font-family:inherit; font-size:11.5px; color:#1a2233; padding:2px 0;
   }
+  /* カレンダーを開くアイコン。既定のままだと文字サイズに比例して極端に小さく、指でもマウスでも狙いにくい */
+  .ganttDatesCell .dateTagInput::-webkit-calendar-picker-indicator{
+    width:16px; height:16px; margin-left:2px; cursor:pointer; opacity:.75;
+  }
+  .ganttDatesCell .dateTagInput::-webkit-calendar-picker-indicator:hover{ opacity:1; }
   .ganttDatesCell .dateTagInput:focus{ outline:none; border-bottom-color:#173a68; background:#f4f8ff; }
   .ganttDatesCell .dateTagEmpty{ color:#c7cfdc; font-size:10px; }
   .rowCountCtrl{ display:flex; align-items:center; gap:5px; margin-top:2px; }
