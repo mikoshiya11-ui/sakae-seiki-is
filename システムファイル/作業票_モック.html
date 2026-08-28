@@ -179,6 +179,7 @@
   .pmTable col.pmColMachine{ width:132px; }
   .pmTable col.pmColDate{ width:126px; }
   .pmTable col.pmColAmpm{ width:78px; }
+  .pmTable col.pmColHours{ width:76px; }
   .pmTable col.pmColNote{ width:auto; }
   .pmTable col.pmColOps{ width:52px; }
   .pmSwatch{ display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px; vertical-align:middle; }
@@ -313,7 +314,7 @@
         <table class="pmTable">
           <colgroup>
             <col class="pmColCode"><col class="pmColIdent"><col class="pmColMachine"><col class="pmColDate">
-            <col class="pmColAmpm"><col class="pmColNote"><col class="pmColOps">
+            <col class="pmColAmpm"><col class="pmColHours"><col class="pmColNote"><col class="pmColOps">
           </colgroup>
           <thead>
             <tr>
@@ -322,6 +323,7 @@
               <th>外注・人名</th>
               <th>日付</th>
               <th>午前/午後</th>
+              <th>工数(H)</th>
               <th>備考</th>
               <th></th>
             </tr>
@@ -1317,6 +1319,10 @@
       + '<td><input type="text" data-field="machine" value="'+esc(p.machine||'')+'" placeholder="○○製作所"'+dis+'></td>'
       + '<td><input type="date" data-field="date" value="'+esc(p.date||'')+'"'+dis+'></td>'
       + '<td><select data-field="ampm"'+dis+'><option value="AM"'+(pm?'':' selected')+'>午前</option><option value="PM"'+(pm?' selected':'')+'>午後</option></select></td>'
+      // 予定工数。正本は processes[].hours ひとつで、個別日程表の右クリック編集と同じ値を読み書きする。
+      // type="number" にしない：数字でない文字を打つとブラウザが欄を空にしてしまい、
+      // 「6.5x」と打ち間違えただけで工数が黙って消えるため。
+      + '<td><input type="text" data-field="hours" inputmode="decimal" value="'+esc(p.hours==null?'':p.hours)+'" placeholder="6.5"'+dis+'></td>'
       + '<td><input type="text" data-field="note" value="'+esc(p.note||'')+'" placeholder="寸法確認"'+dis+'></td>'
       + '<td style="text-align:center;"><button type="button" class="pmDelBtn" data-role="ppDel" title="この工程を削除">✕</button></td>'
       + '</tr>';
@@ -1355,6 +1361,9 @@
     const field = e.target.dataset.field;
     const tr = e.target.closest('tr[data-procid]');
     if(!field || !tr) return;
+    // 工数は打っている途中では保存しない。負数などをそのまま書き込まないよう、
+    // 欄から離れた時（change）に確かめてから保存する。
+    if(field === 'hours') return;
     const proc = findProc(tr.dataset.procid);
     if(!proc) return;
     proc[field] = e.target.value;
@@ -1368,9 +1377,27 @@
   ppList.addEventListener('change', (e)=>{
     const field = e.target.dataset.field;
     const tr = e.target.closest('tr[data-procid]');
-    if(field !== 'ampm' || !tr) return;
+    if(!tr) return;
     const proc = findProc(tr.dataset.procid);
     if(!proc) return;
+    if(field === 'hours'){
+      // 0以上の数だけを受け付ける。空欄は「未入力」として保存する（0とは別の状態）。
+      // 負数や数値でないものは保存せず、元の値へ戻す。打った通りの文字列で保存し、小数の桁は丸めない。
+      const t = (e.target.value == null ? '' : String(e.target.value)).trim();
+      if(t !== ''){
+        const n = Number(t);
+        if(!isFinite(n) || n < 0){
+          window.alert('工数は0以上の数で入れてください（例：6、6.5、0）。空欄にすると未入力になります。');
+          e.target.value = (proc.hours == null) ? '' : String(proc.hours);
+          e.target.focus();
+          return;
+        }
+      }
+      proc.hours = t;
+      save();
+      return;
+    }
+    if(field !== 'ampm') return;
     proc.ampm = e.target.value;
     save();
   });
