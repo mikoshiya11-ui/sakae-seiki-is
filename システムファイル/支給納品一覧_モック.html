@@ -88,7 +88,9 @@
   /* ---- 納品行（案件1件＝この1行） ---- */
   tr.nouhinRow td{ background:#f7f9fc; border-bottom:1px solid #dfe4ec; }
   tr.nouhinRow td.frozen{ background:#f7f9fc; }
-  .prodNo{ font-weight:800; color:#173a68; font-size:13px; }
+  /* 社内No.は1行を占める。こうすると「＋支給」が必ずその直下へ来るので、
+     社内No.が長い案件でもボタンが横へ押し出されて見えなくなることがない。 */
+  .prodNo{ font-weight:800; color:#173a68; font-size:13px; display:block; }
   .prodSub{ font-size:10.5px; color:#a4adbc; display:block; }
   .itemNameVal{ white-space:normal; word-break:break-word; line-height:1.35; }
 
