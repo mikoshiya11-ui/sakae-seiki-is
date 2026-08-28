@@ -553,10 +553,24 @@
   }
   function saveBuhinState(){
     if(!BUHIN_KEY || !buhinState) return;
+    editSeq++;
     localStorage.setItem(BUHIN_KEY, JSON.stringify(buhinState));
   }
   let buhinState = loadBuhinState();
   const handoff = !!buhinState;
+
+  // ---- 自分がこの画面で編集した回数。増えるだけの番号 ----
+  // 「届いた内容を取り込んでよいか」を、localStorage ではなくこの番号で判断する。
+  // localStorage は正本に使えない。同期の受け側が、この画面へ知らせるより先に localStorage を
+  // 届いた内容へ書き換えてしまうため、そこを見ても新旧が分からない。
+  // 作業票_モック.html で既に使っている考え方をそのまま移植したもので、意味も同じ。
+  //   editSeq === remoteBaseSeq → こちらは何も編集していない → 届いた内容を取り込んでよい
+  //   editSeq !== remoteBaseSeq → こちらに未共有の編集がある → 取り込むと編集が巻き戻る → 捨てる
+  // 保存はしない（新しいlocalStorageキー・Supabase項目・永続フラグは作らない）。
+  let editSeq = 0;
+  let remoteBaseSeq = 0;   // いまの buhinState が共有内容と同じだった時点の editSeq
+  let pendingRemoteState = null;   // ドラッグ中に届いた作業票データ（操作が終わってから判断する）
+  let pendingConfirmChange = false; // ドラッグ中に届いた確定／解除の通知
 
   // ---- 直前の1操作だけ元に戻せる仕組み（バーの削除など）。このページを開いている間だけ有効（保存はしない）。
   // 新しく別の操作をすると、前の「戻す」は上書きされて消える（複数段階は戻せない）。 ----
@@ -2326,7 +2340,7 @@
     const rowChanged = mode==='move' && curRow !== undefined && curRow !== origRowIdx;
     const posChanged = !orig || working.start !== orig.start || working.end !== orig.end;
     if(mode !== 'create' && !rowChanged && !posChanged){
-      drag = null;
+      endDrag();
       return;
     }
     let finalKey = key;
@@ -2380,7 +2394,7 @@
         refreshFromBuhin();
         render();
       }
-      drag = null;
+      endDrag();
       return;
     }
 
@@ -2423,7 +2437,7 @@
         render();
       });
     }
-    drag = null;
+    endDrag();
   });
 
   ganttInner.addEventListener('dblclick', (e)=>{
@@ -2714,22 +2728,72 @@
     });
   });
 
+  // ---- バーの操作中は、外部から届いた変更で画面を作り直さない ----
+  // ドラッグの途中で作り直すと、掴んでいるバーが別の位置へ飛んでしまうため。
+  // 届いたものは保留しておき、操作が終わってから取り込むか捨てるかを決める。
+  function isProtectedFromRemoteRedraw(){ return !!drag; }
+
+  // ---- ドラッグの終わり。保留していた外部更新の判断もここで行う ----
+  function endDrag(){
+    drag = null;
+    applyPendingRemoteUpdates();
+  }
+
+  function applyPendingRemoteUpdates(){
+    if(isProtectedFromRemoteRedraw()) return; // まだ操作中なら保留したままにする
+    let changed = false;
+    if(pendingConfirmChange){
+      confirmState = loadConfirm();
+      pendingConfirmChange = false;
+      changed = true;
+    }
+    if(pendingRemoteState){
+      const raw = pendingRemoteState;
+      pendingRemoteState = null;
+      if(editSeq === remoteBaseSeq){
+        // こちらは何も編集していない。届いた内容をそのまま取り込む（従来どおりの同期）。
+        try{
+          buhinState = JSON.parse(raw);
+          refreshFromBuhin();
+          remoteBaseSeq = editSeq;   // いま取り込んだ内容が新しい基準になる
+          changed = true;
+        }catch(err){}
+      }else{
+        // こちらに未共有の編集がある。取り込むとバーの移動・伸縮が巻き戻るため捨てる。
+        // ただし保存先には届いた古い内容が既に書かれている（同期の受け側が、この画面へ
+        // 知らせるより先に書き換えてしまうため）。こちらの内容で保存し直しておく。
+        saveBuhinState();
+        refreshFromBuhin();
+        changed = true;
+        console.warn('[個別日程表] 届いた他の人の変更は、こちらの編集を巻き戻さないため取り込みませんでした。'
+          + 'こちらの編集はそのまま保存しています。相手の変更を見るには画面を読み込み直してください。');
+      }
+    }
+    if(changed){
+      renderOrderCard();
+      render();
+    }
+  }
+
   // ---- 作業票など、同じ品番のデータを共有する別タブでの変更をリアルタイムに反映する ----
   if(handoff){
     window.addEventListener('storage', (e)=>{
       if(e.key === CONFIRM_KEY){
+        if(isProtectedFromRemoteRedraw()){ pendingConfirmChange = true; return; }
         confirmState = loadConfirm();
-        drag = null;
         render();
         return;
       }
       if(e.key !== BUHIN_KEY) return;
       if(e.newValue == null) return;
-      drag = null; // 操作中に外部変更が来た場合は混乱を避けるため今のドラッグは破棄する
-      try{ buhinState = JSON.parse(e.newValue); }catch(err){ return; }
-      refreshFromBuhin();
-      renderOrderCard();
-      render();
+      pendingRemoteState = e.newValue;
+      if(isProtectedFromRemoteRedraw()){
+        // 操作中。画面はこのまま守る。保存先は既に届いた内容へ書き換えられているので、
+        // こちらに未共有の編集があるならその場で保存し直しておく（操作の結果が消えないように）。
+        if(editSeq !== remoteBaseSeq) saveBuhinState();
+        return;
+      }
+      applyPendingRemoteUpdates();
     });
   }
 })();
