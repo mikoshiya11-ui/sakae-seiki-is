@@ -608,42 +608,13 @@
     return st;
   }
 
-  // ---- 一度だけの移行処理：日数(days)機能を追加した際、初期値が半日(1)や1日分(2)のまま保存されてしまったデータを
-  // 工程記号が読める3コマ（1.5日分）に底上げする。以降にユーザーが意図的に3コマ未満へ縮めた分は対象外（このバージョンより後に付いた値は触らない）。
-  const DAYS_UPGRADE_KEY = 'sakaeIS_daysUpgrade3_v1';
-  function upgradeDaysOnce(){
-    if(localStorage.getItem(DAYS_UPGRADE_KEY)) return;
-    for(let i=0;i<localStorage.length;i++){
-      const k = localStorage.key(i);
-      if(!k || k.indexOf('sakaeIS_buhinhyoMock_v1_')!==0) continue;
-      let bs;
-      try{ bs = JSON.parse(localStorage.getItem(k)); }catch(e){ continue; }
-      if(!bs) continue;
-      let changed = false;
-      (bs.parts||[]).forEach(p=>(p.processes||[]).forEach(pr=>{
-        if(pr.days === 1 || pr.days === 2){ pr.days = 3; changed = true; }
-      }));
-      if(changed) localStorage.setItem(k, JSON.stringify(bs));
-    }
-    localStorage.setItem(DAYS_UPGRADE_KEY, '1');
-  }
-  // ---- 共有テスト（_sakaeSync.js）が有効な場合、ページ読み込み直後はまだSupabase側の初回同期（initialSync）が
-  // 終わっていないことがある。その状態でここを実行すると、まだ取り込んでいないリモートの正しいデータより先に
-  // ローカルの（古いかもしれない）内容で上書き保存してしまう恐れがあるため、
-  // 同期の初回読み込みが終わる（window.sakaeSupabaseが使えるようになる）のを待ってから実行する ----
-  (function scheduleUpgradeDaysOnce(){
-    const syncOff = (typeof window.SAKAE_SYNC_ENABLED !== 'undefined' && !window.SAKAE_SYNC_ENABLED)
-      || !window.SAKAE_SUPABASE_URL || !window.SAKAE_SUPABASE_ANON_KEY;
-    if(syncOff){ upgradeDaysOnce(); return; }
-    let tries = 0;
-    const timer = setInterval(()=>{
-      tries++;
-      if(window.sakaeSupabase || tries>40){
-        clearInterval(timer);
-        upgradeDaysOnce();
-      }
-    }, 500);
-  })();
+  // ---- 🔴 ここにあった「日数(days)が1・2の工程を3へ底上げする一度だけの移行処理」は廃止した（2026-08-28）。
+  // 実行済みフラグ(sakaeIS_daysUpgrade3_v1)が端末ごとだったため、まだ実行していない端末が画面を開くと、
+  // 現場が意図して1〜2コマへ縮めたバーまで3コマへ戻し、その結果が同期で他の端末へも広がっていた。
+  // 日数は現在ユーザーが自由に決める値（個別日程表のバー伸縮で 1 以上の任意の値になる）であり、1・2 も正しい値である。
+  // 古い保存データに days が「無い」場合の補完は、上の migrateState（!pr.days → 3）が従来どおり担当しており、
+  // こちらの底上げ処理は不要になった。同期の初回読み込みを待つ仕掛け(scheduleUpgradeDaysOnce)も一緒に外した。
+  // 既に立っている旧フラグは掃除していない（処理が無いので有無で挙動は変わらない）。 ----
 
   // ---- 🔴 ここにあった「見積工数(hours)を全件空にする一度だけの移行処理」は廃止した（2026-08-28）。
   // 工数を正式に運用することになったため、hours は消してはいけない値になった。

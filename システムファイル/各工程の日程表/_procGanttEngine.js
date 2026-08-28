@@ -372,24 +372,12 @@ window.ProcGantt = (function(){
       localStorage.setItem(key, JSON.stringify(bs));
     }
 
-    // ---- 一度だけの移行処理：日数(days)機能を追加した際、初期値が半日(1)や1日分(2)のまま保存されてしまったデータを
-    // 工程記号が読める3コマ（1.5日分）に底上げする。以降にユーザーが意図的に3コマ未満へ縮めた分は対象外（このバージョンより後に付いた値は触らない）。
-    const DAYS_UPGRADE_KEY = 'sakaeIS_daysUpgrade3_v1';
-    if(!localStorage.getItem(DAYS_UPGRADE_KEY)){
-      for(let i=0;i<localStorage.length;i++){
-        const k = localStorage.key(i);
-        if(!k || k.indexOf('sakaeIS_buhinhyoMock_v1_')!==0) continue;
-        let bsUp;
-        try{ bsUp = JSON.parse(localStorage.getItem(k)); }catch(e){ continue; }
-        if(!bsUp) continue;
-        let changedUp = false;
-        (bsUp.parts||[]).forEach(p=>(p.processes||[]).forEach(pr=>{
-          if(pr.days === 1 || pr.days === 2){ pr.days = 3; changedUp = true; }
-        }));
-        if(changedUp) localStorage.setItem(k, JSON.stringify(bsUp));
-      }
-      localStorage.setItem(DAYS_UPGRADE_KEY, '1');
-    }
+    // ---- 🔴 ここにあった「日数(days)が1・2の工程を3へ底上げする一度だけの移行処理」は廃止した（2026-08-28）。
+    // 実行済みフラグ(sakaeIS_daysUpgrade3_v1)が端末ごとだったため、まだ実行していない端末が画面を開くと、
+    // 現場が意図して1〜2コマへ縮めたバーまで3コマへ戻し、その結果が同期で他の端末へも広がっていた。
+    // 日数は現在ユーザーが自由に決める値であり、1・2 も正しい値である。
+    // days が「無い」古いデータの補完は作業票_モック.html の migrateState が従来どおり担当する。
+    // 既に立っている旧フラグは掃除していない（処理が無いので有無で挙動は変わらない）。 ----
 
     let jobs = scanJobs();
     function refreshJobs(){ jobs = scanJobs(); }
