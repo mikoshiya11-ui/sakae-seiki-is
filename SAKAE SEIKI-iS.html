@@ -1236,6 +1236,10 @@
       'sakaeIS_kobetsuMock_laneassign_v1' + suffix,
       'sakaeIS_kobetsuMock_legacybars_v1' + suffix,
       'sakaeIS_kobetsuMock_checks_v1' + suffix,
+      // 個別日程表の進捗チェック欄に出る担当者の名前一覧。案件ごとに入力・修正できる項目なので、
+      // ほかの案件データと同じ扱いにする（ここに入っていなかったため、案件を消しても残り、
+      // 社内No.を変えても引き継がれず、JSONの書き出しにも入らなかった。2026-08-28 是正）
+      'sakaeIS_kobetsuMock_checkNames_v1' + suffix,
       'sakaeIS_kobetsuMock_confirm_v1' + suffix,
       // 支給・納品一覧（製品単位）の明細・メモ・日付メモ。これも品番に紐づく製品付随データなので、
       // 社内No.を変えたら引き継ぎ、カードを消したら一緒に消し、JSON書き出しにも含める。

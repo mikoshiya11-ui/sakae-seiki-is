@@ -49,6 +49,7 @@
     'sakaeIS_kobetsuMock_laneassign_v1_',
     'sakaeIS_kobetsuMock_legacybars_v1_',
     'sakaeIS_kobetsuMock_checks_v1_',
+    'sakaeIS_kobetsuMock_checkNames_v1_',
     'sakaeIS_kobetsuMock_confirm_v1_',
     'sakaeIS_shikyuNouhinBoard_v2_'
   ];
