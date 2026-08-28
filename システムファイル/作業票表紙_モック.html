@@ -39,8 +39,12 @@
   .sideNoLabel{
     writing-mode:vertical-rl; text-orientation:upright; font-size:14px; font-weight:700; color:#1a2233; margin-top:12mm;
   }
+  /* NO. の値は、通常の作業票印刷の縦帯（作業票印刷_モック.html の .slipSideNo）と同じ向きにそろえる。
+     upright は1文字ずつ正立して縦に積まれるが、印刷側は sideways で横書きの文字列をそのまま倒している。
+     2026-08-27 の現場要望により、表紙も印刷側に合わせる。変えるのは向きだけで、
+     文字サイズ・色・位置（margin-top・letter-spacing）はこれまでどおり。 */
   .sideNoVal{
-    writing-mode:vertical-rl; text-orientation:upright; font-size:18px; font-weight:700; margin-top:3mm; letter-spacing:1px;
+    writing-mode:vertical-rl; text-orientation:sideways; font-size:18px; font-weight:700; margin-top:3mm; letter-spacing:1px;
     color:#c0392b; flex:1 1 auto;
   }
 

@@ -706,6 +706,32 @@
   // 正式には受注連絡書→作業票の順で決まる想定だが、実際には作業票側で客先・型式・納期を先に決めることも多いため、
   // 作業票を保存するたびに受注連絡書一覧側のカードにも反映する（品番が一致するレコードを更新、無ければ新規追加）。
   const ORDER_RECORDS_KEY = 'sakaeIS_records_v1';
+
+  // ---- 案件一覧から明示的に削除された案件を、作業票の保存で勝手に作り直さないための判定 ----
+  // 作業票を開く導線は「案件カード →『作業票を開く／作成する』」と、そこから派生した戻るリンク
+  // （作業票印刷・個別日程表・作業開始印刷セット）だけで、いずれも既存案件の productNo を引き継ぐ。
+  // つまり正規の操作では、開いた時点で必ずその品番のカードが案件一覧にある。
+  //   → 開いた時にカードがあったのに、保存する時に無い＝その間に案件一覧から削除された。作り直さない。
+  //   → 開いた時にカードが無かった場合だけ、従来どおり作業票側から新規作成する。
+  // 削除の印（墓標）も新しい保存キーも作らない。この値はページを開いている間だけのメモリ上の判定。
+  const hadOrderRecordAtLoad = (function(){
+    if(!urlProductNo) return false;
+    try{
+      const raw = localStorage.getItem(ORDER_RECORDS_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) && list.some(r=> r && r.productNo === urlProductNo);
+    }catch(e){ return false; }
+  })();
+
+  // ---- 案件一覧にカードが無い品番で、作業票側から案件を作る必要が出たときの扱い ----
+  // 勝手に作らず、その場で1回だけ人に確かめる。答えはこのページを開いている間だけ覚えておく。
+  //   'unasked'  … まだ聞いていない
+  //   'denied'   … 追加しないと答えた（以後このページでは二度と聞かない・作らない）
+  //   'allowed'  … 追加してよいと答えた
+  // save() はこのページの24箇所から呼ばれるため、1回の入力で確認が連続して出ないよう
+  // 必ずこの状態を見てから聞く。localStorage・Supabase には何も保存しない（永続キーを作らない）。
+  let orderCardCreatePermission = 'unasked';
+
   function syncToOrderRecords(){
     const o = state.order;
     if(!o.productNo) return;
@@ -725,6 +751,23 @@
       r.orderDate = o.orderDate;
       r.orderNo = o.orderNo;
     }else{
+      // 開いた時にはカードがあったのに今は無い＝案件一覧から削除された案件。作り直さず、何も書かない。
+      // （作業票データ自体は上の save() で従来どおり保存されている。ここで消すことはしない）
+      if(hadOrderRecordAtLoad) return;
+      // 開いた時からカードが無い場合は、削除済みなのか、まだ作っていないだけなのかを
+      // データからは見分けられない（案件を削除すると紐づくキーもすべて消えるため、
+      // 「まだ何も作っていない社内No.」と中身が同じになる）。
+      // そこで勝手に作らず、その場で1回だけ人に確かめる。
+      if(orderCardCreatePermission === 'denied') return;
+      if(orderCardCreatePermission === 'unasked'){
+        const addOk = window.confirm(
+          'この社内No.「'+(o.orderNo || o.productNo)+'」の案件は案件一覧にありません。\n'
+          + '新しい案件として案件一覧に追加しますか？\n\n'
+          + '［キャンセル］を選ぶと、案件一覧には追加しません。\n'
+          + '作業票の内容はどちらを選んでも保存されます。');
+        orderCardCreatePermission = addOk ? 'allowed' : 'denied';
+        if(!addOk) return;
+      }
       records.unshift({
         id: uid(), productNo: o.productNo, orderNo: o.orderNo||'', customer: o.customer||'',
         modelName: o.model||'', itemName: o.itemName||'', category:'型', subject:'新作',
