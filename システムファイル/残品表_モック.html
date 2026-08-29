@@ -238,7 +238,8 @@
   const urlProductNo = (params.get('productNo') || '').trim();
   // ---- このページは全受注を横断して見るため、チェック欄の保存キーは品番に紐づけない単一のキーにする ----
   const CHECK_KEY = 'sakaeIS_zanpinMock_checks_v1';
-  const BUHIN_PREFIX = 'sakaeIS_buhinhyoMock_v1_';
+  // 案件に紐づく保存キーの作り方は、全画面共通の窓口（_sakaeSync.js 冒頭の sakaeKeys）に集約してある。
+  const BUHIN_PREFIX = window.sakaeKeys.productKeyPrefix('buhinhyo');
   const LOG_KEY = 'sakaeIS_jissekiLog_v1';
   const RECORDS_KEY = 'sakaeIS_records_v1';
   // タブは工程完了期限が近い順に、最大でこの件数まで表示する（数が多すぎてタブが埋まらないように上限を設ける）。

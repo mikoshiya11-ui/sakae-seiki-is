@@ -135,8 +135,9 @@
   }
   // ---- 読み取り専用。この画面はデータを一切書き換えない ----
   const RECORDS_KEY = 'sakaeIS_records_v1';
-  const BUHIN_PREFIX = 'sakaeIS_buhinhyoMock_v1_';
-  const DETAIL_PREFIX = 'sakaeIS_shikyuNouhinBoard_v2_';
+  // 案件に紐づく保存キーの作り方は、全画面共通の窓口（_sakaeSync.js 冒頭の sakaeKeys）に集約してある。
+  const BUHIN_PREFIX = window.sakaeKeys.productKeyPrefix('buhinhyo');
+  const DETAIL_PREFIX = window.sakaeKeys.productKeyPrefix('shikyuNouhin');
   const LINE_NOUHIN = 'nouhin';
   const LINE_SHIKYU = 'shikyu';
 

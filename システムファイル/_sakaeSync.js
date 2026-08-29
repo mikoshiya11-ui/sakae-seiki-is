@@ -13,6 +13,81 @@
 // _sakaeSupabaseConfig.js で SAKAE_SYNC_ENABLED=false にすれば、
 // 今まで通りブラウザだけで動く従来モードに戻ります（Supabase未設定でもエラーになりません）。
 // ============================================================
+// ============================================================
+// 案件に紐づく保存キーの作り方（全画面で共通の正本）
+//
+// これまで「案件のキーを作る」処理が9ファイルに散らばっていて、
+// 追加や変更のたびに片方だけ直され、食い違いが不具合になっていた
+// （担当者名 checkNames の管理漏れ・TOPと同期層の二重管理など）。
+// キーの作り方はここ1か所だけに置き、各画面はこの窓口を通す。
+//
+// このファイルは全ページが読み込むため、同期の設定が無い・オフの場合でも
+// 使えるように、下の早期 return より前で定義する。
+//
+// ★いまは案件を「社内No.」で識別している（従来どおり）。
+//   将来 records[].id で識別する形へ移す時も、直すのはこの1か所だけで済む。
+// ============================================================
+(function(){
+  'use strict';
+
+  // 案件に紐づくデータの種類。★この並び順は変えないこと。
+  // 社内No.を変更したときの「旧キー→新キー」の対応付けが、この順番に依存している。
+  const PRODUCT_KEY_BASES = {
+    buhinhyo:          'sakaeIS_buhinhyoMock_v1',          // 作業票（部品表）
+    kobetsuMemos:      'sakaeIS_kobetsuMock_memos_v1',     // 個別日程表 メモ
+    kobetsuView:       'sakaeIS_kobetsuMock_view_v1',      // 個別日程表 表示期間
+    kobetsuRowcounts:  'sakaeIS_kobetsuMock_rowcounts_v1', // 個別日程表 行数
+    kobetsuLaneassign: 'sakaeIS_kobetsuMock_laneassign_v1',// 個別日程表 レーン割当
+    kobetsuLegacybars: 'sakaeIS_kobetsuMock_legacybars_v1',// 個別日程表 旧バー
+    kobetsuChecks:     'sakaeIS_kobetsuMock_checks_v1',    // 個別日程表 進捗チェック
+    kobetsuCheckNames: 'sakaeIS_kobetsuMock_checkNames_v1',// 個別日程表 担当者の名前一覧
+    kobetsuConfirm:    'sakaeIS_kobetsuMock_confirm_v1',   // 個別日程表 計画確定
+    shikyuNouhin:      'sakaeIS_shikyuNouhinBoard_v2'      // 支給・納品一覧（製品単位）
+  };
+  const PRODUCT_KEY_TYPES = Object.keys(PRODUCT_KEY_BASES);
+
+  function baseOf(type){
+    const b = PRODUCT_KEY_BASES[type];
+    if(!b) throw new Error('[sakaeKeys] 知らない案件データの種類です: ' + type);
+    return b;
+  }
+
+  window.sakaeKeys = {
+    RECORDS_KEY: 'sakaeIS_records_v1',
+    PRODUCT_KEY_TYPES: PRODUCT_KEY_TYPES.slice(),
+
+    // 1件ぶんのキー（例：sakaeIS_buhinhyoMock_v1_35480001-11）
+    productKey: function(type, productNo){ return baseOf(type) + '_' + productNo; },
+
+    // 品番が無いときは末尾を付けない。個別日程表を品番なしで開いた時の従来動作をそのまま残す。
+    productKeyNs: function(type, productNo){
+      return baseOf(type) + (productNo ? ('_' + productNo) : '');
+    },
+
+    // 前方一致で使う「種類ごとの頭」（例：sakaeIS_buhinhyoMock_v1_）
+    productKeyPrefix: function(type){ return baseOf(type) + '_'; },
+    productKeyPrefixes: function(){ return PRODUCT_KEY_TYPES.map(function(t){ return baseOf(t) + '_'; }); },
+
+    // その案件に紐づくキー一式。★並び順は PRODUCT_KEY_TYPES のとおり
+    productDataKeys: function(productNo){
+      if(!productNo) return [];
+      return PRODUCT_KEY_TYPES.map(function(t){ return baseOf(t) + '_' + productNo; });
+    },
+
+    // キー名から社内No.を取り出す。案件に紐づかないキーなら空文字。
+    // 「末尾が社内No.か」で判定すると sakaeIS_ncGanttMock_bars_v1_<工程コード> のような
+    // 案件と無関係のキーまで拾ってしまうため、必ずこの明示リストの前方一致で判定する。
+    productNoOfKey: function(key){
+      if(typeof key !== 'string') return '';
+      for(let i=0;i<PRODUCT_KEY_TYPES.length;i++){
+        const p = baseOf(PRODUCT_KEY_TYPES[i]) + '_';
+        if(key.indexOf(p) === 0) return key.slice(p.length);
+      }
+      return '';
+    }
+  };
+})();
+
 (function(){
   'use strict';
 
@@ -37,22 +112,7 @@
   // ページを開いただけで消したはずのデータを共有へ戻していた。
   const TOMB_PREFIX = 'sakaeIS_deletedRecord_v1_';
   const TOMB_UNDO_PREFIX = 'sakaeIS_deletedRecordUndo_v1_';
-  const RECORDS_KEY = 'sakaeIS_records_v1';
-  // 案件（社内No.）ごとに作られるキーの一覧。SAKAE SEIKI-iS.html の productDataKeys() と同じ並び。
-  // 「末尾が社内No.かどうか」で判定すると sakaeIS_ncGanttMock_bars_v1_<工程コード> のような
-  // 案件と無関係のキーまで巻き込むため、必ずこの明示リストの前方一致で判定する。
-  const PRODUCT_KEY_PREFIXES = [
-    'sakaeIS_buhinhyoMock_v1_',
-    'sakaeIS_kobetsuMock_memos_v1_',
-    'sakaeIS_kobetsuMock_view_v1_',
-    'sakaeIS_kobetsuMock_rowcounts_v1_',
-    'sakaeIS_kobetsuMock_laneassign_v1_',
-    'sakaeIS_kobetsuMock_legacybars_v1_',
-    'sakaeIS_kobetsuMock_checks_v1_',
-    'sakaeIS_kobetsuMock_checkNames_v1_',
-    'sakaeIS_kobetsuMock_confirm_v1_',
-    'sakaeIS_shikyuNouhinBoard_v2_'
-  ];
+  const RECORDS_KEY = window.sakaeKeys.RECORDS_KEY;
   // 削除イベントと取消イベントの両方をまとめて「墓標の記録」として扱う
   function isTombKey(key){
     return typeof key === 'string'
@@ -64,13 +124,8 @@
     if(i < 1 || i === rest.length-1) return null;
     return { recordId: rest.slice(0, i), deletionId: rest.slice(i+1) };
   }
-  function productNoOfKey(key){
-    for(let i=0;i<PRODUCT_KEY_PREFIXES.length;i++){
-      const p = PRODUCT_KEY_PREFIXES[i];
-      if(key.indexOf(p) === 0) return key.slice(p.length);
-    }
-    return '';
-  }
+  // 案件に紐づくキーかどうかの判定は、共通の窓口（このファイル冒頭の sakaeKeys）に任せる
+  function productNoOfKey(key){ return window.sakaeKeys.productNoOfKey(key); }
   function parseRecordList(v){
     try{
       const a = (typeof v === 'string') ? JSON.parse(v) : v;

@@ -256,8 +256,9 @@
 
   const params = new URLSearchParams(location.search);
   const urlProductNo = (params.get('productNo') || '').trim();
-  const STORAGE_KEY_BASE = 'sakaeIS_buhinhyoMock_v1';
-  function storageKeyFor(productNo){ return STORAGE_KEY_BASE + (productNo ? ('_' + productNo) : ''); }
+  // 案件に紐づく保存キーの作り方は、全画面共通の窓口（_sakaeSync.js 冒頭の sakaeKeys）に集約してある。
+  // 品番が無いときに末尾を付けない従来の動きも、そのまま共通側（productKeyNs）が持っている。
+  function storageKeyFor(productNo){ return window.sakaeKeys.productKeyNs('buhinhyo', productNo); }
 
   // ---- 「← 作業票へ」は社内No.（内部の紐付けキー名はproductNoのまま）を引き継がないと、作業票側で
   // キーなしの共有キーに落ちて別の案件のデータが出てくる不具合があったため、必ずこのページの社内No.をURLに付けて戻す ----

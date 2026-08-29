@@ -167,7 +167,7 @@
     const codes = new Set();
     for(let i=0;i<localStorage.length;i++){
       const key = localStorage.key(i);
-      if(!key || key.indexOf('sakaeIS_buhinhyoMock_v1_')!==0) continue;
+      if(!key || key.indexOf(window.sakaeKeys.productKeyPrefix('buhinhyo'))!==0) continue;
       let bs;
       try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
       if(!bs) continue;

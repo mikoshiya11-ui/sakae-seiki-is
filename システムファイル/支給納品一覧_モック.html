@@ -217,9 +217,10 @@
   // ---- 保存先 ----
   // 案件の一覧は案件データ（records）が正本。この画面では案件を作らない・消さない・書き換えない。
   const RECORDS_KEY = 'sakaeIS_records_v1';
-  const BUHIN_PREFIX = 'sakaeIS_buhinhyoMock_v1_';
+  // 案件に紐づく保存キーの作り方は、全画面共通の窓口（_sakaeSync.js 冒頭の sakaeKeys）に集約してある。
+  const BUHIN_PREFIX = window.sakaeKeys.productKeyPrefix('buhinhyo');
   // 支給日と日付ごとの自由入力は案件（品番）ごとに保存する。全件を1つのキーに入れない。
-  const DETAIL_PREFIX = 'sakaeIS_shikyuNouhinBoard_v2_';
+  const DETAIL_PREFIX = window.sakaeKeys.productKeyPrefix('shikyuNouhin');
   const VIEW_KEY = 'sakaeIS_shikyuNouhinBoard_view_v1';
   // ---- 旧「部品単位」の一覧データ（sakaeIS_shikyuNouhinBoard_items_v1）は、この画面からは読みも書きもしない。 ----
 

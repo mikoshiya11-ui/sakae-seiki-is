@@ -3,8 +3,9 @@
 // 作業票_モック.html側のARRANGEMENT_CHECK_ITEMS（現物「生産管理手配チェックシート」の12項目）と
 // 同じキー・並び順・目安日数で保つこと（どちらかだけ直しても揃わなくなるため、変更時は両方に反映する）。
 window.sakaeWorkStartPrint = (function(){
-  const STORAGE_KEY_BASE = 'sakaeIS_buhinhyoMock_v1';
-  function storageKeyFor(productNo){ return STORAGE_KEY_BASE + (productNo ? ('_' + productNo) : ''); }
+  // 案件に紐づく保存キーの作り方は、全画面共通の窓口（_sakaeSync.js 冒頭の sakaeKeys）に集約してある。
+  // 品番が無いときに末尾を付けない従来の動きも、そのまま共通側（productKeyNs）が持っている。
+  function storageKeyFor(productNo){ return window.sakaeKeys.productKeyNs('buhinhyo', productNo); }
 
   function esc(s){
     return (s==null?'':s).toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');

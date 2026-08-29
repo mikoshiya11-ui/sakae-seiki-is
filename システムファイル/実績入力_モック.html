@@ -291,7 +291,8 @@
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   }
 
-  const BUHIN_PREFIX = 'sakaeIS_buhinhyoMock_v1_';
+  // 案件に紐づく保存キーの作り方は、全画面共通の窓口（_sakaeSync.js 冒頭の sakaeKeys）に集約してある。
+  const BUHIN_PREFIX = window.sakaeKeys.productKeyPrefix('buhinhyo');
   const LOG_KEY = 'sakaeIS_jissekiLog_v1';
 
   // ---- 直前の1件だけ元に戻せるトースト通知（間違ってスキャン→登録してしまった時のやり直し用）。

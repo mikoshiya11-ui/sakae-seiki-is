@@ -511,7 +511,9 @@
   // これにより作業票の内容を常に最新の状態で参照でき、バーを動かせば作業票の工程日付も直接書き換わる（双方向リンク）
   const params = new URLSearchParams(location.search);
   const urlProductNo = (params.get('productNo') || '').trim();
-  function nsKey(base){ return base + (urlProductNo ? ('_' + urlProductNo) : ''); }
+  // 案件に紐づく保存キーの作り方は、全画面共通の窓口（_sakaeSync.js 冒頭の sakaeKeys）に集約してある。
+  // 品番が無いときに末尾を付けない従来の動きも、そのまま共通側（productKeyNs）に持たせている。
+  const SK = window.sakaeKeys;
 
   // ---- 「← 作業票へ」は品番を引き継がないと、作業票側で品番なしの共有キーに落ちて別の品番のデータが出てくる不具合があったため、
   // 必ずこのページの品番をURLに付けて戻す ----
@@ -520,7 +522,7 @@
     backLinkTopEl.href = '作業票_モック.html?productNo=' + encodeURIComponent(urlProductNo);
   }
 
-  const BUHIN_KEY = urlProductNo ? ('sakaeIS_buhinhyoMock_v1_' + urlProductNo) : null;
+  const BUHIN_KEY = urlProductNo ? SK.productKey('buhinhyo', urlProductNo) : null;
   // 作業票側の古い保存データにid/ampmが無い場合に備えて、こちらでも読み込み時に補完する（作業票と同じロジック）
   function migrateBuhinState(st){
     let changed = false;
@@ -622,7 +624,7 @@
   });
 
   // ---- 自由配置・自由サイズのメモ（吹き出し）。日付・工程・バーには一切紐付かず、ガント表内の好きな座標に置ける付箋 ----
-  const MEMO_KEY = nsKey('sakaeIS_kobetsuMock_memos_v1');
+  const MEMO_KEY = SK.productKeyNs('kobetsuMemos', urlProductNo);
   function loadMemos(){
     try{ const raw = localStorage.getItem(MEMO_KEY); if(raw) return JSON.parse(raw); }catch(e){}
     return [];
@@ -630,7 +632,7 @@
   function saveMemos(){ localStorage.setItem(MEMO_KEY, JSON.stringify(memos)); }
   let memos = loadMemos();
 
-  const VIEW_KEY = nsKey('sakaeIS_kobetsuMock_view_v1');
+  const VIEW_KEY = SK.productKeyNs('kobetsuView', urlProductNo);
   let DAY_W = 30;
   const ZOOM_KEY = 'sakaeIS_kobetsuMock_zoom_v1';
   function loadZoom(){
@@ -1060,7 +1062,7 @@
   }
 
   // ---- 工程の段数（引き継ぎ時のみ）：バーが重なる場合に備えて、部品ごとに手動で段を増減できるようにする（表示上のレイアウトのみ・作業票とは共有しない） ----
-  const ROWCOUNT_KEY = nsKey('sakaeIS_kobetsuMock_rowcounts_v1');
+  const ROWCOUNT_KEY = SK.productKeyNs('kobetsuRowcounts', urlProductNo);
   function loadRowCounts(){
     try{
       const raw = localStorage.getItem(ROWCOUNT_KEY);
@@ -1079,7 +1081,7 @@
 
   // ---- 計画の確定：確定するとバーの移動・追加・削除ができなくなる（誤操作防止）。
   // 段数の増減や付箋メモは見た目・注記だけで日程そのものではないので、確定中でも触れる。 ----
-  const CONFIRM_KEY = nsKey('sakaeIS_kobetsuMock_confirm_v1');
+  const CONFIRM_KEY = SK.productKeyNs('kobetsuConfirm', urlProductNo);
   function loadConfirm(){
     try{ const raw = localStorage.getItem(CONFIRM_KEY); if(raw) return JSON.parse(raw); }catch(e){}
     return null;
@@ -1116,7 +1118,7 @@
   }
 
   // ---- 工程バーをどの段（レーン）に置くか：これは作業票とは共有しない、この画面だけの表示上の配置なので別キーで保存する ----
-  const LANE_KEY = nsKey('sakaeIS_kobetsuMock_laneassign_v1');
+  const LANE_KEY = SK.productKeyNs('kobetsuLaneassign', urlProductNo);
   function loadLaneAssign(){
     try{
       const raw = localStorage.getItem(LANE_KEY);
@@ -1128,7 +1130,7 @@
   let laneAssign = loadLaneAssign();
 
   // ---- 非リンク（品番なしで開いた旧サンプル）の時だけ使うバー保存。作業票と共有するモードでは使わない ----
-  const LEGACY_KEY = nsKey('sakaeIS_kobetsuMock_legacybars_v1');
+  const LEGACY_KEY = SK.productKeyNs('kobetsuLegacybars', urlProductNo);
   function loadLegacyBars(){
     try{
       const raw = localStorage.getItem(LEGACY_KEY);
@@ -1218,10 +1220,10 @@
   }
 
   // ---- 進捗チェック欄（担当者×日付） ----
-  const CHECK_KEY = nsKey('sakaeIS_kobetsuMock_checks_v1');
+  const CHECK_KEY = SK.productKeyNs('kobetsuChecks', urlProductNo);
   // ---- 担当者の名前一覧はこの案件ごとに入力・修正できる（以前は全案件共通で固定の4名だった）。
   // 保存が無い場合は、これまでの固定4名を初期値として引き継ぐ ---- ----
-  const CHECK_NAMES_KEY = nsKey('sakaeIS_kobetsuMock_checkNames_v1');
+  const CHECK_NAMES_KEY = SK.productKeyNs('kobetsuCheckNames', urlProductNo);
   const DEFAULT_CHECK_NAMES = ['テンチョー','コーダ','カツグくん','ケイリー'];
   function loadCheckNames(){
     try{

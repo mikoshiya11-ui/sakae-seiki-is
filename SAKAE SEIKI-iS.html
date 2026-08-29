@@ -704,7 +704,10 @@
 
 <script>
 (function(){
-  const STORAGE_KEY = 'sakaeIS_records_v1';
+  // 案件に紐づく保存キーの作り方は、全画面共通の窓口（_sakaeSync.js 冒頭の sakaeKeys）に集約してある。
+  // この画面もそこを通してキーを作る。キーの形を変えるときは共通側だけを直せばよい。
+  const SK = window.sakaeKeys;
+  const STORAGE_KEY = SK.RECORDS_KEY;
 
   function uid(){ return Math.random().toString(36).slice(2,9); }
 
@@ -799,13 +802,7 @@
   }
   // 案件ごとのデータキーかどうかを、productDataKeys() から作った前方一致で判定する
   // （判定の元を1か所にしておき、対象キーが増えた時に食い違わないようにする）
-  function productNoOfDataKey(key){
-    const prefixes = productDataKeys('#').map(k=> k.slice(0, k.length-1));
-    for(let i=0;i<prefixes.length;i++){
-      if(key.indexOf(prefixes[i])===0) return key.slice(prefixes[i].length);
-    }
-    return '';
-  }
+  function productNoOfDataKey(key){ return SK.productNoOfKey(key); }
   // 保存されている一覧をそのまま読む（墓標で絞らない）。墓標が取り消された時に元の内容へ戻すために使う。
   function loadRecordsRaw(){
     try{
@@ -888,7 +885,7 @@
   }
   function copyBuhinPartsFromTemplate(fromProductNo, rec){
     if(!fromProductNo || !rec.productNo) return;
-    const raw = localStorage.getItem('sakaeIS_buhinhyoMock_v1_' + fromProductNo);
+    const raw = localStorage.getItem(SK.productKey('buhinhyo', fromProductNo));
     if(!raw) return; // ひな形側にまだ作業票データが無ければ何もしない
     let src;
     try{ src = JSON.parse(raw); }catch(e){ return; }
@@ -928,7 +925,7 @@
     // レーンは工程IDが変わるため、対応表で新しいIDへ付け替える（元IDを参照し続けない）。
     // 段数は行の位置がキーで、部品の並び順はそのまま引き継ぐため、位置の対応は崩れない。
     try{
-      const laneRaw = localStorage.getItem('sakaeIS_kobetsuMock_laneassign_v1_' + fromProductNo);
+      const laneRaw = localStorage.getItem(SK.productKey('kobetsuLaneassign', fromProductNo));
       if(laneRaw){
         const srcLane = JSON.parse(laneRaw) || {};
         const newLane = {};
@@ -936,12 +933,12 @@
           if(procIdMap[oldProcId] !== undefined) newLane[procIdMap[oldProcId]] = srcLane[oldProcId];
         });
         if(Object.keys(newLane).length){
-          localStorage.setItem('sakaeIS_kobetsuMock_laneassign_v1_' + rec.productNo, JSON.stringify(newLane));
+          localStorage.setItem(SK.productKey('kobetsuLaneassign', rec.productNo), JSON.stringify(newLane));
         }
       }
-      const rowRaw = localStorage.getItem('sakaeIS_kobetsuMock_rowcounts_v1_' + fromProductNo);
+      const rowRaw = localStorage.getItem(SK.productKey('kobetsuRowcounts', fromProductNo));
       if(rowRaw){
-        localStorage.setItem('sakaeIS_kobetsuMock_rowcounts_v1_' + rec.productNo, rowRaw);
+        localStorage.setItem(SK.productKey('kobetsuRowcounts', rec.productNo), rowRaw);
       }
     }catch(e){ /* 見た目の引き継ぎに失敗しても、部品・工程の複製自体は成立させる */ }
     const bs = {
@@ -954,7 +951,7 @@
       // ---- ひな形からの複製ではorderNotice（受注に関する連絡書固有項目）・arrangementCheck（手配チェックシート固有項目）は
       // 意図的に引き継がない。案件固有の検討状況・完了日・確認者などをひな形から誤って複製しないため（新しい案件は空の状態から開始する）----
     };
-    localStorage.setItem('sakaeIS_buhinhyoMock_v1_' + rec.productNo, JSON.stringify(bs));
+    localStorage.setItem(SK.productKey('buhinhyo', rec.productNo), JSON.stringify(bs));
   }
   // ---- 受注に関する連絡書だけにある項目（作業票には無い項目）。実務フロー変更に伴い、
   // これらも品番ごとの作業票データ（sakaeIS_buhinhyoMock_v1_品番）の中のorderNotice領域に
@@ -971,7 +968,7 @@
   ];
   function syncToBuhinState(rec){
     if(!rec.productNo) return;
-    const key = 'sakaeIS_buhinhyoMock_v1_' + rec.productNo;
+    const key = SK.productKey('buhinhyo', rec.productNo);
     let bs;
     try{
       const raw = localStorage.getItem(key);
@@ -995,7 +992,7 @@
   function loadBuhinState(productNo){
     if(!productNo) return null;
     try{
-      const raw = localStorage.getItem('sakaeIS_buhinhyoMock_v1_' + productNo);
+      const raw = localStorage.getItem(SK.productKey('buhinhyo', productNo));
       if(raw) return JSON.parse(raw);
     }catch(e){}
     return null;
@@ -1225,28 +1222,12 @@
   // ---- カードの削除（受注連絡書一覧からこの案件を消す）----
   // 作業票（部品表データ）や個別日程表など、リンクしている他ページのデータはこの削除では消えない（品番が一致すれば残ったまま参照可能）。
   // ---- この品番に紐づく他ページのデータ（作業票／部品表・個別日程表）のキー一覧。カード削除時に一緒に消す対象 ----
+  // 案件に紐づくキー一式。中身（種類と並び順）は _sakaeSync.js 冒頭の共通定義（sakaeKeys）が持つ。
+  // 以前はこの関数と同期側とで同じ一覧を二重に持っていて、片方だけ直されて食い違う不具合が起きた
+  // （担当者名 checkNames の管理漏れ）。作る場所を1か所にして、ここはその窓口を通すだけにする。
+  // 並び順は社内No.変更時の「旧キー→新キー」の対応付けに使うため、共通定義側で固定している。
   function productDataKeys(productNo){
-    if(!productNo) return [];
-    const suffix = '_' + productNo;
-    return [
-      'sakaeIS_buhinhyoMock_v1' + suffix,
-      'sakaeIS_kobetsuMock_memos_v1' + suffix,
-      'sakaeIS_kobetsuMock_view_v1' + suffix,
-      'sakaeIS_kobetsuMock_rowcounts_v1' + suffix,
-      'sakaeIS_kobetsuMock_laneassign_v1' + suffix,
-      'sakaeIS_kobetsuMock_legacybars_v1' + suffix,
-      'sakaeIS_kobetsuMock_checks_v1' + suffix,
-      // 個別日程表の進捗チェック欄に出る担当者の名前一覧。案件ごとに入力・修正できる項目なので、
-      // ほかの案件データと同じ扱いにする（ここに入っていなかったため、案件を消しても残り、
-      // 社内No.を変えても引き継がれず、JSONの書き出しにも入らなかった。2026-08-28 是正）
-      'sakaeIS_kobetsuMock_checkNames_v1' + suffix,
-      'sakaeIS_kobetsuMock_confirm_v1' + suffix,
-      // 支給・納品一覧（製品単位）の明細・メモ・日付メモ。これも品番に紐づく製品付随データなので、
-      // 社内No.を変えたら引き継ぎ、カードを消したら一緒に消し、JSON書き出しにも含める。
-      // （ここに入っていなかったため、社内No.を変えると支給・納品の明細とメモが引き継がれず、
-      //   画面から見えなくなっていた。2026-08-20 テーマC で是正）
-      'sakaeIS_shikyuNouhinBoard_v2' + suffix,
-    ];
+    return SK.productDataKeys(productNo);
   }
 
   // ---- 案件を編集して社内No.（＝内部の紐付けキー）が変わった時、他ページに既にある作業票・個別日程表などの
@@ -1261,7 +1242,7 @@
       let toStore = raw;
       // 作業票データの中身にも品番（内部名はproductNoのまま）が埋め込まれているので、
       // それも新しい社内No.に書き換えないと作業票側が古いキーに保存し続けてしまう
-      if(oldKey.indexOf('sakaeIS_buhinhyoMock_v1_')===0){
+      if(oldKey.indexOf(SK.productKeyPrefix('buhinhyo'))===0){
         try{
           const bs = JSON.parse(raw);
           if(bs && bs.order) bs.order.productNo = newProductNo;
@@ -2145,7 +2126,7 @@
     render();
   }
   window.addEventListener('storage', (e)=>{
-    if(!e.key || e.key.indexOf('sakaeIS_buhinhyoMock_v1_')!==0 || e.newValue == null) return;
+    if(!e.key || e.key.indexOf(SK.productKeyPrefix('buhinhyo'))!==0 || e.newValue == null) return;
     let bs;
     try{ bs = JSON.parse(e.newValue); }catch(err){ return; }
     if(bs && bs.order) syncRecordFromBuhinOrder(bs.order);

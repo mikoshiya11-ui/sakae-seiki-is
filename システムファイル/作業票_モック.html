@@ -358,16 +358,16 @@
 
 <script>
 (function(){
-  const STORAGE_KEY_BASE = 'sakaeIS_buhinhyoMock_v1';
   const params = new URLSearchParams(location.search);
   const urlProductNo = (params.get('productNo') || '').trim();
-  function storageKeyFor(productNo){
-    return STORAGE_KEY_BASE + (productNo ? ('_' + productNo) : '');
-  }
+  // 案件に紐づく保存キーの作り方は、全画面共通の窓口（_sakaeSync.js 冒頭の sakaeKeys）に集約してある。
+  // 品番が無いときに末尾を付けない従来の動きも、そのまま共通側（productKeyNs）が持っている。
+  function storageKeyFor(productNo){ return window.sakaeKeys.productKeyNs('buhinhyo', productNo); }
 
   // ---- 工程と納期の確定：個別日程表の「計画を確定する」と同じキーを見る（どちらの画面で確定・解除しても揃う）。
   // 確定中は工程の追加・削除・日付・午前午後の変更ができない（誤操作防止）。 ----
-  const CONFIRM_KEY = 'sakaeIS_kobetsuMock_confirm_v1' + (urlProductNo ? ('_' + urlProductNo) : '');
+  // 案件に紐づく保存キーの作り方は、全画面共通の窓口（_sakaeSync.js 冒頭の sakaeKeys）に集約してある。
+  const CONFIRM_KEY = window.sakaeKeys.productKeyNs('kobetsuConfirm', urlProductNo);
   function loadConfirm(){
     try{ const raw = localStorage.getItem(CONFIRM_KEY); if(raw) return JSON.parse(raw); }catch(e){}
     return null;
@@ -632,7 +632,7 @@
 
   // ---- 過去の不具合（品番なしで戻ってしまい共有キーを汚染していた）で溜まった品番なしデータを一度だけ掃除する ----
   // 正規のキーは必ず「sakaeIS_buhinhyoMock_v1_品番」の形なので、サフィックス無しのこのキーが残っていること自体が不具合の痕跡
-  try{ localStorage.removeItem('sakaeIS_buhinhyoMock_v1'); }catch(e){}
+  try{ localStorage.removeItem(storageKeyFor('')); }catch(e){}
 
   function load(){
     // ---- 品番が無い状態（URLにproductNoが付いていない）では、品番なしの共有キー（storageKeyFor('')）を絶対に読みに行かない。
