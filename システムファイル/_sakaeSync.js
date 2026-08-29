@@ -46,10 +46,56 @@
   };
   const PRODUCT_KEY_TYPES = Object.keys(PRODUCT_KEY_BASES);
 
+  // ============================================================
+  // Phase 2A：recordId ベースの保存キー（v2）
+  //
+  // v1（従来）＝ 社内No. で案件を識別する      sakaeIS_buhinhyoMock_v1_35480001-11
+  // v2（新設）＝ records[].id で案件を識別する  sakaeIS_buhinhyoMock_rid_ab12cd34
+  //
+  // ★「v2」なのに末尾が _v2_ ではなく _rid_ なのは、支給納品一覧だけ従来キーが
+  //   すでに sakaeIS_shikyuNouhinBoard_v2_<社内No.> だからである。
+  //   ここで版番号を1つ上げると、支給納品だけ新旧が同じ形になって区別できなくなる。
+  //   「曖昧なものを推測で判定しない」というのが Phase 2 の原則なので、
+  //   全種別で未使用の _rid_ を使い、キーを見ただけで正本が分かるようにする。
+  //
+  // ★この表を差し替えれば命名は全画面まとめて変わる。各画面は文字列を組み立てない。
+  // ============================================================
+  const PRODUCT_KEY_BASES_V2 = {
+    buhinhyo:          'sakaeIS_buhinhyoMock_rid',
+    kobetsuMemos:      'sakaeIS_kobetsuMock_memos_rid',
+    kobetsuView:       'sakaeIS_kobetsuMock_view_rid',
+    kobetsuRowcounts:  'sakaeIS_kobetsuMock_rowcounts_rid',
+    kobetsuLaneassign: 'sakaeIS_kobetsuMock_laneassign_rid',
+    kobetsuLegacybars: 'sakaeIS_kobetsuMock_legacybars_rid',
+    kobetsuChecks:     'sakaeIS_kobetsuMock_checks_rid',
+    kobetsuCheckNames: 'sakaeIS_kobetsuMock_checkNames_rid',
+    kobetsuConfirm:    'sakaeIS_kobetsuMock_confirm_rid',
+    shikyuNouhin:      'sakaeIS_shikyuNouhinBoard_rid'
+  };
+
+  // 削除の墓標。構造も方式も変えない（recordId ＋ deletionId のまま）。
+  // 「その案件が生きているか」を案件の解決で使うので、ここに置いて全画面で1つにする。
+  const TOMB_PREFIX = 'sakaeIS_deletedRecord_v1_';
+  const TOMB_UNDO_PREFIX = 'sakaeIS_deletedRecordUndo_v1_';
+
   function baseOf(type){
     const b = PRODUCT_KEY_BASES[type];
     if(!b) throw new Error('[sakaeKeys] 知らない案件データの種類です: ' + type);
     return b;
+  }
+
+  function baseOfV2(type){
+    const b = PRODUCT_KEY_BASES_V2[type];
+    if(!b) throw new Error('[sakaeKeys] 知らない案件データの種類です: ' + type);
+    return b;
+  }
+
+  // 墓標キーから recordId と deletionId を取り出す（TOP・同期層と同じ切り方）
+  function splitEventKey(key, prefix){
+    const rest = key.slice(prefix.length);
+    const i = rest.indexOf('_');
+    if(i < 1 || i === rest.length-1) return null;
+    return { recordId: rest.slice(0, i), deletionId: rest.slice(i+1) };
   }
 
   window.sakaeKeys = {
@@ -84,6 +130,172 @@
         if(key.indexOf(p) === 0) return key.slice(p.length);
       }
       return '';
+    },
+
+    // ========================================================
+    // ここから Phase 2A で追加した分。
+    // ★いまはどの画面もここを呼んでいない（業務挙動は変わらない）。
+    //   画面を切り替えるのは Phase 2B 以降。
+    // ========================================================
+    TOMB_PREFIX: TOMB_PREFIX,
+    TOMB_UNDO_PREFIX: TOMB_UNDO_PREFIX,
+
+    // v1（社内No.ベース）。productKey と同じもので、呼ぶ側で新旧が読み取れるように名前を付けた
+    v1Key: function(type, productNo){ return baseOf(type) + '_' + productNo; },
+    v1KeyPrefix: function(type){ return baseOf(type) + '_'; },
+
+    // v2（recordIdベース）
+    v2Key: function(type, recordId){
+      if(!recordId) throw new Error('[sakaeKeys] recordId が空です: ' + type);
+      return baseOfV2(type) + '_' + recordId;
+    },
+    v2KeyPrefix: function(type){ return baseOfV2(type) + '_'; },
+    v2KeyPrefixes: function(){ return PRODUCT_KEY_TYPES.map(function(t){ return baseOfV2(t) + '_'; }); },
+
+    // その案件のv2キー一式。★並び順は v1 の productDataKeys と同じ
+    v2DataKeys: function(recordId){
+      if(!recordId) return [];
+      return PRODUCT_KEY_TYPES.map(function(t){ return baseOfV2(t) + '_' + recordId; });
+    },
+
+    // キー名から recordId を取り出す。v2キーでなければ空文字
+    recordIdOfKey: function(key){
+      if(typeof key !== 'string') return '';
+      for(let i=0;i<PRODUCT_KEY_TYPES.length;i++){
+        const p = baseOfV2(PRODUCT_KEY_TYPES[i]) + '_';
+        if(key.indexOf(p) === 0) return key.slice(p.length);
+      }
+      return '';
+    },
+    isV2Key: function(key){ return !!window.sakaeKeys.recordIdOfKey(key); },
+
+    // ---- 案件一覧 ----
+    loadRecords: function(){
+      try{
+        const raw = localStorage.getItem('sakaeIS_records_v1');
+        if(!raw) return [];
+        const a = JSON.parse(raw);
+        return Array.isArray(a) ? a : [];
+      }catch(e){ return []; }
+    },
+
+    // 有効な削除（取消されていない墓標）の recordId 一式。
+    // 削除された案件は「生きている案件」に数えないために使う。
+    activeDeletedRecordIds: function(){
+      const dels = [];
+      const undone = {};
+      for(let i=0;i<localStorage.length;i++){
+        const k = localStorage.key(i);
+        if(!k) continue;
+        if(k.indexOf(TOMB_UNDO_PREFIX) === 0){
+          const p = splitEventKey(k, TOMB_UNDO_PREFIX);
+          if(p) undone[p.recordId + '_' + p.deletionId] = true;
+        }else if(k.indexOf(TOMB_PREFIX) === 0){
+          const p = splitEventKey(k, TOMB_PREFIX);
+          if(p) dels.push(p);
+        }
+      }
+      const ids = {};
+      dels.forEach(function(d){
+        if(undone[d.recordId + '_' + d.deletionId]) return;
+        ids[d.recordId] = true;
+      });
+      return ids;
+    },
+
+    // ---- 社内No. → recordId の解決 ----
+    // 返す状態は3つだけ。
+    //   ok        生きている案件がちょうど1件 … v2を使ってよい・移行してよい
+    //   none      該当なし／recordId が無い    … v1のまま（今日と同じ挙動）
+    //   ambiguous 同じ社内No.の案件が2件以上   … v1のまま・移行しない（人間の判断が要る）
+    //
+    // ★ambiguous で「どちらかに寄せる」ことは絶対にしない。
+    //   v1データは社内No.にしか紐づいておらず、AとBのどちらのものかキーからも中身からも決められない。
+    //   両方へコピーすると、片方を直したのに両方変わる／消したのに片方残る、という壊れ方をする。
+    resolveRecordId: function(productNo){
+      const no = (productNo == null) ? '' : String(productNo);
+      if(!no) return { state:'none', recordId:'', candidates:[], reason:'社内No.が空' };
+      const dead = window.sakaeKeys.activeDeletedRecordIds();
+      const hits = window.sakaeKeys.loadRecords().filter(function(r){
+        if(!r || String(r.productNo || '') !== no) return false;
+        if(r.id && dead[r.id]) return false;   // 削除済みは数えない
+        return true;
+      });
+      if(hits.length === 0) return { state:'none', recordId:'', candidates:[], reason:'この社内No.の案件が無い' };
+      if(hits.length > 1){
+        return {
+          state:'ambiguous', recordId:'',
+          candidates: hits.map(function(r){ return r.id || ''; }),
+          reason:'同じ社内No.の案件が ' + hits.length + ' 件ある'
+        };
+      }
+      if(!hits[0].id) return { state:'none', recordId:'', candidates:[], reason:'この案件に recordId が無い（古いJSON由来）' };
+      return { state:'ok', recordId: hits[0].id, candidates:[hits[0].id], reason:'' };
+    },
+
+    // ---- 互換読込：v2優先 → 無ければ v1 ----
+    // ★読んだだけでは移行しない（ページを開いただけで大量の旧キーを書き換えない）
+    readProductData: function(type, productNo){
+      const r = window.sakaeKeys.resolveRecordId(productNo);
+      if(r.state === 'ok'){
+        const k2 = window.sakaeKeys.v2Key(type, r.recordId);
+        const v2 = localStorage.getItem(k2);
+        if(v2 !== null) return { value:v2, from:'v2', key:k2, recordId:r.recordId, state:r.state };
+      }
+      const k1 = window.sakaeKeys.v1Key(type, productNo);
+      const v1 = localStorage.getItem(k1);
+      return { value:v1, from:(v1 === null ? null : 'v1'), key:k1, recordId:r.recordId, state:r.state, reason:r.reason };
+    },
+
+    // ---- 保存（touch migration）----
+    // 順序は絶対に次のとおり。v1削除 → v2保存 の順にはしない。
+    //   ① v2へ保存 → ② 読み戻して一致を確認 → ③ 一致したときだけ v1 を削除
+    // 途中で失敗しても旧データは失わない。
+    writeProductData: function(type, productNo, value){
+      const raw = (typeof value === 'string') ? value : JSON.stringify(value);
+      const r = window.sakaeKeys.resolveRecordId(productNo);
+      const k1 = window.sakaeKeys.v1Key(type, productNo);
+
+      // 解決できない・曖昧 → 従来どおり v1 へ保存する（今日とまったく同じ挙動）
+      if(r.state !== 'ok'){
+        localStorage.setItem(k1, raw);
+        return { ok:true, wrote:'v1', key:k1, migrated:false, state:r.state, reason:r.reason };
+      }
+
+      const k2 = window.sakaeKeys.v2Key(type, r.recordId);
+      const hadV1 = localStorage.getItem(k1) !== null;
+
+      // ① v2へ保存
+      try{
+        localStorage.setItem(k2, raw);
+      }catch(e){
+        // 保存できなかった＝v1は無傷（ケースA）
+        return { ok:false, wrote:null, key:k1, migrated:false, state:r.state, error:'v2保存に失敗: ' + (e && e.message) };
+      }
+
+      // ② 読み戻し確認
+      if(localStorage.getItem(k2) !== raw){
+        // 書けたつもりで中身が違う。v2を信用できないので取り除き、v1を残す（ケースB）
+        try{ localStorage.removeItem(k2); }catch(e){}
+        return { ok:false, wrote:null, key:k1, migrated:false, state:r.state, error:'v2の読み戻しが一致しない' };
+      }
+
+      // ③ 一致したときだけ v1 を削除
+      if(hadV1) localStorage.removeItem(k1);
+      return { ok:true, wrote:'v2', key:k2, migrated:hadV1, state:r.state, recordId:r.recordId };
+    },
+
+    // ---- 取り残された v1 の掃除（ケースD）----
+    // v2が正しく在ることを確認できたときだけ v1 を消す。曖昧なら何もしない。
+    cleanupLegacy: function(type, productNo){
+      const r = window.sakaeKeys.resolveRecordId(productNo);
+      if(r.state !== 'ok') return { removed:false, state:r.state, reason:r.reason };
+      const k1 = window.sakaeKeys.v1Key(type, productNo);
+      const k2 = window.sakaeKeys.v2Key(type, r.recordId);
+      if(localStorage.getItem(k2) === null) return { removed:false, state:r.state, reason:'v2が無い' };
+      if(localStorage.getItem(k1) === null) return { removed:false, state:r.state, reason:'v1が無い' };
+      localStorage.removeItem(k1);
+      return { removed:true, state:r.state, key:k1 };
     }
   };
 })();
@@ -110,8 +322,10 @@
   // ②が必要なのは、下の initialSync が「共有に無い＝まだ送っていない」と決め打っているため。
   // 削除で消したキーと、まだ送っていないキーが区別できず、削除を知らない端末が
   // ページを開いただけで消したはずのデータを共有へ戻していた。
-  const TOMB_PREFIX = 'sakaeIS_deletedRecord_v1_';
-  const TOMB_UNDO_PREFIX = 'sakaeIS_deletedRecordUndo_v1_';
+  // 墓標のキーの形は、案件の生死判定で全画面が使うため共通の窓口（このファイル冒頭）に置いてある。
+  // 値も構造も従来のまま。ここではそれを受け取るだけで、墓標の方式は何も変えていない。
+  const TOMB_PREFIX = window.sakaeKeys.TOMB_PREFIX;
+  const TOMB_UNDO_PREFIX = window.sakaeKeys.TOMB_UNDO_PREFIX;
   const RECORDS_KEY = window.sakaeKeys.RECORDS_KEY;
   // 削除イベントと取消イベントの両方をまとめて「墓標の記録」として扱う
   function isTombKey(key){
