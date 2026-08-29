@@ -78,6 +78,29 @@
     }catch(e){ return []; }
   }
 
+  // ---- 案件一覧を、共有の内容とこの端末の内容から安全に併合する ----
+  // 案件一覧は配列まるごと1キーなので、共有の内容をそのまま採ると
+  // 「つながっていない間にこの端末で作った案件」が消えてしまう。
+  // かといって、この端末にあるものを何でも足すと、削除を知らない端末が
+  // 消された案件を復活させてしまう。そこで足すのは次の両方を満たすものだけにする。
+  //   ・共有側がその recordId をまったく知らない（＝この端末で作られたばかり）
+  //     共有が知っている id は、共有側の内容が正しい（社内No.を変えた直後など）
+  //   ・有効な削除イベントが無い（＝消された案件ではない）
+  function mergeRecordsForInitialSync(remoteList, localList, tombRecordIds){
+    const known = new Set();
+    remoteList.forEach(r=>{ if(r && r.id) known.add(r.id); });
+    const list = remoteList.slice();
+    let added = 0;
+    localList.forEach(r=>{
+      if(!r || !r.id) return;
+      if(known.has(r.id)) return;          // 共有が知っている案件
+      if(tombRecordIds.has(r.id)) return;  // 消された案件
+      list.unshift(r);                     // この端末にしか無い＝ここで作られた案件
+      added++;
+    });
+    return { list: list, added: added };
+  }
+
   // ---- ページ上のどこにあっても、システムファイル直下の共通ファイルを指せるようにする ----
   function _sakaePathTo(filename){
     // このスクリプト自身のsrc（システムファイル直下 or 各工程の日程表からの相対パス）から、
@@ -359,7 +382,23 @@
     const localRecordsBefore = parseRecordList(localStorage.getItem(RECORDS_KEY));
 
     // ③ 墓標以外を取り込む（案件一覧から墓標のある案件を外すのは各ページ側の役目）
-    rows.forEach(row=>{ if(!isTombKey(row.key)) applyRemoteRow(row); });
+    //    案件一覧だけは、共有の内容で丸ごと上書きすると、つながっていない間に
+    //    この端末で作った案件が消えてしまうため、併合してから取り込む。
+    let merged = null;
+    rows.forEach(row=>{
+      if(isTombKey(row.key)) return;
+      if(row.key === RECORDS_KEY){
+        merged = mergeRecordsForInitialSync(parseRecordList(row.value), localRecordsBefore, tombRecordIds);
+        applyRemoteRow({ key: RECORDS_KEY, value: merged.list });
+        return;
+      }
+      applyRemoteRow(row);
+    });
+    // この端末だけにあった案件を足したときは、共有側にも合流させる
+    // （足さないままだと、その案件は他の端末からいつまでも見えない）
+    if(merged && merged.added > 0){
+      pushKey(RECORDS_KEY, JSON.stringify(merged.list));
+    }
 
     // ④ いま生きている案件が使っている社内No.を集める。
     //    共有側の案件一覧を正とし、そこに無いものはこの端末で作ったばかりの案件だけを足す。
