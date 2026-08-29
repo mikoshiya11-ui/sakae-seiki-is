@@ -333,9 +333,8 @@
     // ② いま効いている削除を確定する（①で取り込んだ分＋この端末に元からある分）。
     //    削除イベントがあり、同じ recordId ＋ deletionId の取消イベントが無いものだけが効いている。
     const tombRecordIds = new Set();
-    const tombProductNos = new Set();
     {
-      const dels = [];
+      const ids = [];
       const undone = new Set();
       for(let i=0;i<localStorage.length;i++){
         const k = localStorage.key(i);
@@ -346,31 +345,42 @@
         }else if(k.indexOf(TOMB_PREFIX) === 0){
           const p = splitEventKey(k, TOMB_PREFIX);
           if(!p) continue;
-          let productNo = '';
-          try{ const v = JSON.parse(localStorage.getItem(k)); if(v && v.productNo) productNo = String(v.productNo); }catch(e){}
-          dels.push({ recordId: p.recordId, deletionId: p.deletionId, productNo: productNo });
+          ids.push({ recordId: p.recordId, deletionId: p.deletionId });
         }
       }
-      dels.forEach(d=>{
+      ids.forEach(d=>{
         if(undone.has(d.recordId + '_' + d.deletionId)) return;
         tombRecordIds.add(d.recordId);
-        if(d.productNo) tombProductNos.add(d.productNo);
       });
     }
+
+    // ②' この端末が持っている案件一覧を、共有の内容で上書きされる前に控えておく。
+    //     ④で「この端末で作ったばかりの案件」を見分けるために使う。
+    const localRecordsBefore = parseRecordList(localStorage.getItem(RECORDS_KEY));
 
     // ③ 墓標以外を取り込む（案件一覧から墓標のある案件を外すのは各ページ側の役目）
     rows.forEach(row=>{ if(!isTombKey(row.key)) applyRemoteRow(row); });
 
     // ④ いま生きている案件が使っている社内No.を集める。
-    //    共有側とこの端末の両方から集めるのは、この端末で作ったばかりでまだ共有に無い案件を守るため。
-    //    社内No.が作り直されている場合は、その社内No.のデータを止めてはいけない。
-    const livingProductNos = new Set();
+    //    共有側の案件一覧を正とし、そこに無いものはこの端末で作ったばかりの案件だけを足す。
+    //    ・共有にも同じ id がある案件は、共有側の社内No.が正しい
+    //      （社内No.を変えた直後は、つないでいなかった端末が古い社内No.を持っている）
+    //    ・削除された案件は数えない
     const remoteRecordsRow = rows.filter(r=> r.key === RECORDS_KEY)[0];
-    parseRecordList(remoteRecordsRow && remoteRecordsRow.value)
-      .concat(parseRecordList(localStorage.getItem(RECORDS_KEY)))
-      .forEach(r=>{
-        if(r && r.productNo && !tombRecordIds.has(r.id)) livingProductNos.add(String(r.productNo));
-      });
+    const remoteRecords = parseRecordList(remoteRecordsRow && remoteRecordsRow.value);
+    const remoteRecordIds = new Set();
+    const livingProductNos = new Set();
+    remoteRecords.forEach(r=>{
+      if(!r || !r.id) return;
+      remoteRecordIds.add(r.id);
+      if(r.productNo && !tombRecordIds.has(r.id)) livingProductNos.add(String(r.productNo));
+    });
+    localRecordsBefore.forEach(r=>{
+      if(!r || !r.productNo) return;
+      if(tombRecordIds.has(r.id)) return;      // 消された案件
+      if(remoteRecordIds.has(r.id)) return;    // 共有にもある＝共有側の社内No.が正しい
+      livingProductNos.add(String(r.productNo)); // この端末にしか無い＝作ったばかりの案件
+    });
 
     // ⑤ 共有側にまだ無いものを送る。
     //    applyRemoteDelete でこの端末のキーを消すので、先に一覧を作ってから回す。
@@ -386,8 +396,11 @@
         return;
       }
       const productNo = productNoOfKey(key);
-      if(productNo && tombProductNos.has(productNo) && !livingProductNos.has(productNo)){
-        // 消された案件の古いデータ。送り返さず、この端末からも消す
+      if(productNo && !livingProductNos.has(productNo)){
+        // この社内No.を使っている案件が、共有側にもこの端末にも1件も無い。
+        // ＝案件が消えた（削除された／社内No.が変わった）あとに取り残されたデータ。
+        // 送り返すと、持ち主のいない行が残品表や工程の日程表に出てしまうので、
+        // 送らず、この端末からも消す。
         applyRemoteDelete(key);
         return;
       }
