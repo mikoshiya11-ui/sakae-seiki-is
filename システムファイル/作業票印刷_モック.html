@@ -255,7 +255,12 @@
   }
 
   const params = new URLSearchParams(location.search);
-  const urlProductNo = (params.get('productNo') || '').trim();
+  // ---- どの案件を開いているかは、全画面共通の窓口（_sakaeSync.js の sakaeCase）で決める ----
+  // URLに recordId があればそれが正本。社内No.から案件を推測しない。
+  // 案件を特定できないときは、データに触れる前にここで止める（別案件の取り違えを防ぐ）。
+  const caseCtx = window.sakaeCase.resolveFromLocation();
+  if(window.sakaeCase.blockIfUnsafe(caseCtx)) return;
+  const urlProductNo = caseCtx.productNo;
   // 案件に紐づく保存キーの作り方は、全画面共通の窓口（_sakaeSync.js 冒頭の sakaeKeys）に集約してある。
   // 品番が無いときに末尾を付けない従来の動きも、そのまま共通側（productKeyNs）が持っている。
   function storageKeyFor(productNo){ return window.sakaeKeys.productKeyNs('buhinhyo', productNo); }
@@ -264,7 +269,7 @@
   // キーなしの共有キーに落ちて別の案件のデータが出てくる不具合があったため、必ずこのページの社内No.をURLに付けて戻す ----
   const backLinkTopEl = document.getElementById('backLink');
   if(backLinkTopEl && urlProductNo){
-    backLinkTopEl.href = '作業票_モック.html?productNo=' + encodeURIComponent(urlProductNo);
+    backLinkTopEl.href = window.sakaeCase.withCase('作業票_モック.html', caseCtx);
   }
 
   const CODE_COLORS = {

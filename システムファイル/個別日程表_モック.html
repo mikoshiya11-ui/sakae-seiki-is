@@ -510,7 +510,12 @@
   // ---- 作業票とのリンク：URLでは品番だけを受け取り、実データは作業票と共有のlocalStorageから直接読む ----
   // これにより作業票の内容を常に最新の状態で参照でき、バーを動かせば作業票の工程日付も直接書き換わる（双方向リンク）
   const params = new URLSearchParams(location.search);
-  const urlProductNo = (params.get('productNo') || '').trim();
+  // ---- どの案件を開いているかは、全画面共通の窓口（_sakaeSync.js の sakaeCase）で決める ----
+  // URLに recordId があればそれが正本。社内No.から案件を推測しない。
+  // 案件を特定できないときは、データに触れる前にここで止める（別案件の取り違えを防ぐ）。
+  const caseCtx = window.sakaeCase.resolveFromLocation();
+  if(window.sakaeCase.blockIfUnsafe(caseCtx)) return;
+  const urlProductNo = caseCtx.productNo;
   // 案件に紐づく保存キーの作り方は、全画面共通の窓口（_sakaeSync.js 冒頭の sakaeKeys）に集約してある。
   // 品番が無いときに末尾を付けない従来の動きも、そのまま共通側（productKeyNs）に持たせている。
   const SK = window.sakaeKeys;
@@ -519,7 +524,7 @@
   // 必ずこのページの品番をURLに付けて戻す ----
   const backLinkTopEl = document.getElementById('backLink');
   if(backLinkTopEl && urlProductNo){
-    backLinkTopEl.href = '作業票_モック.html?productNo=' + encodeURIComponent(urlProductNo);
+    backLinkTopEl.href = window.sakaeCase.withCase('作業票_モック.html', caseCtx);
   }
 
   const BUHIN_KEY = urlProductNo ? SK.productKey('buhinhyo', urlProductNo) : null;
@@ -2253,7 +2258,7 @@
     closeBarCtxMenu();
     const gotoProc = bar && matchProcGantt(bar.label);
     if(gotoProc){
-      location.href = gotoProc.file + (urlProductNo ? ('?productNo='+encodeURIComponent(urlProductNo)) : '');
+      location.href = urlProductNo ? window.sakaeCase.withCase(gotoProc.file, caseCtx) : gotoProc.file;
     }
   });
   ctxCopyBar.addEventListener('click', ()=>{
@@ -2540,7 +2545,7 @@
     if(gotoProc){
       // このタブ内で該当工程の日程表へ移動する。window.open()はfile://間で"unsafe"としてブロックされるため、同じタブでの遷移にしてある
       // 品番をURLに乗せておくと、遷移先の左上「← 個別日程表へ」でこの画面にそのまま戻れる
-      location.href = gotoProc.file + (urlProductNo ? ('?productNo='+encodeURIComponent(urlProductNo)) : '');
+      location.href = urlProductNo ? window.sakaeCase.withCase(gotoProc.file, caseCtx) : gotoProc.file;
       return;
     }
     openLabelPicker(key, bar.id, bar.labelEdit || bar.label, barEl.getBoundingClientRect(), false);

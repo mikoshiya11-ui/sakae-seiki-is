@@ -24,8 +24,11 @@ window.ProcGantt = (function(){
     function procLabel(job){ return (job && job.code ? job.code : '') + (job && job.ident ? job.ident : ''); }
     const COLOR = config.color || '#173a68';
     // ---- 個別日程表からダブルクリックで来た場合はその品番の個別日程表に戻れるようにする（URLの?productNoで判定） ----
-    const ctxProductNo = (new URLSearchParams(location.search).get('productNo')||'').trim();
-    const BACK_LINK = config.backLink || (ctxProductNo ? ('../個別日程表_モック.html?productNo='+encodeURIComponent(ctxProductNo)) : '../残品表_モック.html');
+    // この画面も全案件を横断して見るページ。URLの案件は戻り先を決めるためだけに使う。
+    // 案件を特定できないときは工程別残品表へ戻す（別案件の個別日程表へ誘導しないため）。
+    const caseCtx = window.sakaeCase.resolveFromLocation();
+    const ctxProductNo = caseCtx.productNo;
+    const BACK_LINK = config.backLink || (ctxProductNo ? window.sakaeCase.withCase('../個別日程表_モック.html', caseCtx) : '../残品表_モック.html');
     const BACK_LABEL = config.backLabel || (ctxProductNo ? '← 個別日程表へ' : '← 工程別残品表へ');
 
     document.title = CODE + '日程表｜SAKAE SEIKI-iS';

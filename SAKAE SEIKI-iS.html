@@ -1395,7 +1395,8 @@
 
   // ---- 案件カードの主ボタン：実務では作業票を先に作る／開くため、案件一覧からはここに直接遷移する（同じタブ）----
   function buildSagyohyoUrl(rec){
-    return 'システムファイル/作業票_モック.html?productNo='+encodeURIComponent(rec.productNo)
+    // 案件の識別は recordId が正本。社内No.は表示・帳票・旧URL互換のために残す。
+    return 'システムファイル/作業票_モック.html?' + window.sakaeCase.query({ productNo: rec.productNo, recordId: rec.id })
       +'&orderNo='+encodeURIComponent(rec.orderNo||'')
       +'&customer='+encodeURIComponent(rec.customer||'')
       +'&modelName='+encodeURIComponent(rec.modelName||'')
@@ -1778,7 +1779,7 @@
     render();
     if(wasNew){
       // 新規登録した直後は、受注に関する連絡書ではなく作業票を主画面として開く（実務では作業票を先に作るため）
-      location.href = 'システムファイル/作業票_モック.html?productNo='+encodeURIComponent(rec.productNo);
+      location.href = 'システムファイル/作業票_モック.html?' + window.sakaeCase.query({ productNo: rec.productNo, recordId: rec.id });
     }
   });
 
@@ -1795,7 +1796,7 @@
     }
     // 社内No.（＝品番）をこの画面で変更していた場合は、保存後の新しい品番の作業票へ戻る
     // （旧品番はmigrateProductData()で新品番へデータごと引き継がれ済みのため）
-    location.href = 'システムファイル/作業票_モック.html?productNo='+encodeURIComponent(rec.productNo || productNoBefore);
+    location.href = 'システムファイル/作業票_モック.html?' + window.sakaeCase.query({ productNo: rec.productNo || productNoBefore, recordId: rec.id });
   });
 
   // ---- 詳細パネル ----
@@ -2073,9 +2074,16 @@
   function openOrderNoticeDeepLink(){
     const p = new URLSearchParams(location.search);
     if(p.get('view') !== 'orderNotice') return;
-    const productNo = p.get('productNo') || '';
-    if(!productNo){ alert('品番が指定されていないため、受注に関する連絡書を開けませんでした。'); return; }
-    let rec = records.find(r=>r.productNo===productNo);
+    // 案件の特定は全画面共通の窓口（sakaeCase）に任せる。recordId があればそれが正本。
+    const ctx = window.sakaeCase.resolveFromLocation();
+    if(!ctx.usable){
+      // 同じ社内No.の案件が複数ある／指定された案件が無い場合に、別案件を開いてしまわないよう止める。
+      alert(window.sakaeCase.emptyMessage(ctx) + (ctx.reason ? '\n' + ctx.reason : ''));
+      return;
+    }
+    const productNo = ctx.productNo;
+    // records はこの画面が持っているものを使う（同じ中身の別インスタンスを混ぜないため）
+    let rec = ctx.recordId ? records.find(r=>r.id===ctx.recordId) : records.find(r=>r.productNo===productNo);
     if(!rec){
       // 通常は作業票を経由するとrecordsに自動でカードが作られているはずだが、
       // 万一無い場合は作業票データ（bs.order）から最低限の内容でその場に補って開く

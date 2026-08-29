@@ -300,6 +300,186 @@
   };
 })();
 
+// ============================================================
+// Phase 2B：画面遷移で「どの案件を開いているか」を決める共通の窓口
+//
+// これまで各画面は URL の ?productNo=（＝社内No.）だけで案件を決めていた。
+// 社内No.は業務番号なので、同じ番号の案件が2件できてしまうと
+// どちらを開いているのか決められない（実際に圏外での同時作成やJSON読込で起こりうる）。
+//
+// そこで URL に recordId（records[].id）を足し、そちらを案件識別の正本にする。
+//   ?productNo=<社内No.>&recordId=<records[].id>
+//
+// ★recordId が URL にあるときは、社内No.から案件を推測しない。
+//   必ず recordId で records を探す。同じ社内No.の別案件があっても選ばない。
+// ★社内No.は表示・帳票・旧URL互換のために残す。
+//
+// ★Phase 2B では保存先は従来のまま（社内No.ベース）。
+//   recordId 保存への切り替えは Phase 2C 以降。
+// ============================================================
+(function(){
+  'use strict';
+
+  const PARAM_PRODUCT_NO = 'productNo';
+  const PARAM_RECORD_ID  = 'recordId';
+
+  // recordId は uid() が作る英数字。URLから来るので中身を信用せず形だけ先に見る。
+  // 文字列連結でキーを組み立てる前にここで弾く。
+  const RECORD_ID_RE = /^[0-9A-Za-z]{1,32}$/;
+
+  function isValidRecordId(v){
+    return typeof v === 'string' && RECORD_ID_RE.test(v);
+  }
+
+  // 生きている案件だけを見る（有効な墓標がある＝削除済みは数えない）
+  function livingRecords(){
+    const dead = window.sakaeKeys.activeDeletedRecordIds();
+    return window.sakaeKeys.loadRecords().filter(function(r){
+      return r && !(r.id && dead[r.id]);
+    });
+  }
+
+  function result(o){
+    return Object.assign({
+      state: 'unresolved',   // resolved / legacy / ambiguous / unresolved / conflict
+      source: null,          // 'recordId' / 'productNo'
+      usable: false,         // この社内No.でデータを読み書きしてよいか
+      recordId: '',
+      productNo: '',         // ★データアクセスに使ってよい社内No.。安全でないときは空
+      urlProductNo: '',      // URLに書かれていた値（表示・診断用）
+      record: null,
+      candidates: [],
+      stale: false,
+      reason: ''
+    }, o);
+  }
+
+  // ---- 案件の解決 ----
+  function resolve(search){
+    const p = new URLSearchParams(search || '');
+    const rid = (p.get(PARAM_RECORD_ID) || '').trim();
+    const urlNo = (p.get(PARAM_PRODUCT_NO) || '').trim();
+
+    // ---------- recordId がある：これが正本 ----------
+    if(rid){
+      if(!isValidRecordId(rid)){
+        // 形が想定外。社内No.へ落とすと別案件を開いてしまうので落とさない。
+        return result({ state:'unresolved', urlProductNo:urlNo, reason:'recordId の形式が不正です' });
+      }
+      const hits = livingRecords().filter(function(r){ return r.id === rid; });
+      if(hits.length === 1){
+        const rec = hits[0];
+        const no = String(rec.productNo || '');
+        return result({
+          state:'resolved', source:'recordId', usable: !!no,
+          recordId: rid, productNo: no, urlProductNo: urlNo, record: rec,
+          candidates:[rid],
+          // 社内No.を変えたあとの古いリンクなど。records 側の最新を正本にする。
+          stale: !!(urlNo && urlNo !== no),
+          reason: (urlNo && urlNo !== no) ? 'URLの社内No.が古い（records の最新を使う）' : ''
+        });
+      }
+      if(hits.length === 0){
+        // ★社内No.へ勝手に落とさない。落とすと同じ社内No.の別案件を開いてしまう。
+        return result({ state:'unresolved', recordId:rid, urlProductNo:urlNo,
+          reason:'指定された案件が見つかりません（削除された可能性があります）' });
+      }
+      // 同じ id が複数ある。本来ありえない異常なので、どれも選ばない。
+      return result({ state:'conflict', recordId:rid, urlProductNo:urlNo,
+        candidates: hits.map(function(r){ return r.id; }),
+        reason:'同じ recordId の案件が ' + hits.length + ' 件あります（異常）' });
+    }
+
+    // ---------- recordId が無い：従来どおり社内No.で解決 ----------
+    if(!urlNo){
+      return result({ state:'unresolved', reason:'案件が指定されていません' });
+    }
+    const hits = livingRecords().filter(function(r){ return String(r.productNo || '') === urlNo; });
+    if(hits.length === 1){
+      return result({
+        state:'resolved', source:'productNo', usable:true,
+        recordId: hits[0].id || '', productNo: urlNo, urlProductNo: urlNo, record: hits[0],
+        candidates: hits[0].id ? [hits[0].id] : []
+      });
+    }
+    if(hits.length === 0){
+      // 案件カードがまだ無い状態（新規作成の途中など）。従来どおり社内No.で動かす。
+      return result({
+        state:'legacy', source:'productNo', usable:true,
+        productNo: urlNo, urlProductNo: urlNo,
+        reason:'この社内No.の案件カードがまだありません（従来どおり社内No.で動きます）'
+      });
+    }
+    // ★同じ社内No.の案件が複数。配列順・更新時刻・先頭一致などで選ぶのは禁止。
+    return result({
+      state:'ambiguous', urlProductNo: urlNo,
+      candidates: hits.map(function(r){ return r.id || ''; }),
+      reason:'同じ社内No.の案件が ' + hits.length + ' 件あります'
+    });
+  }
+
+  function resolveFromLocation(){ return resolve(location.search); }
+
+  // ---- 遷移先へ渡すURLの作り方（各画面で組み立てない）----
+  function query(ctx){
+    const no  = (ctx && (ctx.productNo || ctx.urlProductNo)) || '';
+    const rid = (ctx && ctx.recordId) || '';
+    let q = PARAM_PRODUCT_NO + '=' + encodeURIComponent(no);
+    if(rid) q += '&' + PARAM_RECORD_ID + '=' + encodeURIComponent(rid);
+    return q;
+  }
+  function withCase(url, ctx){
+    const q = query(ctx);
+    if(!q) return url;
+    return url + (url.indexOf('?') >= 0 ? '&' : '?') + q;
+  }
+
+  // ---- 案件を特定できないときの案内 ----
+  // 「指定が無い」だけなら従来どおりの文言。取り違えの危険があるときだけ別の案内にする。
+  function emptyMessage(ctx){
+    if(!ctx || ctx.usable) return '';
+    if(ctx.state === 'ambiguous') return '案件を特定できません。案件一覧から開き直してください。';
+    if(ctx.state === 'conflict')  return '案件を特定できません。案件一覧から開き直してください。';
+    if(ctx.recordId)              return '指定された案件が見つかりません。案件一覧から開き直してください。';
+    return '品番が指定されていません。';
+  }
+
+  // 取り違えの危険があるときは、データに触れる前にページを止める。
+  // 「指定が無いだけ」の場合は従来の空表示に任せるため false を返す。
+  function blockIfUnsafe(ctx){
+    if(!ctx || ctx.usable) return false;
+    if(ctx.state !== 'ambiguous' && ctx.state !== 'conflict' && !ctx.recordId) return false;
+    try{
+      const box = document.createElement('div');
+      box.setAttribute('data-sakae-case-notice', ctx.state);
+      box.style.cssText = 'margin:24px;padding:20px 24px;border:1px solid #d8dde5;border-radius:8px;'
+        + 'background:#fff;color:#2a3446;font-size:15px;line-height:1.8;max-width:720px;';
+      const msg = document.createElement('div');
+      msg.textContent = emptyMessage(ctx);
+      const why = document.createElement('div');
+      why.style.cssText = 'margin-top:8px;color:#6b7684;font-size:13px;';
+      why.textContent = ctx.reason || '';
+      box.appendChild(msg);
+      if(ctx.reason) box.appendChild(why);
+      const put = function(){ document.body.innerHTML = ''; document.body.appendChild(box); };
+      if(document.body) put(); else document.addEventListener('DOMContentLoaded', put);
+    }catch(e){}
+    return true;
+  }
+
+  window.sakaeCase = {
+    PARAM_PRODUCT_NO: PARAM_PRODUCT_NO,
+    PARAM_RECORD_ID: PARAM_RECORD_ID,
+    isValidRecordId: isValidRecordId,
+    resolve: resolve,
+    resolveFromLocation: resolveFromLocation,
+    query: query,
+    withCase: withCase,
+    emptyMessage: emptyMessage,
+    blockIfUnsafe: blockIfUnsafe
+  };
+})();
+
 (function(){
   'use strict';
 

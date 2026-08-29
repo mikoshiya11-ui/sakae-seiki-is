@@ -85,9 +85,14 @@
 <script>
 (function(){
   const params = new URLSearchParams(location.search);
-  const productNo = (params.get('productNo') || '').trim();
+  // ---- どの案件を開いているかは、全画面共通の窓口（_sakaeSync.js の sakaeCase）で決める ----
+  // URLに recordId があればそれが正本。社内No.から案件を推測しない。
+  // 案件を特定できないときは、データに触れる前にここで止める（別案件の取り違えを防ぐ）。
+  const caseCtx = window.sakaeCase.resolveFromLocation();
+  if(window.sakaeCase.blockIfUnsafe(caseCtx)) return;
+  const productNo = caseCtx.productNo;
   const P = window.sakaeWorkStartPrint;
-  const backUrl = '作業票_モック.html?productNo=' + encodeURIComponent(productNo);
+  const backUrl = window.sakaeCase.withCase('作業票_モック.html', caseCtx);
   document.getElementById('backLink').setAttribute('href', backUrl);
   document.getElementById('backLink2').setAttribute('href', backUrl);
 
@@ -118,7 +123,7 @@
       '<div class="setItem">'
       + '<div class="num">'+(i+1)+'</div>'
       + '<div class="body"><div class="title">'+it.title+'</div><div class="spec">'+it.spec+'</div></div>'
-      + '<a class="goBtn" href="'+it.url+'?productNo='+encodeURIComponent(productNo)+'" target="_blank">表示・印刷</a>'
+      + '<a class="goBtn" href="'+window.sakaeCase.withCase(it.url, caseCtx)+'" target="_blank">表示・印刷</a>'
       + '</div>'
     ).join('');
   }

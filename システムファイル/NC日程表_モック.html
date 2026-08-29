@@ -413,11 +413,14 @@
 
   // ---- 個別日程表からの遷移であればその品番の個別日程表に戻れるようにする（URLの?productNoで判定） ----
   (function(){
-    const ctxProductNo = (new URLSearchParams(location.search).get('productNo')||'').trim();
+    // この画面は全案件を横断して見るページで、URLの案件はどこへ戻るかを決めるためだけに使う。
+    // 案件を特定できないときは戻り先を出さない（別案件の個別日程表へ誘導しないため）。
+    const caseCtx = window.sakaeCase.resolveFromLocation();
+    const ctxProductNo = caseCtx.productNo;
     if(!ctxProductNo) return;
     const backLinkEl = document.getElementById('backLink');
     if(!backLinkEl) return;
-    backLinkEl.href = '個別日程表_モック.html?productNo='+encodeURIComponent(ctxProductNo);
+    backLinkEl.href = window.sakaeCase.withCase('個別日程表_モック.html', caseCtx);
     backLinkEl.textContent = '← 個別日程表へ';
     backLinkEl.title = '個別日程表に戻る';
   })();

@@ -115,9 +115,14 @@
 <script>
 (function(){
   const params = new URLSearchParams(location.search);
-  const productNo = (params.get('productNo') || '').trim();
+  // ---- どの案件を開いているかは、全画面共通の窓口（_sakaeSync.js の sakaeCase）で決める ----
+  // URLに recordId があればそれが正本。社内No.から案件を推測しない。
+  // 案件を特定できないときは、データに触れる前にここで止める（別案件の取り違えを防ぐ）。
+  const caseCtx = window.sakaeCase.resolveFromLocation();
+  if(window.sakaeCase.blockIfUnsafe(caseCtx)) return;
+  const productNo = caseCtx.productNo;
   const P = window.sakaeWorkStartPrint;
-  document.getElementById('backLink').setAttribute('href', '作業開始印刷セット_モック.html?productNo='+encodeURIComponent(productNo));
+  document.getElementById('backLink').setAttribute('href', window.sakaeCase.withCase('作業開始印刷セット_モック.html', caseCtx));
 
   const sheetOuter = document.getElementById('sheetOuter');
   if(!productNo){
