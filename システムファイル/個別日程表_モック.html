@@ -1091,14 +1091,36 @@
 
   // ---- 計画の確定：確定するとバーの移動・追加・削除ができなくなる（誤操作防止）。
   // 段数の増減や付箋メモは見た目・注記だけで日程そのものではないので、確定中でも触れる。 ----
-  const CONFIRM_KEY = SK.productKeyNs('kobetsuConfirm', urlProductNo);
+  // 保存先は共通層が決める（rid があれば rid が正本、無ければ従来の v1）。
+  // ★storage イベントの判定は「いま存在する正本キーと一致するか」ではなく、
+  //   共通窓口 isProductKeyOfCase() で「この案件のキーか（rid でも v1 でも）」を見る。
+  //   解除のように消す操作では、イベントが届いた時点でその rid キーはもう無く、
+  //   正本キーの解決結果が v1 側へ移ってしまうため、一致で見ると取りこぼす。
+  //   別の recordId のキーには当たらないので、同じ社内No.の別案件は取り違えない。
+  const CONFIRM_REF = function(){ return { productNo: urlProductNo, recordId: caseCtx.recordId }; };
   function loadConfirm(){
-    try{ const raw = localStorage.getItem(CONFIRM_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+    try{
+      const got = SK.readProductData('kobetsuConfirm', CONFIRM_REF());
+      if(got.value) return JSON.parse(got.value);
+    }catch(e){}
     return null;
   }
+  // 同じ社内No.の旧データが残っていて、その持ち主を決められないときの案内。
+  // 確定も解除も、状態を何も変えずにここで止める（共通窓口が「止めるべきか」を判断する）。
+  const CONFIRM_AMBIGUOUS_MSG =
+    '同じ社内No.の旧データが残っているため、この案件の計画確定を安全に変更できません。案件を確認してください。';
+  function confirmChangeBlocked(){
+    return SK.legacyOwnershipAmbiguous('kobetsuConfirm', CONFIRM_REF()).blocked;
+  }
   function saveConfirm(){
-    if(confirmState) localStorage.setItem(CONFIRM_KEY, JSON.stringify(confirmState));
-    else localStorage.removeItem(CONFIRM_KEY);
+    if(!urlProductNo) return;
+    // ★保存の直前にもう一度確かめる。ボタン側だけで止めると、別の入口が増えたときに
+    //   「画面は変わったのに保存だけ止まる」状態を作ってしまう。データは必ずここで守る。
+    if(confirmChangeBlocked()) return;
+    // 解除（confirmState が null）のときは、rid だけでなく残っている v1 も消す。
+    // v1 を残すと、次に読んだときに fallback して確定状態が戻ってしまう。
+    if(confirmState) SK.writeProductData('kobetsuConfirm', CONFIRM_REF(), JSON.stringify(confirmState));
+    else SK.removeProductData('kobetsuConfirm', CONFIRM_REF());
   }
   let confirmState = loadConfirm(); // null、または { confirmedAt: ISO文字列 }
   function isConfirmed(){ return !!confirmState; }
@@ -1672,6 +1694,11 @@
   // たまたま直っていたが、自分が送った更新を取り込まないようにしたことで表に出た。
   // 自分の操作の結果は、共有からの通知を待たずにその場で画面へ反映する。 ----
   document.getElementById('confirmRow').addEventListener('click', (e)=>{
+    // ★状態を変える前に止める。ここで止めないと、画面だけ切り替わって保存されず
+    //   「解除できたように見える」状態になる。
+    if(e.target.id === 'confirmPlanBtn' || e.target.id === 'confirmUnlockBtn'){
+      if(confirmChangeBlocked()){ alert(CONFIRM_AMBIGUOUS_MSG); return; }
+    }
     if(e.target.id === 'confirmPlanBtn'){
       confirmState = { confirmedAt: new Date().toISOString() };
       saveConfirm();
@@ -2883,7 +2910,7 @@
   // ---- 作業票など、同じ品番のデータを共有する別タブでの変更をリアルタイムに反映する ----
   if(handoff){
     window.addEventListener('storage', (e)=>{
-      if(e.key === CONFIRM_KEY){
+      if(SK.isProductKeyOfCase('kobetsuConfirm', e.key, CONFIRM_REF())){
         if(isProtectedFromRemoteRedraw()){ pendingConfirmChange = true; return; }
         confirmState = loadConfirm();
         render();

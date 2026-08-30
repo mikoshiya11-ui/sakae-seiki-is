@@ -417,6 +417,67 @@
       return false;
     },
 
+    // ---- 値を消す（計画確定の「解除」など、無い状態が意味を持つもの）----
+    // ★rid だけ消して v1 を残すと、次に読んだときに v1 へ fallback して
+    //   消したはずの状態が戻ってしまう。だから残っている v1 も一緒に消す。
+    //   ただし同じ社内No.を別の案件も使っているときは、相手を巻き込むので v1 は消さない。
+    removeProductData: function(type, ref){
+      const SK = window.sakaeKeys;
+      const r = SK._refOf(ref);
+      const out = { ok:true, removed:[], keptLegacy:'', state:r.state, reason:r.reason };
+      if(r.explicitRecordId && r.state !== 'ok'){
+        return { ok:false, removed:[], keptLegacy:'', state:r.state,
+                 error:'指定された案件が見つからないため何も消しません', reason:r.reason };
+      }
+      if(r.state === 'ok' && r.recordId){
+        const k2 = SK.v2Key(type, r.recordId);
+        if(localStorage.getItem(k2) !== null){ localStorage.removeItem(k2); out.removed.push(k2); }
+      }
+      if(r.productNo){
+        const k1 = SK.v1Key(type, r.productNo);
+        if(localStorage.getItem(k1) !== null){
+          // 解決できていない・曖昧なときは v1 が正本なので、従来どおり消す。
+          const del = (r.state === 'ok') ? SK.canRemoveLegacy(r.productNo, r.recordId) : { ok:true };
+          if(del.ok){ localStorage.removeItem(k1); out.removed.push(k1); }
+          else { out.keptLegacy = k1; out.reason = del.reason; }
+        }
+      }
+      return out;
+    },
+
+    // ---- 変更してよいか（持ち主の分からない旧データが残っているときは止める）----
+    // 同じ社内No.を2件以上の案件が使っていて、その社内No.の旧データ（v1）がまだ残っていると、
+    // その v1 がどちらの案件のものか決められない。この状態では、
+    //   ・v1 を消せば、もう一方の案件のデータまで消してしまう
+    //   ・v1 を残せば、消したはずの状態が次に読んだときへ戻ってくる
+    // のどちらかになり、安全な選択肢が無い。
+    // ★社内No.だけを頼りに、どちらかの recordId のものと決めつけない。
+    //   安全に変更できないときは、間違って書き換えるより止める（fail-closed）。
+    // ここは「止めてよいか」を答えるだけで、何も読み書きしない。
+    legacyOwnershipAmbiguous: function(type, ref){
+      const SK = window.sakaeKeys;
+      const r = SK._refOf(ref);
+      const out = { blocked:false, reason:'', key:'', owners:0 };
+      // ① recordId で案件が決まっていないときは対象外（従来どおりの動き）
+      if(!(r.state === 'ok' && r.recordId && r.productNo)) return out;
+      // ② 同じ社内No.を使う生きている案件が他にもいるか
+      const dead = SK.activeDeletedRecordIds();
+      const users = SK.loadRecords().filter(function(x){
+        return x && String(x.productNo || '') === r.productNo && !(x.id && dead[x.id]);
+      });
+      out.owners = users.length;
+      if(users.length <= 1) return out;
+      // ③ その種別の旧データ（v1）が実際に残っているか
+      const k1 = SK.v1Key(type, r.productNo);
+      if(localStorage.getItem(k1) === null) return out;
+      // ④ ここまで揃うと、持ち主を一つに決められない
+      out.blocked = true;
+      out.key = k1;
+      out.reason = '同じ社内No.を ' + users.length + ' 件の案件が使っており、'
+        + 'その社内No.の旧データがどちらのものか決められない';
+      return out;
+    },
+
     // ---- 案件を削除するときに消してよいキー一式 ----
     // ★Phase 2C で保存先が rid へ移ったため、社内No.ベースの一覧だけでは
     //   削除しても rid データが残り、残品表や工程の日程表に消したはずの案件が出続ける。
