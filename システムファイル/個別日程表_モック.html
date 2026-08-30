@@ -1280,7 +1280,16 @@
   function loadChecks(){
     try{
       const got = SK.readProductData('kobetsuChecks', CHECKS_REF());
-      if(got.value) return JSON.parse(got.value);
+      if(got.value){
+        const parsed = JSON.parse(got.value);
+        // ★JSON として読めても、進捗チェックのデータとは限らない。
+        //   保存値が "null" だと JSON.parse は null を返し、そのまま渡すと
+        //   この下の checksData[...] で日程表ごと描画できなくなる（実際に落ちていた）。
+        //   配列・数値・文字列・真偽値も同じで、担当者_日付 をキーに持てない。
+        //   ここを通すのは素の object だけにして、それ以外は空として扱う。
+        //   直すのは読むときだけで、壊れた値を書き戻して直したりはしない。
+        if(parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+      }
     }catch(e){}
     return {};
   }
