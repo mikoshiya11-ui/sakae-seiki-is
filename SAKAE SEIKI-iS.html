@@ -1275,9 +1275,14 @@
   function buildExportData(){
     const linkedData = {};
     records.forEach(rec=>{
-      if(!rec.productNo) return;
-      productDataKeys(rec.productNo).forEach(key=>{
-        if(linkedData[key] !== undefined) return;
+      // ★案件に紐づく保存先は、社内No.ベース（v1）と recordId ベース（rid）の両方がありうる。
+      // v1 だけを集めていると、rid へ移った案件のデータがバックアップに入らず、
+      // 書き出しても別のパソコンで復元できない。実在するキーだけを両方から集める。
+      // 種類の一覧は共通の窓口（sakaeKeys）に任せ、ここでキー文字列を組み立てない。
+      const cands = (rec.productNo ? productDataKeys(rec.productNo) : [])
+        .concat(rec.id ? SK.v2DataKeys(rec.id) : []);
+      cands.forEach(key=>{
+        if(linkedData[key] !== undefined) return;   // 同じキーは1回だけ（同じ社内No.の案件が複数あると重複しうる）
         const raw = localStorage.getItem(key);
         if(raw != null) linkedData[key] = raw;
       });
