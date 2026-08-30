@@ -302,9 +302,10 @@ window.ProcGantt = (function(){
     // ---- 部品表を横断スキャンして、このコードが付いた工程をジョブとして集める ----
     function scanJobs(){
       const jobs = [];
-      for(let i=0;i<localStorage.length;i++){
-        const key = localStorage.key(i);
-        if(!key || key.indexOf(window.sakaeKeys.productKeyPrefix('buhinhyo'))!==0) continue;
+      // ★v1 と rid の両方をまとめて回す（共通層）
+      const entries = window.sakaeKeys.listProductEntries('buhinhyo');
+      for(let i=0;i<entries.length;i++){
+        const key = entries[i].key;
         let bs;
         try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
         if(!bs || !bs.order) continue;
@@ -347,7 +348,7 @@ window.ProcGantt = (function(){
     // 受注連絡書から案件ごと削除された後などに「日付未設定」欄に残り続けてしまう工程を、ここから消せるようにする ----
     function deleteProcess(productNo, procId){
       if(!productNo) return null;
-      const key = window.sakaeKeys.productKey('buhinhyo', productNo);
+      const key = window.sakaeKeys.productKeyOf('buhinhyo', productNo).key;
       let bs;
       try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ return null; }
       if(!bs) return null;
@@ -364,7 +365,7 @@ window.ProcGantt = (function(){
     }
     function restoreProcess(snapshot){
       if(!snapshot) return;
-      const key = window.sakaeKeys.productKey('buhinhyo', snapshot.productNo);
+      const key = window.sakaeKeys.productKeyOf('buhinhyo', snapshot.productNo).key;
       let bs;
       try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ return; }
       if(!bs) return;
@@ -909,7 +910,7 @@ window.ProcGantt = (function(){
         const n = Number(t);
         if(!isFinite(n) || n < 0) return false;
       }
-      const key = window.sakaeKeys.productKey('buhinhyo', productNo);
+      const key = window.sakaeKeys.productKeyOf('buhinhyo', productNo).key;
       let bs;
       try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ return false; }
       if(!bs) return false;
@@ -1445,7 +1446,7 @@ window.ProcGantt = (function(){
     // ---- 他のタブ（部品表・別の工程日程表タブ）での変更をリアルタイムに反映 ----
     window.addEventListener('storage', (e)=>{
       if(!e.key) return;
-      if(e.key.indexOf(window.sakaeKeys.productKeyPrefix('buhinhyo'))===0 || e.key===EXTRA_KEY){
+      if(window.sakaeKeys.isProductKey('buhinhyo', e.key) || e.key===EXTRA_KEY){
         extra = loadExtra();
         render();
       }

@@ -885,7 +885,7 @@
   }
   function copyBuhinPartsFromTemplate(fromProductNo, rec){
     if(!fromProductNo || !rec.productNo) return;
-    const raw = localStorage.getItem(SK.productKey('buhinhyo', fromProductNo));
+    const raw = localStorage.getItem(SK.productKeyOf('buhinhyo', fromProductNo).key || SK.productKey('buhinhyo', fromProductNo));
     if(!raw) return; // ひな形側にまだ作業票データが無ければ何もしない
     let src;
     try{ src = JSON.parse(raw); }catch(e){ return; }
@@ -968,7 +968,9 @@
   ];
   function syncToBuhinState(rec){
     if(!rec.productNo) return;
-    const key = SK.productKey('buhinhyo', rec.productNo);
+    // 保存先は共通層が決める（rid があれば rid、無ければ従来の v1）
+    const key = SK.productKeyOf('buhinhyo', { productNo: rec.productNo, recordId: rec.id }).key;
+    if(!key) return;
     let bs;
     try{
       const raw = localStorage.getItem(key);
@@ -976,6 +978,11 @@
       bs = JSON.parse(raw);
     }catch(e){ return; }
     bs.order = bs.order || {};
+    // ★社内No.は作業票データの中にも持っている。
+    // 従来は社内No.を変えると migrateProductData() がキーを移すときに中身も書き換えていたが、
+    // recordId ベース（_rid_）へ移った案件はキーを移さないため、ここで書き換えないと
+    // 残品表・NC日程表・実績入力に古い社内No.が出たままになる。
+    bs.order.productNo = rec.productNo || '';
     bs.order.customer = rec.customer || '';
     bs.order.model = rec.modelName || '';
     bs.order.itemName = rec.itemName || '';
@@ -992,8 +999,8 @@
   function loadBuhinState(productNo){
     if(!productNo) return null;
     try{
-      const raw = localStorage.getItem(SK.productKey('buhinhyo', productNo));
-      if(raw) return JSON.parse(raw);
+      const got = SK.readProductData('buhinhyo', productNo);
+      if(got.value) return JSON.parse(got.value);
     }catch(e){}
     return null;
   }
@@ -1328,7 +1335,19 @@
         // ただし同じ社内No.を今の案件が使っているなら、それは今の案件のデータなので書き戻す。
         const tombedNos = tombedProductNos();
         const livingNos = new Set(records.map(r=> r && r.productNo).filter(Boolean).map(String));
+        // ★recordId ベース（_rid_）のデータは、社内No.へ逆変換して推測しない。
+        // キーから recordId が取れるので、その案件が消されたままかどうかを recordId で見る。
+        // 同じ社内No.の別案件まで巻き込まないため、判定は必ず案件1件ごとに行う。
+        // 「過去に削除されたことがある」だけでは止めない（取り消し済みなら有効な墓標は残っていない）。
+        const tombedIds = SK.activeDeletedRecordIds();
+        const livingIds = new Set(records.map(r=> r && r.id).filter(Boolean));
         Object.keys(data.linkedData).forEach(key=>{
+          const rid = SK.recordIdOfKey(key);
+          if(rid){
+            if(tombedIds[rid] && !livingIds.has(rid)) return;
+            localStorage.setItem(key, data.linkedData[key]);
+            return;
+          }
           const no = productNoOfDataKey(key);
           if(no && tombedNos.has(no) && !livingNos.has(no)) return;
           localStorage.setItem(key, data.linkedData[key]);
@@ -1347,7 +1366,11 @@
     const rec = records.find(r=>r.id===id);
     if(!rec) return;
     const label = rec.orderNo ? '社内No.「'+rec.orderNo+'」' : 'このカード';
-    const dataKeys = productDataKeys(rec.productNo);
+    // ---- 消す範囲は共通の窓口が決める（この画面ではキー文字列を組み立てない）----
+    // recordId で一意に決まる rid キーは消す。社内No.ベースの v1 キーは、
+    // 同じ社内No.を別の案件も使っているなら消さない（相手を巻き込まないため）。
+    const delPlan = SK.deletableDataKeys(rec);
+    const dataKeys = delPlan.keys;
     const hasLinkedData = dataKeys.some(k=> localStorage.getItem(k) != null);
     const warnText = hasLinkedData
       ? '\n※この案件の作業票（部品表）・個別日程表・支給納品一覧のデータもすべて一緒に削除されます（工程の日程表からもこの案件の工程が消えます）。'
@@ -1367,7 +1390,10 @@
     const deletionId = writeTomb(rec);
     records = records.filter(r=>r.id!==id);
     saveRecords();
-    dataKeys.forEach(k=> localStorage.removeItem(k));
+    // ★実際に在るキーだけ消す。
+    // 消す対象が v1 と rid の両方になったぶん一覧が長くなったが、無いキーまで removeItem すると
+    // その数だけ共有への削除送信が積まれ、連続削除の直後に画面を離れたときに送り切れなくなる。
+    dataKeys.forEach(k=>{ if(localStorage.getItem(k) !== null) localStorage.removeItem(k); });
     render();
     showUndo(label+'を削除しました', ()=>{
       // ---- 順序厳守：先に「この削除を取り消した」という事実を書いてから戻す ----

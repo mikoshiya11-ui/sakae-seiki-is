@@ -162,8 +162,8 @@
   function loadBuhinOrder(productNo){
     if(!productNo) return null;
     try{
-      const raw = localStorage.getItem(BUHIN_PREFIX + productNo);
-      if(raw){ const bs = JSON.parse(raw); return (bs && bs.order) ? bs.order : null; }
+      const got = window.sakaeKeys.readProductData('buhinhyo', productNo);
+      if(got.value){ const bs = JSON.parse(got.value); return (bs && bs.order) ? bs.order : null; }
     }catch(e){}
     return null;
   }
@@ -342,7 +342,7 @@
 
   window.addEventListener('storage', (e)=>{
     if(!e.key) return;
-    if(e.key === RECORDS_KEY || e.key.indexOf(BUHIN_PREFIX)===0 || e.key.indexOf(DETAIL_PREFIX)===0) build();
+    if(e.key === RECORDS_KEY || window.sakaeKeys.isProductKey('buhinhyo', e.key) || e.key.indexOf(DETAIL_PREFIX)===0) build();
   });
 
   build();

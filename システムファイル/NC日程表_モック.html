@@ -634,9 +634,10 @@
 
   function scanAllBuhinNCJobs(){
     const jobs = [];
-    for(let i=0;i<localStorage.length;i++){
-      const key = localStorage.key(i);
-      if(!key || key.indexOf(window.sakaeKeys.productKeyPrefix('buhinhyo'))!==0) continue;
+    // ★v1 と rid の両方をまとめて回す（共通層）。自前の前方一致にすると rid へ移った案件が消える。
+    const entries = window.sakaeKeys.listProductEntries('buhinhyo');
+    for(let i=0;i<entries.length;i++){
+      const key = entries[i].key;
       let bs;
       try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
       if(!bs || !bs.order) continue;
@@ -1618,7 +1619,7 @@
   // ---- 他のタブ（作業票・別のNC日程表タブ）での変更をリアルタイムに反映 ----
   window.addEventListener('storage', (e)=>{
     if(!e.key) return;
-    if(e.key.indexOf(window.sakaeKeys.productKeyPrefix('buhinhyo'))===0 || e.key===ASSIGN_KEY || e.key===DATE_OVERRIDE_KEY){
+    if(window.sakaeKeys.isProductKey('buhinhyo', e.key) || e.key===ASSIGN_KEY || e.key===DATE_OVERRIDE_KEY){
       if(e.key===DATE_OVERRIDE_KEY){ try{ dateOverrides = JSON.parse(e.newValue||'{}'); }catch(err){} }
       refreshBars();
       render();

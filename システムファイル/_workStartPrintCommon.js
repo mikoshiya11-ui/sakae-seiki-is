@@ -29,8 +29,8 @@ window.sakaeWorkStartPrint = (function(){
   function loadBs(productNo){
     if(!productNo) return null;
     try{
-      const raw = localStorage.getItem(storageKeyFor(productNo));
-      if(raw) return JSON.parse(raw);
+      const got = window.sakaeKeys.readProductData('buhinhyo', productNo);
+      if(got.value) return JSON.parse(got.value);
     }catch(e){}
     return null;
   }
@@ -49,7 +49,8 @@ window.sakaeWorkStartPrint = (function(){
     const latest = loadBs(productNo);
     if(!latest) return null;
     latest.arrangementCheck = ac;
-    localStorage.setItem(storageKeyFor(productNo), JSON.stringify(latest));
+    // 保存先の決定と touch migration は共通層に一本化する
+    window.sakaeKeys.writeProductData('buhinhyo', productNo, JSON.stringify(latest));
     return latest;
   }
   function ensureArrangementCheck(bs){

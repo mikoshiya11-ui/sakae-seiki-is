@@ -644,10 +644,11 @@
     // ここを読んでしまうと、以前どこかの画面が品番なしで保存してしまったデータが、全く別の品番を見ているつもりの人に出てきてしまう
     // （実際にこの不具合が発生したため、読み込み時点でガードする） ----
     if(urlProductNo){
-      const key = storageKeyFor(urlProductNo);
+      // 保存先は共通層が決める（rid があれば rid が正本、無ければ従来の v1）。
+      // ★rid がある案件では、v1 の方が新しく見えても v1 へ戻らない。
       try{
-        const raw = localStorage.getItem(key);
-        if(raw) return migrateState(JSON.parse(raw));
+        const got = window.sakaeKeys.readProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId });
+        if(got.value) return migrateState(JSON.parse(got.value));
       }catch(e){}
     }
     // 保存データが無い場合：デモ用の品番(44541)またはURL指定なしなら既存のサンプル、
@@ -674,7 +675,10 @@
     // 品番が分からないときは保存しない（どこにも書かない）。
     if(!urlProductNo) return;
     editSeq++;
-    localStorage.setItem(storageKeyFor(urlProductNo), JSON.stringify(state));
+    // ★保存先の決定と touch migration は共通層に一本化する（この画面では判定を持たない）。
+    //   新規作成は「作業票を保存 → 案件カードができる」の順なので、保存のたびに解決し直す。
+    //   1回目は案件カードがまだ無く v1 へ、カードができた次の保存で rid へ移る。
+    window.sakaeKeys.writeProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }, JSON.stringify(state));
     syncToOrderRecords();
   }
 

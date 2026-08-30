@@ -323,9 +323,10 @@
   // ---- 作業票を横断スキャンして「品番→部品→工程」を引けるようにする（実績ログの元になる唯一の情報源） ----
   function scanAllProducts(){
     const list = [];
-    for(let i=0;i<localStorage.length;i++){
-      const key = localStorage.key(i);
-      if(!key || key.indexOf(BUHIN_PREFIX)!==0) continue;
+    // ★v1 と rid の両方をまとめて回す（共通層）
+    const entries = window.sakaeKeys.listProductEntries('buhinhyo');
+    for(let i=0;i<entries.length;i++){
+      const key = entries[i].key;
       let bs;
       try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
       if(!bs || !bs.order) continue;
@@ -398,7 +399,7 @@
     return out;
   }
   function collectByTriple(productNo, partSubNo, processCode){
-    const key = BUHIN_PREFIX + productNo;
+    const key = window.sakaeKeys.productKeyOf('buhinhyo', productNo).key;
     let bs;
     try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ return []; }
     if(!bs || !bs.order) return [];
@@ -831,7 +832,7 @@
 
   window.addEventListener('storage', (e)=>{
     if(!e.key) return;
-    if(e.key===LOG_KEY || e.key.indexOf(BUHIN_PREFIX)===0) renderLog();
+    if(e.key===LOG_KEY || window.sakaeKeys.isProductKey('buhinhyo', e.key)) renderLog();
   });
 
   renderCurInfo();

@@ -233,67 +233,226 @@
       return { state:'ok', recordId: hits[0].id, candidates:[hits[0].id], reason:'' };
     },
 
+    // ---- 案件の指定を1つの形にそろえる ----
+    // 呼ぶ側は sakaeCase の解決結果でも { productNo, recordId } でも 社内No.の文字列でもよい。
+    // recordId が分かっているならそれを使い、無ければ社内No.から解決する。
+    // ★保存の直前に必ず解決し直す。新規作成では「作業票を保存 → 案件カードができる」の順なので、
+    //   画面を開いた時点の解決結果を持ち回ると、いつまでも旧キーのままになる。
+    _refOf: function(ref){
+      if(ref == null) return { state:'none', recordId:'', productNo:'', reason:'案件の指定がありません' };
+      if(typeof ref === 'string' || typeof ref === 'number'){
+        const r = window.sakaeKeys.resolveRecordId(String(ref));
+        return { state:r.state, recordId:r.recordId, productNo:String(ref), reason:r.reason };
+      }
+      const no = String(ref.productNo || '');
+      const rid = String(ref.recordId || '');
+      if(rid){
+        // recordId が分かっている場合でも、その案件が生きているかは必ず確かめる
+        const dead = window.sakaeKeys.activeDeletedRecordIds();
+        const rec = window.sakaeKeys.loadRecords().filter(function(r){
+          return r && r.id === rid && !dead[r.id];
+        })[0];
+        if(rec) return { state:'ok', recordId:rid, productNo:String(rec.productNo || no), reason:'', explicitRecordId:true };
+        return { state:'none', recordId:'', productNo:no, reason:'指定された recordId の案件が見つかりません', explicitRecordId:true };
+      }
+      const r = window.sakaeKeys.resolveRecordId(no);
+      return { state:r.state, recordId:r.recordId, productNo:no, reason:r.reason };
+    },
+
+    // ---- その案件の「いま読むべきキー」 ----
+    // rid キーがあれば rid が正本。無ければ従来の v1。
+    // ★rid がある案件では、v1 の方が新しく見えても v1 へ戻らない。
+    productKeyOf: function(type, ref){
+      const r = window.sakaeKeys._refOf(ref);
+      const out = { key:'', kind:null, recordId:r.recordId, productNo:r.productNo, state:r.state, reason:r.reason };
+      if(r.state === 'ok' && r.recordId){
+        const k2 = window.sakaeKeys.v2Key(type, r.recordId);
+        if(localStorage.getItem(k2) !== null){ out.key = k2; out.kind = 'rid'; return out; }
+      }
+      if(r.productNo){
+        out.key = window.sakaeKeys.v1Key(type, r.productNo);
+        out.kind = 'v1';
+      }
+      return out;
+    },
+
+    // そのキーが、この種別の案件データか（v1 でも rid でも）
+    isProductKey: function(type, key){
+      if(typeof key !== 'string') return false;
+      return key.indexOf(window.sakaeKeys.v1KeyPrefix(type)) === 0
+          || key.indexOf(window.sakaeKeys.v2KeyPrefix(type)) === 0;
+    },
+
+    // ---- 全案件を横断して見るページ用：v1 と rid をまとめて1つの一覧にする ----
+    // 残品表・工程の日程表・NC日程表・実績入力・支給納品はこれで回す。
+    // 各画面が localStorage を自分で走査して前方一致で拾うと、
+    // rid へ移った案件がその画面から消えてしまう。
+    //
+    // 同じ案件の v1 と rid が一時的に両方ある間は、rid だけを返す（二重に出さない）。
+    listProductEntries: function(type){
+      const SK = window.sakaeKeys;
+      const p1 = SK.v1KeyPrefix(type), p2 = SK.v2KeyPrefix(type);
+      const dead = SK.activeDeletedRecordIds();
+      const recs = SK.loadRecords().filter(function(r){ return r && !(r.id && dead[r.id]); });
+      const byId = {}, byNo = {};
+      recs.forEach(function(r){
+        if(r.id) byId[r.id] = r;
+        const no = String(r.productNo || '');
+        if(no){ (byNo[no] = byNo[no] || []).push(r); }
+      });
+
+      const rid = [], v1 = [], ridIds = {};
+      for(let i=0;i<localStorage.length;i++){
+        const key = localStorage.key(i);
+        if(!key) continue;
+        if(key.indexOf(p2) === 0){
+          const id = key.slice(p2.length);
+          ridIds[id] = true;
+          const rec = byId[id];
+          rid.push({ key:key, kind:'rid', recordId:id, productNo: rec ? String(rec.productNo || '') : '', record: rec || null });
+        }else if(key.indexOf(p1) === 0){
+          const no = key.slice(p1.length);
+          v1.push({ key:key, kind:'v1', recordId:'', productNo:no, record:null });
+        }
+      }
+      // v1 のうち、その社内No.を使っている生きている案件が全部 rid へ移っているものは
+      // 取り残しなので出さない（rid と二重に出さない）。
+      const keep = v1.filter(function(e){
+        const list = byNo[e.productNo];
+        if(!list || !list.length) return true;                 // 案件カードが無い＝従来どおり出す
+        const remaining = list.filter(function(r){ return !(r.id && ridIds[r.id]); });
+        if(remaining.length === 0) return false;               // 全員 rid へ移った＝この v1 は残骸
+        if(remaining.length === 1) e.recordId = remaining[0].id || '';
+        e.record = remaining.length === 1 ? remaining[0] : null;
+        return true;
+      });
+      return rid.concat(keep).sort(function(a,b){ return a.key < b.key ? -1 : (a.key > b.key ? 1 : 0); });
+    },
+
     // ---- 互換読込：v2優先 → 無ければ v1 ----
     // ★読んだだけでは移行しない（ページを開いただけで大量の旧キーを書き換えない）
-    readProductData: function(type, productNo){
-      const r = window.sakaeKeys.resolveRecordId(productNo);
-      if(r.state === 'ok'){
-        const k2 = window.sakaeKeys.v2Key(type, r.recordId);
+    readProductData: function(type, ref){
+      const SK = window.sakaeKeys;
+      const r = SK._refOf(ref);
+      if(r.state === 'ok' && r.recordId){
+        const k2 = SK.v2Key(type, r.recordId);
         const v2 = localStorage.getItem(k2);
-        if(v2 !== null) return { value:v2, from:'v2', key:k2, recordId:r.recordId, state:r.state };
+        if(v2 !== null) return { value:v2, from:'rid', key:k2, recordId:r.recordId, productNo:r.productNo, state:r.state };
       }
-      const k1 = window.sakaeKeys.v1Key(type, productNo);
+      if(r.explicitRecordId && r.state !== 'ok'){
+        // recordId を指定されたのに見つからない。社内No.へ落とすと別案件を読んでしまう。
+        return { value:null, from:null, key:'', recordId:'', productNo:'', state:r.state, reason:r.reason };
+      }
+      if(!r.productNo) return { value:null, from:null, key:'', recordId:r.recordId, productNo:'', state:r.state, reason:r.reason };
+      const k1 = SK.v1Key(type, r.productNo);
       const v1 = localStorage.getItem(k1);
-      return { value:v1, from:(v1 === null ? null : 'v1'), key:k1, recordId:r.recordId, state:r.state, reason:r.reason };
+      return { value:v1, from:(v1 === null ? null : 'v1'), key:k1, recordId:r.recordId, productNo:r.productNo, state:r.state, reason:r.reason };
     },
 
     // ---- 保存（touch migration）----
-    // 順序は絶対に次のとおり。v1削除 → v2保存 の順にはしない。
-    //   ① v2へ保存 → ② 読み戻して一致を確認 → ③ 一致したときだけ v1 を削除
+    // 順序は絶対に次のとおり。v1削除 → rid保存 の順にはしない。
+    //   ① rid へ保存 → ② 読み戻して一致を確認 → ③ 条件を満たすときだけ v1 を削除
     // 途中で失敗しても旧データは失わない。
-    writeProductData: function(type, productNo, value){
+    writeProductData: function(type, ref, value){
+      const SK = window.sakaeKeys;
       const raw = (typeof value === 'string') ? value : JSON.stringify(value);
-      const r = window.sakaeKeys.resolveRecordId(productNo);
-      const k1 = window.sakaeKeys.v1Key(type, productNo);
+      const r = SK._refOf(ref);
 
-      // 解決できない・曖昧 → 従来どおり v1 へ保存する（今日とまったく同じ挙動）
+      // recordId を指定されたのに見つからない／矛盾している → 保存先を推測せず、書かない
+      if(r.explicitRecordId && r.state !== 'ok'){
+        return { ok:false, wrote:null, key:'', migrated:false, state:r.state,
+                 error:'指定された案件が見つからないため保存しません', reason:r.reason };
+      }
+      if(!r.productNo && r.state !== 'ok'){
+        return { ok:false, wrote:null, key:'', migrated:false, state:r.state, error:'案件が指定されていません' };
+      }
+
+      const k1 = r.productNo ? SK.v1Key(type, r.productNo) : '';
+
+      // 解決できない・曖昧 → 従来どおり v1 へ保存する（今日とまったく同じ挙動）。
+      // ★曖昧なときに、どちらかの recordId へ rid 保存するのは禁止。
       if(r.state !== 'ok'){
         localStorage.setItem(k1, raw);
         return { ok:true, wrote:'v1', key:k1, migrated:false, state:r.state, reason:r.reason };
       }
 
-      const k2 = window.sakaeKeys.v2Key(type, r.recordId);
-      const hadV1 = localStorage.getItem(k1) !== null;
+      const k2 = SK.v2Key(type, r.recordId);
+      const hadV1 = k1 ? localStorage.getItem(k1) !== null : false;
 
-      // ① v2へ保存
+      // ① rid へ保存
       try{
         localStorage.setItem(k2, raw);
       }catch(e){
-        // 保存できなかった＝v1は無傷（ケースA）
-        return { ok:false, wrote:null, key:k1, migrated:false, state:r.state, error:'v2保存に失敗: ' + (e && e.message) };
+        return { ok:false, wrote:null, key:k1, migrated:false, state:r.state, error:'rid保存に失敗: ' + (e && e.message) };
       }
 
       // ② 読み戻し確認
       if(localStorage.getItem(k2) !== raw){
-        // 書けたつもりで中身が違う。v2を信用できないので取り除き、v1を残す（ケースB）
         try{ localStorage.removeItem(k2); }catch(e){}
-        return { ok:false, wrote:null, key:k1, migrated:false, state:r.state, error:'v2の読み戻しが一致しない' };
+        return { ok:false, wrote:null, key:k1, migrated:false, state:r.state, error:'ridの読み戻しが一致しない' };
       }
 
-      // ③ 一致したときだけ v1 を削除
-      if(hadV1) localStorage.removeItem(k1);
-      return { ok:true, wrote:'v2', key:k2, migrated:hadV1, state:r.state, recordId:r.recordId };
+      // ③ 旧 v1 を消してよいかを確かめる
+      // ★同じ社内No.を別の recordId の案件も使っているなら消さない。
+      //   その v1 を相手の案件がまだ読んでいる可能性があるため。
+      const del = SK.canRemoveLegacy(r.productNo, r.recordId);
+      let removed = false;
+      if(hadV1 && del.ok){ localStorage.removeItem(k1); removed = true; }
+      return { ok:true, wrote:'rid', key:k2, migrated:removed, state:r.state, recordId:r.recordId,
+               legacyKept: hadV1 && !del.ok, legacyReason: del.ok ? '' : del.reason };
     },
 
-    // ---- 取り残された v1 の掃除（ケースD）----
-    // v2が正しく在ることを確認できたときだけ v1 を消す。曖昧なら何もしない。
-    cleanupLegacy: function(type, productNo){
-      const r = window.sakaeKeys.resolveRecordId(productNo);
+    // ---- 案件を削除するときに消してよいキー一式 ----
+    // ★Phase 2C で保存先が rid へ移ったため、社内No.ベースの一覧だけでは
+    //   削除しても rid データが残り、残品表や工程の日程表に消したはずの案件が出続ける。
+    //
+    //   ・recordId で一意に決まる rid キー … 消す（その案件のものだと確定できる）
+    //   ・社内No.ベースの v1 キー          … 同じ社内No.を別の案件も使っているなら消さない
+    //     （相手の案件がまだ読んでいる可能性があるため。巻き込み削除を防ぐ）
+    //
+    // 削除の方式・墓標・deletionId は変更していない。消す範囲を決めているだけ。
+    deletableDataKeys: function(rec){
+      const SK = window.sakaeKeys;
+      if(!rec) return { keys:[], keptLegacy:[], reason:'案件がありません' };
+      const no = String(rec.productNo || '');
+      const rid = String(rec.id || '');
+      const keys = rid ? SK.v2DataKeys(rid) : [];
+      const legacy = no ? SK.productDataKeys(no) : [];
+      const del = no ? SK.canRemoveLegacy(no, rid) : { ok:false, reason:'社内No.が空' };
+      if(del.ok) return { keys: keys.concat(legacy), keptLegacy:[], reason:'' };
+      return { keys: keys, keptLegacy: legacy, reason: del.reason };
+    },
+
+    // 旧 v1 を消してよいか。消してよいのは「その社内No.を使っている生きている案件がこの1件だけ」のときに限る。
+    canRemoveLegacy: function(productNo, recordId){
+      const SK = window.sakaeKeys;
+      const no = String(productNo || '');
+      if(!no) return { ok:false, reason:'社内No.が空' };
+      const dead = SK.activeDeletedRecordIds();
+      const users = SK.loadRecords().filter(function(r){
+        return r && String(r.productNo || '') === no && !(r.id && dead[r.id]);
+      });
+      if(users.length > 1){
+        return { ok:false, reason:'同じ社内No.を ' + users.length + ' 件の案件が使っているため旧データを消さない' };
+      }
+      if(users.length === 1 && recordId && users[0].id !== recordId){
+        return { ok:false, reason:'その社内No.は別の案件のものなので消さない' };
+      }
+      return { ok:true, reason:'' };
+    },
+
+    // ---- 取り残された v1 の掃除 ----
+    // rid が正しく在ることを確認できて、かつ消してよい条件を満たすときだけ消す。
+    cleanupLegacy: function(type, ref){
+      const SK = window.sakaeKeys;
+      const r = SK._refOf(ref);
       if(r.state !== 'ok') return { removed:false, state:r.state, reason:r.reason };
-      const k1 = window.sakaeKeys.v1Key(type, productNo);
-      const k2 = window.sakaeKeys.v2Key(type, r.recordId);
-      if(localStorage.getItem(k2) === null) return { removed:false, state:r.state, reason:'v2が無い' };
+      const k1 = SK.v1Key(type, r.productNo);
+      const k2 = SK.v2Key(type, r.recordId);
+      if(localStorage.getItem(k2) === null) return { removed:false, state:r.state, reason:'ridが無い' };
       if(localStorage.getItem(k1) === null) return { removed:false, state:r.state, reason:'v1が無い' };
+      const del = SK.canRemoveLegacy(r.productNo, r.recordId);
+      if(!del.ok) return { removed:false, state:r.state, reason:del.reason };
       localStorage.removeItem(k1);
       return { removed:true, state:r.state, key:k1 };
     }

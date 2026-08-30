@@ -425,9 +425,10 @@
     const rows = [];
     const doneIds = loadDoneProcIds();
     const todayStr = todayISO();
-    for(let i=0;i<localStorage.length;i++){
-      const key = localStorage.key(i);
-      if(!key || key.indexOf(BUHIN_PREFIX)!==0) continue;
+    // ★v1 と rid の両方をまとめて回す（共通層）。自前の前方一致にすると rid へ移った案件が消える。
+    const entries = window.sakaeKeys.listProductEntries('buhinhyo');
+    for(let i=0;i<entries.length;i++){
+      const key = entries[i].key;
       let bs;
       try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
       if(!bs || !bs.order) continue;
@@ -521,13 +522,14 @@
     const doneIds = loadDoneProcIds();
     const doneProductNos = loadDoneRecordProductNos();
     const todayStr = todayISO();
-    for(let i=0;i<localStorage.length;i++){
-      const key = localStorage.key(i);
-      if(!key || key.indexOf(BUHIN_PREFIX)!==0) continue;
+    // ★v1 と rid の両方をまとめて回す（共通層）
+    const entries = window.sakaeKeys.listProductEntries('buhinhyo');
+    for(let i=0;i<entries.length;i++){
+      const key = entries[i].key;
       // 納品完了した案件は品番ごと読み飛ばす。
       // ★必ず部品ループより前で外すこと。手配忘れ防止の注意行（isArrange）は部品ループの中で
       // 「現在の工程」の判定より前に積まれるため、部品ループの中で外すと手配行だけが残ってしまう
-      if(doneProductNos.has(key.slice(BUHIN_PREFIX.length))) continue;
+      if(doneProductNos.has(entries[i].productNo)) continue;
       let bs;
       try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
       if(!bs || !bs.order) continue;
@@ -657,10 +659,11 @@
   function findOrphanKeys(){
     const knownProductNos = loadRecordProductNos();
     const orphans = [];
-    for(let i=0;i<localStorage.length;i++){
-      const key = localStorage.key(i);
-      if(!key || key.indexOf(BUHIN_PREFIX)!==0) continue;
-      const productNo = key.slice(BUHIN_PREFIX.length);
+    // ★v1 と rid の両方をまとめて回す（共通層）
+    const entries = window.sakaeKeys.listProductEntries('buhinhyo');
+    for(let i=0;i<entries.length;i++){
+      const key = entries[i].key;
+      const productNo = entries[i].productNo;
       if(!productNo || knownProductNos.has(productNo)) continue;
       let label = productNo;
       try{
@@ -941,7 +944,7 @@
   window.addEventListener('storage', (e)=>{
     if(!e.key) return;
     // バーコードで工程完了が付いた（＝別タブの実績入力が書き込んだ）ときも描き直す
-    if(e.key.indexOf(BUHIN_PREFIX)!==0 && e.key!==LOG_KEY && e.key!==RECORDS_KEY && e.key!==PROC_DONE_KEY) return;
+    if(!window.sakaeKeys.isProductKey('buhinhyo', e.key) && e.key!==LOG_KEY && e.key!==RECORDS_KEY && e.key!==PROC_DONE_KEY) return;
     render();
   });
 

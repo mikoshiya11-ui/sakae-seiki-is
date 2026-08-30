@@ -165,9 +165,10 @@
   }
   function findCustomCodes(){
     const codes = new Set();
-    for(let i=0;i<localStorage.length;i++){
-      const key = localStorage.key(i);
-      if(!key || key.indexOf(window.sakaeKeys.productKeyPrefix('buhinhyo'))!==0) continue;
+    // ★v1 と rid の両方をまとめて回す（共通層）
+    const entries = window.sakaeKeys.listProductEntries('buhinhyo');
+    for(let i=0;i<entries.length;i++){
+      const key = entries[i].key;
       let bs;
       try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
       if(!bs) continue;

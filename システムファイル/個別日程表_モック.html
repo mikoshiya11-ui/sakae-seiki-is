@@ -527,7 +527,11 @@
     backLinkTopEl.href = window.sakaeCase.withCase('作業票_モック.html', caseCtx);
   }
 
-  const BUHIN_KEY = urlProductNo ? SK.productKey('buhinhyo', urlProductNo) : null;
+  // 保存先は共通層が決める（rid があれば rid、無ければ従来の v1）。
+  // 保存のたびに決め直す必要があるため、固定の定数ではなく関数にしてある。
+  const buhinKeyNow = function(){
+    return urlProductNo ? SK.productKeyOf('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }).key : null;
+  };
   // 作業票側の古い保存データにid/ampmが無い場合に備えて、こちらでも読み込み時に補完する（作業票と同じロジック）
   function migrateBuhinState(st){
     let changed = false;
@@ -548,21 +552,22 @@
   // 既に立っている旧フラグは掃除していない（処理が無いので有無で挙動は変わらない）。 ----
 
   function loadBuhinState(){
-    if(!BUHIN_KEY) return null;
+    if(!urlProductNo) return null;
     try{
-      const raw = localStorage.getItem(BUHIN_KEY);
-      if(raw){
-        const { st, changed } = migrateBuhinState(JSON.parse(raw));
-        if(changed) localStorage.setItem(BUHIN_KEY, JSON.stringify(st));
+      const got = SK.readProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId });
+      if(got.value){
+        const { st, changed } = migrateBuhinState(JSON.parse(got.value));
+        if(changed) localStorage.setItem(got.key, JSON.stringify(st));
         return st;
       }
     }catch(e){}
     return null;
   }
   function saveBuhinState(){
-    if(!BUHIN_KEY || !buhinState) return;
+    if(!urlProductNo || !buhinState) return;
     editSeq++;
-    localStorage.setItem(BUHIN_KEY, JSON.stringify(buhinState));
+    // 保存先の決定と touch migration は共通層に一本化する
+    SK.writeProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }, JSON.stringify(buhinState));
   }
   let buhinState = loadBuhinState();
   const handoff = !!buhinState;
@@ -2878,7 +2883,7 @@
         render();
         return;
       }
-      if(e.key !== BUHIN_KEY) return;
+      if(e.key !== buhinKeyNow()) return;
       if(e.newValue == null) return;
       pendingRemoteState = e.newValue;
       if(isProtectedFromRemoteRedraw()){

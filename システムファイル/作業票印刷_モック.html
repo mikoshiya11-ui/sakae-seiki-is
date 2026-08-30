@@ -388,8 +388,8 @@
   function load(){
     if(!urlProductNo) return null;
     try{
-      const raw = localStorage.getItem(storageKeyFor(urlProductNo));
-      if(raw) return JSON.parse(raw);
+      const got = window.sakaeKeys.readProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId });
+      if(got.value) return JSON.parse(got.value);
     }catch(e){}
     return null;
   }
