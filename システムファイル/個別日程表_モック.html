@@ -1252,7 +1252,9 @@
   }
 
   // ---- 進捗チェック欄（担当者×日付） ----
-  const CHECK_KEY = SK.productKeyNs('kobetsuChecks', urlProductNo);
+  // 保存先は共通層が決める（rid があれば rid が正本、無ければ従来の v1）。
+  // 担当者の名前一覧（すぐ下の CHECK_NAMES_REF）と同じ決め方をそろえてある。
+  const CHECKS_REF = function(){ return { productNo: urlProductNo, recordId: caseCtx.recordId }; };
   // ---- 担当者の名前一覧はこの案件ごとに入力・修正できる（以前は全案件共通で固定の4名だった）。
   // 保存が無い場合は、これまでの固定4名を初期値として引き継ぐ ---- ----
   // 保存先は共通層が決める（rid があれば rid が正本、無ければ従来の v1）。
@@ -1277,12 +1279,17 @@
   let checkNames = loadCheckNames();
   function loadChecks(){
     try{
-      const raw = localStorage.getItem(CHECK_KEY);
-      if(raw) return JSON.parse(raw);
+      const got = SK.readProductData('kobetsuChecks', CHECKS_REF());
+      if(got.value) return JSON.parse(got.value);
     }catch(e){}
     return {};
   }
-  function saveChecks(){ localStorage.setItem(CHECK_KEY, JSON.stringify(checksData)); }
+  function saveChecks(){
+    // 案件が特定できないとき（社内No.も recordId も無い）は、どこにも書かない。
+    // 以前は社内No.が無いと末尾なしの共有キーへ書いていて、別の案件に混ざる原因になっていた。
+    if(!urlProductNo) return;
+    SK.writeProductData('kobetsuChecks', CHECKS_REF(), JSON.stringify(checksData));
+  }
   let checksData = loadChecks();
   const checkInner = document.getElementById('checkInner');
 
