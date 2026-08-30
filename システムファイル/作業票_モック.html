@@ -1272,7 +1272,11 @@
       render();
       return;
     }
-    if(e.key !== storageKeyFor(urlProductNo)) return;
+    // ★storage イベントの判定に v1 キー固定の比較を使わない。
+    //   作業票データは rid へ移ったため、v1 キーとの一致では他端末の変更が届かない。
+    //   共通窓口で「この案件のキーか（rid でも v1 でも）」を見る。
+    //   別の recordId のキーには当たらないので、同じ社内No.の別案件は取り違えない。
+    if(!window.sakaeKeys.isProductKeyOfCase('buhinhyo', e.key, caseCtx)) return;
     if(e.newValue == null) return;
     if(isProtectedFromRemoteRedraw()){
       pendingRemoteState = e.newValue;

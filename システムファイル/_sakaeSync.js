@@ -402,6 +402,21 @@
                legacyKept: hadV1 && !del.ok, legacyReason: del.ok ? '' : del.reason };
     },
 
+    // ---- storage イベント用：届いたキーが「この案件のこの種別」のものか ----
+    // ★「いま存在する正本キーと一致するか」で見てはいけない。
+    //   消す操作では、イベントが届いた時点でその rid キーはもう存在せず、
+    //   正本キーの解決結果が v1 側へ移ってしまうため、一致しなくなる。
+    //   ここでは rid キーと v1 キーの「どちらか」に当たるかを見る。
+    //   別の recordId のキーには当たらないので、同じ社内No.の別案件を取り違えることはない。
+    isProductKeyOfCase: function(type, key, ref){
+      if(typeof key !== 'string' || !key) return false;
+      const SK = window.sakaeKeys;
+      const r = SK._refOf(ref);
+      if(r.state === 'ok' && r.recordId && key === SK.v2Key(type, r.recordId)) return true;
+      if(r.productNo && key === SK.v1Key(type, r.productNo)) return true;
+      return false;
+    },
+
     // ---- 案件を削除するときに消してよいキー一式 ----
     // ★Phase 2C で保存先が rid へ移ったため、社内No.ベースの一覧だけでは
     //   削除しても rid データが残り、残品表や工程の日程表に消したはずの案件が出続ける。

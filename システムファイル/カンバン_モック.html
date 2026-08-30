@@ -116,7 +116,9 @@
   }
   render();
   window.addEventListener('storage', (e)=>{
-    if(e.key !== P.storageKeyFor(productNo)) return;
+    // ★v1 キー固定の比較では、rid へ移った作業票データの変更が届かない。
+    //   共通窓口で「この案件のキーか（rid でも v1 でも）」を見る（各画面で判定を組み立てない）。
+    if(!window.sakaeKeys.isProductKeyOfCase('buhinhyo', e.key, caseCtx)) return;
     render();
   });
 })();
