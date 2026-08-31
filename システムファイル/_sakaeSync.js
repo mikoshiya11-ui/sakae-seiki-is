@@ -872,6 +872,263 @@
     return typeof key === 'string' && key.indexOf(KEY_PREFIX) === 0;
   }
 
+  // ============================================================
+  // Publication Hold
+  //
+  // 新しく作った案件を、必要な子データ（作業票など）が共有へ確実に届くまで
+  // 共有へ出さないための仕組み。ローカルでは最初からふつうに使える。
+  // 圏外でも案件を作れる従来の動きは変えない。
+  //
+  // 変えるのは「共有へ見せる案件一覧」だけで、この端末が持っている案件一覧そのものは削らない。
+  //
+  //   ローカルの正本   hold 中の案件も入っている（画面はこれを見るので、ふつうに使える）
+  //   共有へ送る形     まだ出してよくない案件だけを外したもの
+  //
+  // ★キーに sakaeIS_ を付けない。sakaeIS_ は isSyncKey() が拾って共有へ送ってしまう。
+  //   hold は「この端末がまだ公開していない」という、その端末だけの状態なので、
+  //   他の端末へ配ってはいけない（配ると相手も同じ公開処理を始めてしまう）。
+  // ============================================================
+  const HOLD_PREFIX = 'sakaeLocal_pubhold_v1_';
+  const HOLD_VERSION = 1;
+
+  // 共有側に「その案件が既にある」と分かっている recordId。
+  // 一度公開できたものを、hold が残っているという理由だけで共有から消さないために使う。
+  const remoteKnownRecordIds = new Set();
+  function noteRemoteRecords(list){
+    (list || []).forEach(function(r){ if(r && r.id) remoteKnownRecordIds.add(r.id); });
+  }
+
+  function holdKey(recordId){ return HOLD_PREFIX + recordId; }
+
+  function readHold(recordId){
+    if(!recordId) return null;
+    try{
+      const raw = localStorage.getItem(holdKey(recordId));
+      if(!raw) return null;
+      const h = JSON.parse(raw);
+      if(!h || typeof h !== 'object' || !h.recordId || !Array.isArray(h.children)) return null;
+      return h;
+    }catch(e){ return null; }
+  }
+  function writeHold(h){ localStorage.setItem(holdKey(h.recordId), JSON.stringify(h)); return h; }
+
+  function listHolds(){
+    const out = [];
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(!k || k.indexOf(HOLD_PREFIX) !== 0) continue;
+      const h = readHold(k.slice(HOLD_PREFIX.length));
+      if(h) out.push(h);
+    }
+    return out;
+  }
+
+  // 「いまのローカルの子データ」を写し取る。hold を作った時の値は使わない。
+  // 圏外のあいだにユーザーが作業票や段数を直すことがあるため、公開の直前に読み直す。
+  function snapshotHoldChildren(h){
+    const values = {};
+    const missingRequired = [];
+    (h.children || []).forEach(function(c){
+      const v = localStorage.getItem(c.key);
+      values[c.key] = v;
+      if(c.required && v === null) missingRequired.push(c.key);
+    });
+    return { values: values, missingRequired: missingRequired };
+  }
+  function sameHoldSnapshot(a, b){
+    const ka = Object.keys(a.values).sort(), kb = Object.keys(b.values).sort();
+    if(ka.length !== kb.length) return false;
+    for(let i=0;i<ka.length;i++){ if(ka[i] !== kb[i]) return false; }
+    for(let i=0;i<ka.length;i++){
+      const x = a.values[ka[i]], y = b.values[ka[i]];
+      if(x === null || y === null){ if(x !== y) return false; continue; }
+      if(!isSameJsonText(x, y)) return false;
+    }
+    return true;
+  }
+
+  // ---- 共有へ送る案件一覧の形を作る ----
+  // hold が1件も無ければ、渡されたものをそのまま返す（従来とまったく同じ動き）。
+  function buildPublishableRecordsSnapshot(list){
+    const holds = listHolds();
+    if(!holds.length) return { list: list, held: [] };
+    const held = {};
+    holds.forEach(function(h){
+      if(h.state === 'PUBLISHING') return;                 // いま公開しにいっている最中なので出してよい
+      if(remoteKnownRecordIds.has(h.recordId)) return;      // ★既に共有にある親は消さない
+      held[h.recordId] = true;
+    });
+    const ids = Object.keys(held);
+    if(!ids.length) return { list: list, held: [] };
+    return { list: list.filter(function(r){ return !(r && r.id && held[r.id]); }), held: ids };
+  }
+  function publishableRecordsText(value){
+    try{
+      const snap = buildPublishableRecordsSnapshot(parseRecordList(value));
+      if(!snap.held.length) return value;
+      return JSON.stringify(snap.list);
+    }catch(e){ return value; }
+  }
+
+  // ---- 共有から、指定したキーだけを読み戻す ----
+  // 既存の全件取得をそのまま使い、返ってきた行からキーを探す。新しい問い合わせ方は増やさない。
+  async function readRemoteKeyExact(keys){
+    const want = {};
+    (keys || []).forEach(function(k){ want[k] = true; });
+    try{
+      const { data, error } = await sb.from('kv_store').select('key, value');
+      if(error) return { ok:false, error:String((error && error.message) || error), values:null };
+      const out = {};
+      Object.keys(want).forEach(function(k){ out[k] = null; });
+      (data || []).forEach(function(row){
+        if(!row || !row.key || !want[row.key]) return;
+        try{ out[row.key] = JSON.stringify(row.value); }catch(e){ out[row.key] = null; }
+      });
+      return { ok:true, values: out };
+    }catch(e){ return { ok:false, error:String((e && e.message) || e), values:null }; }
+  }
+
+  function createPublicationHold(ref){
+    const recordId = (ref && ref.recordId) ? String(ref.recordId) : '';
+    const productNo = (ref && ref.productNo) ? String(ref.productNo) : '';
+    const kind = (ref && ref.kind) ? String(ref.kind) : '';
+    const children = (ref && Array.isArray(ref.children)) ? ref.children : null;
+    if(!recordId) return { ok:false, error:'recordId が空です' };
+    if(!productNo) return { ok:false, error:'社内No. が空です' };
+    if(!kind) return { ok:false, error:'作成の種別が空です' };
+    if(!children || !children.length) return { ok:false, error:'必要な子データの一覧がありません' };
+    if(activeTombRecordIds().has(recordId)) return { ok:false, error:'削除された案件には作れません' };
+    const list = [];
+    for(let i=0;i<children.length;i++){
+      const c = children[i];
+      const key = (c && c.key) ? String(c.key) : '';
+      if(!key) return { ok:false, error:'子データのキーが空です' };
+      if(!isSyncKey(key)) return { ok:false, error:'共有しないキーは指定できません: ' + key };
+      list.push({ key: key, required: !!(c && c.required) });
+    }
+    if(!list.some(function(c){ return c.required; })) return { ok:false, error:'必ず要る子データが1つもありません' };
+    const h = { version: HOLD_VERSION, recordId: recordId, productNo: productNo, kind: kind,
+                state: 'LOCAL_READY', children: list,
+                createdAt: new Date().toISOString() };   // 診断用。消す判断にも安全判断にも使わない
+    writeHold(h);
+    return { ok:true, key: holdKey(recordId), hold: h };
+  }
+
+  // ★消してよいのは「公開できたことを確かめ終えた」ものだけ。
+  //   時間が経ったから、という理由では消さない。
+  function removePublicationHold(recordId){
+    const h = readHold(recordId);
+    if(!h) return { ok:false, removed:false, reason:'holdが無い' };
+    if(h.state !== 'PUBLISHED') return { ok:false, removed:false, reason:'まだ公開を確かめ終えていない（' + h.state + '）' };
+    localStorage.removeItem(holdKey(recordId));
+    return { ok:true, removed:true, key: holdKey(recordId) };
+  }
+
+  // ---- 1件ぶんの公開処理 ----
+  async function publishOneHold(recordId){
+    const stop = function(stage, reason, extra){
+      return Object.assign({ recordId: recordId, ok:false, stage: stage, reason: reason }, extra || {});
+    };
+    let h = readHold(recordId);
+    if(!h) return stop('hold', 'holdが無い');
+
+    // ① 削除された案件は公開しない（墓標がいちばん強い）。hold は残す。取り消されたら再開する
+    if(activeTombRecordIds().has(recordId)) return stop('墓標', '削除された案件なので公開しない');
+
+    // ② ローカルに親が無いのは説明のつかない状態。掃除もせず、公開もしない
+    const localRecords = parseRecordList(localStorage.getItem(RECORDS_KEY));
+    if(!localRecords.some(function(r){ return r && r.id === recordId; })){
+      console.warn('[sakaeSync] Publication Hold: この端末に案件が見つかりません。掃除も公開もしません:', recordId);
+      return stop('ローカル', 'この端末に親案件が無い');
+    }
+
+    // ③ いまのローカルの子データを写し取る
+    const before = snapshotHoldChildren(h);
+    if(before.missingRequired.length) return stop('子データ', '必ず要る子データがこの端末に無い', { 不足: before.missingRequired });
+
+    // ④ 送る（ローカルに無いものは送らない。無いことが正しい状態もあるため）
+    const sent = [];
+    for(let i=0;i<h.children.length;i++){
+      const c = h.children[i];
+      const v = before.values[c.key];
+      if(v === null) continue;
+      const r = await pushKey(c.key, v);
+      if(!r || !r.ok) return stop('送信', '子データを送れない: ' + c.key, { error: r && r.error });
+      sent.push(c.key);
+    }
+
+    // ⑤ 共有から読み戻して、キーも中身も一致するか確かめる
+    const back = await readRemoteKeyExact(h.children.map(function(c){ return c.key; }));
+    if(!back.ok) return stop('読み戻し', '共有を読めない', { error: back.error });
+    for(let i=0;i<h.children.length;i++){
+      const key = h.children[i].key;
+      const local = before.values[key], remote = back.values[key];
+      if(local === null){
+        if(remote !== null) return stop('照合', 'この端末に無い子データが共有にある: ' + key);
+      }else{
+        if(remote === null) return stop('照合', '共有に届いていない: ' + key);
+        if(!isSameJsonText(local, remote)) return stop('照合', '共有の中身が一致しない: ' + key);
+      }
+    }
+
+    // ⑥ 確かめている間にローカルが変わっていないか、もう一度見る
+    if(!sameHoldSnapshot(before, snapshotHoldChildren(h))) return stop('再確認', '確認中にこの端末の内容が変わったのでやり直す');
+
+    // ⑦ 直前にもう一度だけ墓標を見てから、親を公開する
+    if(activeTombRecordIds().has(recordId)) return stop('墓標', '公開の直前に削除された');
+    h = readHold(recordId);
+    if(!h) return stop('hold', 'holdが消えている');
+    h.state = 'PUBLISHING'; writeHold(h);
+    const pub = await pushKey(RECORDS_KEY, localStorage.getItem(RECORDS_KEY));
+    if(!pub || !pub.ok){
+      h.state = 'LOCAL_READY'; writeHold(h);
+      return stop('親送信', '案件一覧を送れない', { error: pub && pub.error });
+    }
+
+    // ⑧ 共有に親が入ったことを読み戻しで確かめる
+    const rb = await readRemoteKeyExact([RECORDS_KEY]);
+    if(!rb.ok){ h.state = 'LOCAL_READY'; writeHold(h); return stop('親読み戻し', '共有を読めない', { error: rb.error }); }
+    if(!parseRecordList(rb.values[RECORDS_KEY]).some(function(r){ return r && r.id === recordId; })){
+      h.state = 'LOCAL_READY'; writeHold(h);
+      return stop('親読み戻し', '共有に案件が入っていない');
+    }
+    remoteKnownRecordIds.add(recordId);
+
+    // ⑨ ここまで全部そろって、はじめて hold を外す
+    h.state = 'PUBLISHED'; writeHold(h);
+    const del = removePublicationHold(recordId);
+    return { recordId: recordId, ok: !!del.ok, stage: '完了', 送った子: sent };
+  }
+
+  // ---- たまっている hold をまとめて片づける。二重に走らせない ----
+  let resumingHolds = false;
+  async function resumePublicationHolds(){
+    if(resumingHolds) return { ok:false, reason:'すでに実行中です', results: [] };
+    const holds = listHolds();
+    if(!holds.length) return { ok:true, 件数:0, results: [] };
+    resumingHolds = true;
+    const results = [];
+    try{
+      for(let i=0;i<holds.length;i++){
+        try{ results.push(await publishOneHold(holds[i].recordId)); }
+        catch(e){ results.push({ recordId: holds[i].recordId, ok:false, stage:'例外', reason:String((e && e.message) || e) }); }
+      }
+    }finally{ resumingHolds = false; }
+    return { ok:true, 件数: results.length, results: results };
+  }
+
+  window.sakaeHold = {
+    HOLD_PREFIX: HOLD_PREFIX,
+    holdKey: holdKey,
+    createPublicationHold: createPublicationHold,
+    getPublicationHold: readHold,
+    listPublicationHolds: listHolds,
+    removePublicationHold: removePublicationHold,
+    resumePublicationHolds: resumePublicationHolds,
+    buildPublishableRecordsSnapshot: buildPublishableRecordsSnapshot,
+    readRemoteKeyExact: readRemoteKeyExact
+  };
+
   // ---- ページ遷移などの直前に、まだデバウンス待ちのSupabase送信をすべて即時実行する。
   // 500msのデバウンスを待たずにページが破棄されると、直前の変更がSupabase側（＝他の端末）に届かないまま
   // 消えてしまうことがあるため、「作業票⇄受注に関する連絡書」など画面をまたぐ主要な遷移の直前に呼び出す想定。
@@ -953,16 +1210,27 @@
   async function pushKey(key, value){
     delete pushTimers[key];
     delete pendingActions[key];
+    // ---- ★案件一覧は、共有へ見せてよい形にしてから送る ----
+    // 案件一覧の送り口は3つ（保存フック・手動flush・初回取り込みの合流）あるが、
+    // どれも最後はここへ来る。ふるい分けはこの1箇所だけで行い、送り口ごとには書かない。
+    // Publication Hold が1件も無ければ、渡された値をそのまま送る（従来とまったく同じ）。
+    const outValue = (key === RECORDS_KEY) ? publishableRecordsText(value) : value;
     let parsed;
-    try{ parsed = JSON.parse(value); }catch(e){ parsed = value; } // 値がJSONでない場合も念のためそのまま送る
+    try{ parsed = JSON.parse(outValue); }catch(e){ parsed = outValue; } // 値がJSONでない場合も念のためそのまま送る
     // 送り出す前に控えておく。返ってきたときに自分のものだと分かるようにするため。
     // 控える形は、受け取り側が組み立てる形（row.value を JSON.stringify したもの）に揃える。
     try{ rememberOutbound(key, JSON.stringify(parsed)); }catch(e){}
     try{
       const { data:{ user } } = await sb.auth.getUser();
-      await sb.from('kv_store').upsert({ key, value: parsed, updated_by: user ? user.id : null }, { onConflict:'key' });
+      const { error } = await sb.from('kv_store').upsert({ key, value: parsed, updated_by: user ? user.id : null }, { onConflict:'key' });
+      if(error){
+        console.warn('[sakaeSync] push失敗:', key, error);
+        return { ok:false, key: key, error: String((error && error.message) || error) };
+      }
+      return { ok:true, key: key };
     }catch(e){
       console.warn('[sakaeSync] push失敗:', key, e);
+      return { ok:false, key: key, error: String((e && e.message) || e) };
     }
   }
 
@@ -1091,6 +1359,10 @@
     rows.forEach(row=>{
       if(isTombKey(row.key)) return;
       if(row.key === RECORDS_KEY){
+        // ★併合する前に「本当に共有にあった案件」を控える。
+        //   併合後の一覧には、この端末にしか無い案件も入っているので、そちらを見てはいけない。
+        //   Publication Hold が、既に共有にある親を消してしまわないための土台になる。
+        noteRemoteRecords(parseRecordList(row.value));
         merged = mergeRecordsForInitialSync(parseRecordList(row.value), localRecordsBefore, tombRecordIds);
         applyRemoteRow({ key: RECORDS_KEY, value: merged.list });
         return;
@@ -1159,6 +1431,8 @@
           applyRemoteDelete(payload.old && payload.old.key);
           return;
         }
+        // 共有から届いた本物の案件一覧なので、ここでも「共有にある案件」を控えておく
+        if(payload.new && payload.new.key === RECORDS_KEY) noteRemoteRecords(parseRecordList(payload.new.value));
         applyRemoteRow(payload.new);
       })
       .subscribe();
@@ -1179,6 +1453,9 @@
       await initialSync();
       subscribeRealtime();
       hideGate();
+      // 初回取り込みが終わってから、まだ共有へ出していない案件を片づける。
+      // 画面を止めたくないので待たない。二重に走らないことは中で見ている。
+      resumePublicationHolds().catch(function(e){ console.warn('[sakaeSync] Publication Hold の再開に失敗:', e); });
 
       // セッションが切れた（ログアウトされた）タイミングでもログイン画面へ
       sb.auth.onAuthStateChange((event)=>{
