@@ -652,7 +652,11 @@
   }
   let memos = loadMemos();
 
-  const VIEW_KEY = SK.productKeyNs('kobetsuView', urlProductNo);
+  // 表示期間は「この案件をどの期間で見るか」なので、案件ごとに持つ。
+  // 保存先は共通層が決める（rid があれば rid が正本、無ければ従来の v1）。
+  // メモ・進捗チェック・担当者名・計画確定と同じ決め方をそろえてある。
+  // ★すぐ下の ZOOM_KEY（ズーム）は案件に紐付かない全体の設定で、これとは別もの。
+  const VIEW_REF = function(){ return { productNo: urlProductNo, recordId: caseCtx.recordId }; };
   let DAY_W = 30;
   const ZOOM_KEY = 'sakaeIS_kobetsuMock_zoom_v1';
   function loadZoom(){
@@ -732,16 +736,23 @@
   let viewWasSaved = false;
   function loadView(){
     try{
-      const raw = localStorage.getItem(VIEW_KEY);
-      if(raw){
-        const v = JSON.parse(raw);
+      const got = SK.readProductData('kobetsuView', VIEW_REF());
+      if(got.value){
+        const v = JSON.parse(got.value);
         const s = parseDateStr(v.start), e = parseDateStr(v.end);
         if(s && e && e>=s){ viewWasSaved = true; return { start:s, end:e }; }
       }
     }catch(e){}
+    // 保存が無い案件は、これまでどおりその案件の受注日・納期から既定の期間を作る。
+    // 別の案件の保存値を拾わないので、ここは案件ごとに正しい値になる。
     return { start: defaultViewStart(), end: defaultViewEnd() };
   }
-  function saveView(){ localStorage.setItem(VIEW_KEY, JSON.stringify({ start: fmtDateForInput(viewStart), end: fmtDateForInput(viewEnd) })); }
+  function saveView(){
+    // 案件が特定できないとき（社内No.も recordId も無い）は、どこにも書かない。
+    // 以前は社内No.が無いと末尾なしの共有キーへ書いていて、別の案件に混ざる原因になっていた。
+    if(!urlProductNo) return;
+    SK.writeProductData('kobetsuView', VIEW_REF(), JSON.stringify({ start: fmtDateForInput(viewStart), end: fmtDateForInput(viewEnd) }));
+  }
   let { start: viewStart, end: viewEnd } = loadView();
   function viewStartIdx(){ return idxForDate(viewStart); }
   function viewStartHalf(){ return (viewStartIdx()-1)*2 + 1; }
