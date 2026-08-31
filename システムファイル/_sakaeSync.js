@@ -762,6 +762,32 @@
     }catch(e){ return []; }
   }
 
+  // ---- いま効いている削除の recordId 一式 ----
+  // 削除イベントがあり、同じ recordId ＋ deletionId の取消イベントが無いものだけが効いている。
+  // 初回取り込みと、そのあとの受信の両方で同じ判定を使うため、ここに1つだけ置く。
+  function activeTombRecordIds(){
+    const ids = [];
+    const undone = new Set();
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(!k) continue;
+      if(k.indexOf(TOMB_UNDO_PREFIX) === 0){
+        const p = splitEventKey(k, TOMB_UNDO_PREFIX);
+        if(p) undone.add(p.recordId + '_' + p.deletionId);
+      }else if(k.indexOf(TOMB_PREFIX) === 0){
+        const p = splitEventKey(k, TOMB_PREFIX);
+        if(!p) continue;
+        ids.push({ recordId: p.recordId, deletionId: p.deletionId });
+      }
+    }
+    const out = new Set();
+    ids.forEach(d=>{
+      if(undone.has(d.recordId + '_' + d.deletionId)) return;
+      out.add(d.recordId);
+    });
+    return out;
+  }
+
   // ---- 案件一覧を、共有の内容とこの端末の内容から安全に併合する ----
   // 案件一覧は配列まるごと1キーなので、共有の内容をそのまま採ると
   // 「つながっていない間にこの端末で作った案件」が消えてしまう。
@@ -978,11 +1004,24 @@
     if(!row || !row.key) return;
     applyingRemoteUpdate = true;
     try{
-      const raw = JSON.stringify(row.value);
+      let raw = JSON.stringify(row.value);
       // ---- 自分が送った更新が返ってきただけなら、何もしない ----
       // これを取り込むと、送った後に打った文字が送った時点の内容で上書きされて消える。
       // 「今のlocalStorageと同じか」ではなく「自分が送ったものか」で見分ける（上の outbox 参照）。
       if(isOwnOutbound(row.key, raw)) return;
+      // ---- 案件一覧だけは丸ごと上書きしない ----
+      // つながっていない間にこの端末で作った案件は、まだ共有に無い。
+      // 届いた一覧をそのまま書くと、その案件がこの端末から消え、
+      // 次に取り込むときには「ローカルにしか無い案件」も残っていないので二度と戻らない。
+      // 初回取り込み（initialSync）と同じ規則で併合する。判定は recordId で行い、
+      // 社内No.ではまとめない。消された案件は足さない。
+      if(row.key === RECORDS_KEY){
+        const merged = mergeRecordsForInitialSync(
+          parseRecordList(row.value),
+          parseRecordList(localStorage.getItem(RECORDS_KEY)),
+          activeTombRecordIds());
+        raw = JSON.stringify(merged.list);
+      }
       const cur = localStorage.getItem(row.key);
       if(cur === raw) return; // 変化が無ければ何もしない（余計な再描画を避ける）
       if(isSameJsonText(cur, raw)) return; // キーの並び順が違うだけ＝中身は同じ。書き直さない
@@ -1039,27 +1078,7 @@
 
     // ② いま効いている削除を確定する（①で取り込んだ分＋この端末に元からある分）。
     //    削除イベントがあり、同じ recordId ＋ deletionId の取消イベントが無いものだけが効いている。
-    const tombRecordIds = new Set();
-    {
-      const ids = [];
-      const undone = new Set();
-      for(let i=0;i<localStorage.length;i++){
-        const k = localStorage.key(i);
-        if(!k) continue;
-        if(k.indexOf(TOMB_UNDO_PREFIX) === 0){
-          const p = splitEventKey(k, TOMB_UNDO_PREFIX);
-          if(p) undone.add(p.recordId + '_' + p.deletionId);
-        }else if(k.indexOf(TOMB_PREFIX) === 0){
-          const p = splitEventKey(k, TOMB_PREFIX);
-          if(!p) continue;
-          ids.push({ recordId: p.recordId, deletionId: p.deletionId });
-        }
-      }
-      ids.forEach(d=>{
-        if(undone.has(d.recordId + '_' + d.deletionId)) return;
-        tombRecordIds.add(d.recordId);
-      });
-    }
+    const tombRecordIds = activeTombRecordIds();
 
     // ②' この端末が持っている案件一覧を、共有の内容で上書きされる前に控えておく。
     //     ④で「この端末で作ったばかりの案件」を見分けるために使う。
