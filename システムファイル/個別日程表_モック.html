@@ -634,12 +634,22 @@
   });
 
   // ---- 自由配置・自由サイズのメモ（吹き出し）。日付・工程・バーには一切紐付かず、ガント表内の好きな座標に置ける付箋 ----
-  const MEMO_KEY = SK.productKeyNs('kobetsuMemos', urlProductNo);
+  // 保存先は共通層が決める（rid があれば rid が正本、無ければ従来の v1）。
+  // 担当者の名前一覧・進捗チェック・計画確定と同じ決め方をそろえてある。
+  const MEMOS_REF = function(){ return { productNo: urlProductNo, recordId: caseCtx.recordId }; };
   function loadMemos(){
-    try{ const raw = localStorage.getItem(MEMO_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+    try{
+      const got = SK.readProductData('kobetsuMemos', MEMOS_REF());
+      if(got.value) return JSON.parse(got.value);
+    }catch(e){}
     return [];
   }
-  function saveMemos(){ localStorage.setItem(MEMO_KEY, JSON.stringify(memos)); }
+  function saveMemos(){
+    // 案件が特定できないとき（社内No.も recordId も無い）は、どこにも書かない。
+    // 以前は社内No.が無いと末尾なしの共有キーへ書いていて、別の案件に混ざる原因になっていた。
+    if(!urlProductNo) return;
+    SK.writeProductData('kobetsuMemos', MEMOS_REF(), JSON.stringify(memos));
+  }
   let memos = loadMemos();
 
   const VIEW_KEY = SK.productKeyNs('kobetsuView', urlProductNo);
