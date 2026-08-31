@@ -867,6 +867,9 @@
   const pushTimers = {}; // キーごとのデバウンス用タイマー
   const pendingActions = {}; // キーごとの「まだSupabaseに送っていない処理」（flush用に、タイマーとは別に本体を持っておく）
   const PUSH_DEBOUNCE_MS = 500;
+  // 共有の案件一覧を読めなかったとき、あとで読み直してみる間隔。
+  // 圏外で起動した端末が、つながったあと「何も操作しなくても」案件を共有へ送れるようにするため。
+  const RECORDS_RETRY_MS = 15000;
 
   function isSyncKey(key){
     return typeof key === 'string' && key.indexOf(KEY_PREFIX) === 0;
@@ -896,6 +899,49 @@
   const remoteKnownRecordIds = new Set();
   function noteRemoteRecords(list){
     (list || []).forEach(function(r){ if(r && r.id) remoteKnownRecordIds.add(r.id); });
+  }
+
+  // ---- 「共有の案件一覧をまだ読んでいない」と「読んだ結果それが空だった」は別のことなので、分けて持つ ----
+  // 集合が空かどうかでは見分けられない。見分けずに hold のふるい分けを走らせると、
+  // 共有に既にある案件を「まだ公開していない」と誤解して、送る一覧から落としてしまう。
+  // それは共有からその案件を消すのと同じことになる。
+  let remoteRecordsKnown = false;      // 一度でも共有の一覧を丸ごと読めたか
+  let ensuringRemoteRecords = null;    // 読みに行っている最中の処理（同時に何本も走らせない）
+  let recordsPushPending = false;      // 読めるようになったら送り直す約束
+
+  // 共有の案件一覧を読めている状態にする。読めたら true、読めなければ false。
+  // 一度読めていれば、そのまま true を返す（余計な問い合わせをしない）。
+  async function ensureRemoteRecordsKnown(){
+    if(remoteRecordsKnown) return true;
+    if(ensuringRemoteRecords) return ensuringRemoteRecords;   // 走っている分に相乗りする
+    ensuringRemoteRecords = (async function(){
+      try{
+        const { data, error } = await sb.from('kv_store').select('key, value');
+        if(error){
+          console.warn('[sakaeSync] 共有の案件一覧を読めませんでした:', error);
+          return false;
+        }
+        const row = (data || []).filter(function(r){ return r && r.key === RECORDS_KEY; })[0];
+        // ★行が無くても「読めた」。共有がまだ空なだけで、分からない状態ではない。
+        noteRemoteRecords(row ? parseRecordList(row.value) : []);
+        remoteRecordsKnown = true;
+        return true;
+      }catch(e){
+        console.warn('[sakaeSync] 共有の案件一覧を読めませんでした:', e);
+        return false;
+      }finally{
+        ensuringRemoteRecords = null;
+      }
+    })();
+    return ensuringRemoteRecords;
+  }
+
+  // 読めるようになったら、そのときの最新の案件一覧を1回だけ送る。
+  // 途中の古い内容を順番に送り直す必要は無い（案件一覧は「今の全部」を送るキーなので）。
+  async function flushPendingRecordsPush(){
+    if(!recordsPushPending || !remoteRecordsKnown) return;
+    recordsPushPending = false;
+    await pushKey(RECORDS_KEY, localStorage.getItem(RECORDS_KEY));
   }
 
   function holdKey(recordId){ return HOLD_PREFIX + recordId; }
@@ -1214,6 +1260,17 @@
     // 案件一覧の送り口は3つ（保存フック・手動flush・初回取り込みの合流）あるが、
     // どれも最後はここへ来る。ふるい分けはこの1箇所だけで行い、送り口ごとには書かない。
     // Publication Hold が1件も無ければ、渡された値をそのまま送る（従来とまったく同じ）。
+    //
+    // ★ふるい分けの前に「共有の案件一覧を読めているか」を必ず確かめる。
+    //   読めていないと、共有に既にある案件まで「まだ公開していない」と誤解して落としてしまう。
+    //   読めないときは送らずに預かっておき、読めるようになってから最新の内容を送り直す。
+    if(key === RECORDS_KEY && !remoteRecordsKnown){
+      const ok = await ensureRemoteRecordsKnown();
+      if(!ok){
+        recordsPushPending = true;   // 送り忘れないように預かる（圏外でも、つながったら送る）
+        return { ok:false, key: key, error:'共有の案件一覧をまだ読めていないので送らない', pending:true };
+      }
+    }
     const outValue = (key === RECORDS_KEY) ? publishableRecordsText(value) : value;
     let parsed;
     try{ parsed = JSON.parse(outValue); }catch(e){ parsed = outValue; } // 値がJSONでない場合も念のためそのまま送る
@@ -1338,6 +1395,10 @@
     const { data, error } = await sb.from('kv_store').select('key, value');
     if(error){ console.warn('[sakaeSync] 初回取得に失敗:', error); return; }
     const rows = data || [];
+    // ★ここで共有の全行を読めている。案件一覧の行が無くても「読めた」ことに変わりはないので、
+    //   この時点で「共有の案件一覧を知っている」状態にする。同じ問い合わせを増やさない。
+    noteRemoteRecords(parseRecordList((rows.filter(function(r){ return r && r.key === RECORDS_KEY; })[0] || {}).value));
+    remoteRecordsKnown = true;
     const remoteKeys = new Set();
     rows.forEach(row=> remoteKeys.add(row.key));
 
@@ -1420,6 +1481,8 @@
       }
       pushKey(key, localStorage.getItem(key));
     });
+    // 読めないあいだに預かっていた案件一覧があれば、ここで最新の内容を送る
+    await flushPendingRecordsPush();
   }
 
   // ---- 以後は他の人の更新をリアルタイムに受け取る ----
@@ -1456,6 +1519,13 @@
       // 初回取り込みが終わってから、まだ共有へ出していない案件を片づける。
       // 画面を止めたくないので待たない。二重に走らないことは中で見ている。
       resumePublicationHolds().catch(function(e){ console.warn('[sakaeSync] Publication Hold の再開に失敗:', e); });
+      // 共有を読めないまま起動した場合に備えて、ときどき読み直して預かり分を送る。
+      // 読めていれば何もしない（問い合わせも増えない）。
+      setInterval(function(){
+        if(remoteRecordsKnown && !recordsPushPending) return;
+        ensureRemoteRecordsKnown().then(function(ok){ if(ok) return flushPendingRecordsPush(); })
+          .catch(function(){});
+      }, RECORDS_RETRY_MS);
 
       // セッションが切れた（ログアウトされた）タイミングでもログイン画面へ
       sb.auth.onAuthStateChange((event)=>{
