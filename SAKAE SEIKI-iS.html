@@ -856,7 +856,10 @@
   // 作業票を初めて開く時はURLパラメータからこのレコードの内容が渡されて自動的に作られるため）
   // ---- ひな形から新規作成した場合、作業票の部品・工程（ルート）も一緒に引き継ぐための一時変数。
   // 「⭐ ひな形から作成」を選んだ時にだけ引き継ぎ元の品番を入れておき、保存が終わったら空に戻す。 ----
-  let templateSourceProductNo = null;
+  // ★社内No.ではなく recordId で持つ。同じ社内No.の案件が複数あっても、
+  //   ユーザーが選んだその1件だけを最後までコピー元として扱うため。
+  //   途中で社内No.へ戻さない（戻すと A/B を取り違える）。
+  let templateSourceRef = null;   // { productNo, recordId }
   // ---- ひな形の作業票データ（部品一覧・各部品の工程ルート）を、新しく保存された案件の品番の下にコピーする。
   // 日付・注記など「案件ごとに変わる部分」は空にし、部品名・材質・仕上寸法・工程コードなど「ひな形として繰り返し使う部分」だけ引き継ぐ。
   // 個別日程表側のメモ・確定状態などはコピー対象に含めない（新しい案件はまっさらな日程から始める）。 ----
@@ -872,20 +875,57 @@
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   }
   // ---- ひな形の受注日（T0）。ひな形の日程展開は、この日を「0日目」として行う ----
-  function templateOrderDateOf(productNo){
-    const tplRec = records.find(r=>r.productNo===productNo);
+  // ★社内No.で探さない。同じ社内No.の案件が複数あると先頭一致が勝ってしまい、
+  //   選んでいない方の受注日を T0 にして全工程を誤った日付へ平行移動させる。
+  //   ユーザーが選んだ recordId で一意に取る。
+  function templateOrderDateOf(ref){
+    const rid = ref && ref.recordId;
+    if(!rid) return '';
+    const tplRec = records.find(r=>r && r.id===rid);
     return (tplRec && tplRec.orderDate) ? tplRec.orderDate : '';
   }
   const TEMPLATE_ORDER_DATE_MISSING_MSG =
     'ひな形の日程を展開できません。\n元ひな形と新しい案件の受注日を確認してください。';
   // ---- ひな形展開の前提が揃っているか（元ひな形の受注日・新案件の受注日が両方あるか）----
   // 揃っていない場合は展開せず中止する。最古工程日や今日で代用したり、日付を空にして続行したりはしない。
-  function canExpandTemplate(fromProductNo, orderDate){
-    return !!(parseYmd(templateOrderDateOf(fromProductNo)) && parseYmd(orderDate));
+  function canExpandTemplate(fromRef, orderDate){
+    return !!(parseYmd(templateOrderDateOf(fromRef)) && parseYmd(orderDate));
   }
-  function copyBuhinPartsFromTemplate(fromProductNo, rec){
-    if(!fromProductNo || !rec.productNo) return;
-    const raw = localStorage.getItem(SK.productKeyOf('buhinhyo', fromProductNo).key || SK.productKey('buhinhyo', fromProductNo));
+
+  // ---- ひな形側のレイアウト（段数・レーン配置）を1つの論理構造として読む ----
+  // 段数とレーン配置は別々に移さない。
+  //   両方なし … 正常。コピーしない
+  //   両方あり … 両方コピーする
+  //   片方だけ … 持ち主を決められない壊れた状態なので fail-closed（案件そのものを作らない）
+  // 旧データ（v1）が同じ社内No.の別案件と共用されている場合も、持ち主を証明できないので止める。
+  function readTemplateLayout(fromRef){
+    const amb = ['kobetsuRowcounts','kobetsuLaneassign'].map(function(t){
+      return SK.legacyOwnershipAmbiguous(t, fromRef);
+    }).filter(function(a){ return a && a.blocked; })[0];
+    if(amb) return { ok:false, reason:'レイアウトの旧データの持ち主を決められません。\n' + amb.reason };
+    let rowRaw = null, laneRaw = null;
+    try{
+      const gotRow  = SK.readProductData('kobetsuRowcounts',  fromRef);
+      const gotLane = SK.readProductData('kobetsuLaneassign', fromRef);
+      rowRaw  = (gotRow  && gotRow.value)  ? gotRow.value  : null;
+      laneRaw = (gotLane && gotLane.value) ? gotLane.value : null;
+    }catch(e){
+      return { ok:false, reason:'レイアウトを読めませんでした。' };
+    }
+    if(!rowRaw && !laneRaw) return { ok:true, has:false, rowRaw:null, laneRaw:null };
+    if(!rowRaw || !laneRaw){
+      return { ok:false, has:true, reason:'ひな形の段数とレーン配置の片方しかありません。'
+        + '\n（段数:' + (rowRaw ? 'あり' : 'なし') + ' / レーン配置:' + (laneRaw ? 'あり' : 'なし') + '）'
+        + '\nどちらか片方だけを引き継ぐと日程表の見た目が崩れるため、この案件は作成しません。' };
+    }
+    return { ok:true, has:true, rowRaw:rowRaw, laneRaw:laneRaw };
+  }
+  const TEMPLATE_LAYOUT_BROKEN_MSG = 'ひな形の日程表レイアウトを引き継げません。\n';
+  function copyBuhinPartsFromTemplate(fromRef, rec, layout){
+    if(!fromRef || !fromRef.recordId || !rec.productNo || !rec.id) return;
+    // ひな形側の作業票は recordId で読む（社内No.へ落とさない）
+    const got = SK.readProductData('buhinhyo', fromRef);
+    const raw = got && got.value;
     if(!raw) return; // ひな形側にまだ作業票データが無ければ何もしない
     let src;
     try{ src = JSON.parse(raw); }catch(e){ return; }
@@ -895,7 +935,7 @@
     //   新工程日 = 新案件の受注日(N0) + 相対差分
     // として全工程を平行移動する。工程どうしの間隔（何日後にNC、何日後に仕上げ…）はそのまま保たれる。
     // ★ T0 / N0 のどちらかが未入力のときは展開しない（最古工程日や今日で代用しない）。呼び出し側で中止させる。
-    const t0 = parseYmd(templateOrderDateOf(fromProductNo));
+    const t0 = parseYmd(templateOrderDateOf(fromRef));
     const n0 = parseYmd(rec.orderDate);
     if(!t0 || !n0) return;
     const shiftMs = n0 - t0;
@@ -924,23 +964,6 @@
     // ---- 個別日程表の見た目（バーの段配置・行の段数）もひな形として引き継ぐ ----
     // レーンは工程IDが変わるため、対応表で新しいIDへ付け替える（元IDを参照し続けない）。
     // 段数は行の位置がキーで、部品の並び順はそのまま引き継ぐため、位置の対応は崩れない。
-    try{
-      const laneRaw = localStorage.getItem(SK.productKey('kobetsuLaneassign', fromProductNo));
-      if(laneRaw){
-        const srcLane = JSON.parse(laneRaw) || {};
-        const newLane = {};
-        Object.keys(srcLane).forEach(oldProcId=>{
-          if(procIdMap[oldProcId] !== undefined) newLane[procIdMap[oldProcId]] = srcLane[oldProcId];
-        });
-        if(Object.keys(newLane).length){
-          localStorage.setItem(SK.productKey('kobetsuLaneassign', rec.productNo), JSON.stringify(newLane));
-        }
-      }
-      const rowRaw = localStorage.getItem(SK.productKey('kobetsuRowcounts', fromProductNo));
-      if(rowRaw){
-        localStorage.setItem(SK.productKey('kobetsuRowcounts', rec.productNo), rowRaw);
-      }
-    }catch(e){ /* 見た目の引き継ぎに失敗しても、部品・工程の複製自体は成立させる */ }
     const bs = {
       order: {
         productNo: rec.productNo, orderNo: rec.orderNo||'', orderDate: rec.orderDate||'',
@@ -951,7 +974,50 @@
       // ---- ひな形からの複製ではorderNotice（受注に関する連絡書固有項目）・arrangementCheck（手配チェックシート固有項目）は
       // 意図的に引き継がない。案件固有の検討状況・完了日・確認者などをひな形から誤って複製しないため（新しい案件は空の状態から開始する）----
     };
-    localStorage.setItem(SK.productKey('buhinhyo', rec.productNo), JSON.stringify(bs));
+    // ---- ここから先は「書く」だけ。何を書くかは全部この時点で決まっている ----
+    // 新しい案件の recordId ごとのキー（rid）へ書く。社内No.のキー（v1）へは書かない。
+    // ★共通層の writeProductData は records[] から recordId を解決するが、
+    //   新規案件はまだ records_v1 を保存していない（親は hold の後に保存する）ため解決できず、
+    //   v1 へ落ちてしまう。ここは共通層のキー台帳 v2Key() で rid キーを直接求める。
+    //   キー名を自分で組み立てているわけではない（台帳に聞いている）。
+    const destBuhinKey = SK.v2Key('buhinhyo', rec.id);
+    const destRowKey   = SK.v2Key('kobetsuRowcounts', rec.id);
+    const destLaneKey  = SK.v2Key('kobetsuLaneassign', rec.id);
+
+    // ---- 段数・レーン配置は1つの論理構造。両方そろえてから、まとめて書く ----
+    // 片方を書いた直後に失敗して片方だけ残る、という状態を作らない。
+    let newLaneRaw = null, newRowRaw = null;
+    if(layout && layout.has){
+      const srcLane = JSON.parse(layout.laneRaw) || {};
+      const newLane = {};
+      Object.keys(srcLane).forEach(oldProcId=>{
+        if(procIdMap[oldProcId] !== undefined) newLane[procIdMap[oldProcId]] = srcLane[oldProcId];
+      });
+      newLaneRaw = JSON.stringify(newLane);
+      newRowRaw  = layout.rowRaw;
+    }
+
+    // ---- Publication Hold を、子データを書くより先に作る ----
+    // 親（案件一覧）が共有へ出るのを止めているのは同期層の中央ゲートで、判断材料は
+    // 「その時点で hold があるか」である。hold が無い一瞬に親の送信が走ると、
+    // 子が届いていないのに親だけが共有へ出てしまう。デバウンスの猶予に頼らず順序で守る。
+    //   required  作業票（部品・工程ルートが無い案件は成立しない）
+    //   optional  段数・レーン配置（ひな形側に無ければ子に載せない。恒久holdを作らないため）
+    const holdChildren = [{ key: destBuhinKey, required: true }];
+    if(newRowRaw !== null)  holdChildren.push({ key: destRowKey,  required: false });
+    if(newLaneRaw !== null) holdChildren.push({ key: destLaneKey, required: false });
+    if(window.sakaeHold && window.sakaeHold.createPublicationHold){
+      window.sakaeHold.createPublicationHold({
+        recordId: rec.id, productNo: rec.productNo, kind: 'template', children: holdChildren
+      });
+    }
+
+    // ---- 子データを書く（hold のあと・親の保存より前）----
+    localStorage.setItem(destBuhinKey, JSON.stringify(bs));
+    if(newRowRaw !== null && newLaneRaw !== null){
+      localStorage.setItem(destRowKey,  newRowRaw);
+      localStorage.setItem(destLaneKey, newLaneRaw);
+    }
   }
   // ---- 受注に関する連絡書だけにある項目（作業票には無い項目）。実務フロー変更に伴い、
   // これらも品番ごとの作業票データ（sakaeIS_buhinhyoMock_v1_品番）の中のorderNotice領域に
@@ -1630,7 +1696,7 @@
     newOverlay.style.display = 'flex';
     if(!isEdit) document.getElementById('f_orderNo').focus();
   }
-  function openNew(){ templateSourceProductNo = null; openForm(null); }
+  function openNew(){ templateSourceRef = null; openForm(null); }
   function closeNew(){ newOverlay.style.display = 'none'; formEditId = null; }
   function todayStr(){
     const d = new Date();
@@ -1780,18 +1846,29 @@
       // ひな形は「受注日を0日目とした標準工程パターン」として展開するため、
       // 元ひな形の受注日と新しい案件の受注日が両方そろっていないと展開できない。
       // 揃っていない場合はここで中止し、案件そのものも作らない（元ひな形・既存データは変更しない）。
-      if(templateSourceProductNo && !canExpandTemplate(templateSourceProductNo, rec.orderDate)){
+      if(templateSourceRef && !canExpandTemplate(templateSourceRef, rec.orderDate)){
         alert(TEMPLATE_ORDER_DATE_MISSING_MSG);
         return null;
+      }
+      // ---- ひな形側のレイアウトが引き継げる状態かを、案件を作る前に確かめる ----
+      // 段数とレーン配置の片方しか無い場合は fail-closed。
+      // 親案件を作らず、共有へも出さない（片方だけの状態を新しい案件へ持ち込まない）。
+      let tplLayout = null;
+      if(templateSourceRef){
+        tplLayout = readTemplateLayout(templateSourceRef);
+        if(!tplLayout.ok){
+          alert(TEMPLATE_LAYOUT_BROKEN_MSG + tplLayout.reason);
+          return null;
+        }
       }
       rec.id = uid();
       rec.status = 'inprogress';
       records.unshift(rec);
-      if(templateSourceProductNo){
-        copyBuhinPartsFromTemplate(templateSourceProductNo, rec);
+      if(templateSourceRef){
+        copyBuhinPartsFromTemplate(templateSourceRef, rec, tplLayout);
       }
     }
-    templateSourceProductNo = null;
+    templateSourceRef = null;
     saveRecords();
     syncToBuhinState(rec);
     rec._wasNew = wasNew;
@@ -1936,7 +2013,7 @@
     const rec = records.find(r=>r.id===currentDetailId);
     if(!rec) return;
     closeDetail();
-    templateSourceProductNo = null;
+    templateSourceRef = null;
     openForm(rec);
   });
   // ---- 納品完了。案件の状態は従来どおり records[].status（'inprogress' / 'done'）だけで表し、
@@ -2096,7 +2173,9 @@
       costSummary: stripDates(tpl.costSummary),
       designPlan: stripDates(tpl.designPlan)
     });
-    templateSourceProductNo = tpl.productNo || null;
+    // ★選んだひな形の recordId をそのまま持つ。社内No.だけにしない。
+    //   同じ社内No.の案件が2件あっても、ユーザーが選んだ側だけをコピー元にするため。
+    templateSourceRef = tpl.id ? { productNo: tpl.productNo || '', recordId: tpl.id } : null;
     openForm(seed);
   }
 
@@ -2133,7 +2212,7 @@
       saveRecords();
       render();
     }
-    templateSourceProductNo = null;
+    templateSourceRef = null;
     openForm(rec);
   }
 

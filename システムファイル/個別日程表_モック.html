@@ -1093,15 +1093,17 @@
   }
 
   // ---- 工程の段数（引き継ぎ時のみ）：バーが重なる場合に備えて、部品ごとに手動で段を増減できるようにする（表示上のレイアウトのみ・作業票とは共有しない） ----
-  const ROWCOUNT_KEY = SK.productKeyNs('kobetsuRowcounts', urlProductNo);
+  // 保存先は共通層が決める（rid があれば rid、無ければ従来の v1）。段数とレーン配置は
+  // 1つのレイアウト構造なので、参照は LAYOUT_REF を両方で共有する（別々の ref を作らない）。
+  const LAYOUT_REF = function(){ return { productNo: urlProductNo, recordId: caseCtx.recordId }; };
   function loadRowCounts(){
     try{
-      const raw = localStorage.getItem(ROWCOUNT_KEY);
-      if(raw) return JSON.parse(raw);
+      const got = SK.readProductData('kobetsuRowcounts', LAYOUT_REF());
+      if(got && got.value) return JSON.parse(got.value);
     }catch(e){}
     return {};
   }
-  function saveRowCounts(){ localStorage.setItem(ROWCOUNT_KEY, JSON.stringify(rowCounts)); }
+  function saveRowCounts(){ SK.writeProductData('kobetsuRowcounts', LAYOUT_REF(), JSON.stringify(rowCounts)); }
   let rowCounts = loadRowCounts();
   // 現場からの要望で、初期表示は1段ではなく3段にする（手動で増減した分はそのままrowCountsに残る）
   function procRowCount(pIdx){ return rowCounts[pIdx] || 3; }
@@ -1171,15 +1173,15 @@
   }
 
   // ---- 工程バーをどの段（レーン）に置くか：これは作業票とは共有しない、この画面だけの表示上の配置なので別キーで保存する ----
-  const LANE_KEY = SK.productKeyNs('kobetsuLaneassign', urlProductNo);
+  // 保存先は共通層が決める。段数（kobetsuRowcounts）と同じ LAYOUT_REF を使う。
   function loadLaneAssign(){
     try{
-      const raw = localStorage.getItem(LANE_KEY);
-      if(raw) return JSON.parse(raw);
+      const got = SK.readProductData('kobetsuLaneassign', LAYOUT_REF());
+      if(got && got.value) return JSON.parse(got.value);
     }catch(e){}
     return {};
   }
-  function saveLaneAssign(){ localStorage.setItem(LANE_KEY, JSON.stringify(laneAssign)); }
+  function saveLaneAssign(){ SK.writeProductData('kobetsuLaneassign', LAYOUT_REF(), JSON.stringify(laneAssign)); }
   let laneAssign = loadLaneAssign();
 
   // ---- 非リンク（品番なしで開いた旧サンプル）の時だけ使うバー保存。作業票と共有するモードでは使わない ----
