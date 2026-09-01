@@ -248,10 +248,27 @@
     try{ const raw = localStorage.getItem(RECORDS_KEY); if(raw) return JSON.parse(raw) || []; }catch(e){}
     return [];
   }
-  function loadBuhinOrder(productNo){
-    if(!productNo) return null;
+  // ---- 案件の指し方 ----
+  // ★社内No.は「業務上の番号」であって案件そのものではない。
+  //   同じ社内No.の案件が2件あると、社内No.だけではどちらか決められない。
+  //   この画面は案件を recordId で指す。社内No.は表示のためだけに持つ。
+  const caseRef = (r) => ({ productNo: r.productNo || '', recordId: r.id || '' });
+
+  // 同じ社内No.の旧データ（v1）が複数の案件で共用されている場合、
+  // それがどちらのものかは決められない。決めずに「無い」ものとして扱う。
+  // 片方の内容をもう片方の画面に出すと、別案件の予定を見せることになる。
+  function legacyBlocked(type, ref){
     try{
-      const got = window.sakaeKeys.readProductData('buhinhyo', productNo);
+      const a = window.sakaeKeys.legacyOwnershipAmbiguous(type, ref);
+      return !!(a && a.blocked);
+    }catch(e){ return false; }
+  }
+
+  function loadBuhinOrder(ref){
+    if(!ref || (!ref.productNo && !ref.recordId)) return null;
+    if(legacyBlocked('buhinhyo', ref)) return null;
+    try{
+      const got = window.sakaeKeys.readProductData('buhinhyo', ref);
       if(got.value){ const bs = JSON.parse(got.value); return (bs && bs.order) ? bs.order : null; }
     }catch(e){}
     return null;
@@ -260,9 +277,11 @@
   // 社内No.・客先・型式・納期・品名の正本は常にこちら側で、この画面は持たない。
   function productsFromRecords(){
     return loadRecords().map(r=>{
-      const o = loadBuhinOrder(r.productNo) || {};
+      const ref = caseRef(r);
+      const o = loadBuhinOrder(ref) || {};
       return {
-        productNo: r.productNo || '',
+        recordId: ref.recordId,          // ★この画面が案件を指す目印
+        productNo: r.productNo || '',    // 表示用の社内No.
         orderNo: o.orderNo || r.orderNo || '',
         customer: o.customer || r.customer || '',
         model: o.model || r.modelName || '',
@@ -272,11 +291,17 @@
     }).filter(p=>p.productNo);
   }
 
-  // ================= 保存領域：案件（品番）ごと =================
-  function detailKey(productNo){ return DETAIL_PREFIX + productNo; }
-  function loadDetail(productNo){
+  // ================= 保存領域：案件ごと =================
+  // ★保存先は共通層のキー台帳が決める（recordId があれば recordId のキー、無ければ従来の社内No.のキー）。
+  //   この画面でキーの綴りを組み立てない。同じ社内No.の案件が2件あっても、
+  //   それぞれ別のキーになるので混ざらない。
+  function loadDetail(ref){
     try{
-      const raw = localStorage.getItem(detailKey(productNo));
+      // 同じ社内No.の旧データが複数案件で共用されている場合は、どちらのものか決められない。
+      // 決めずに空として扱う（片方の予定をもう片方の画面に出さない）。
+      if(legacyBlocked('shikyuNouhin', ref)) return { items: [], memo: [], dayNotes: [], shikyu: { enabled:false, date:'' } };
+      const got = window.sakaeKeys.readProductData('shikyuNouhin', ref);
+      const raw = got && got.value;
       if(raw){
         const d = JSON.parse(raw) || {};
         const sh = (d.shikyu && typeof d.shikyu === 'object') ? d.shikyu : {};
@@ -293,12 +318,12 @@
     }catch(e){}
     return { items: [], memo: [], dayNotes: [], shikyu: { enabled:false, date:'' } };
   }
-  function saveDetail(productNo, d){
-    if(!productNo) return;
+  function saveDetail(ref, d){
+    if(!ref || (!ref.productNo && !ref.recordId)) return;
     // ---- 🔴 書き戻す項目を1つでも落とすと、その項目は保存のたびに消える。
     // items / memo / dayNotes は旧データを含むため必ず全部書き戻すこと。
     // 項目を足したときは loadDetail と対で直す。 ----
-    localStorage.setItem(detailKey(productNo), JSON.stringify({
+    window.sakaeKeys.writeProductData('shikyuNouhin', ref, JSON.stringify({
       items: d.items || [],
       memo: d.memo || [],
       dayNotes: d.dayNotes || [],
@@ -312,9 +337,9 @@
   function findNote(d, dateStr, line){
     return (d.dayNotes||[]).find(n=> n && n.date === dateStr && n.line === line) || null;
   }
-  function setNoteText(productNo, dateStr, line, text){
-    if(!productNo || !dateStr || !isValidLine(line)) return;
-    const d = loadDetail(productNo);
+  function setNoteText(ref, dateStr, line, text){
+    if(!ref || (!ref.productNo && !ref.recordId) || !dateStr || !isValidLine(line)) return;
+    const d = loadDetail(ref);
     let n = findNote(d, dateStr, line);
     if(!n){
       if(!text) return;                       // 空のまま触っただけなら何も作らない
@@ -322,7 +347,7 @@
       d.dayNotes.push(n);
     }
     n.text = text;
-    saveDetail(productNo, d);
+    saveDetail(ref, d);
   }
 
   // ================= 表示する週 =================
@@ -420,7 +445,7 @@
     const t = searchTerm.toLowerCase();
     return productsFromRecords()
       .filter(p=> !t || matchProduct(p, t))
-      .map(p=> ({ p: p, d: loadDetail(p.productNo) }))
+      .map(p=> ({ p: p, d: loadDetail(p) }))
       .sort(compareByDueDate);
   }
 
@@ -461,11 +486,12 @@
   // ---- 日付の欄の中身 ----
   // autoText があるときは、自由入力の上に「消せない文字」として出す。
   // autoText は保存しない（案件データと固定文字から毎回組み立てる）ので、自由入力で上書きされることがない。
-  function dayCellHtml(d, pn, line, autoText, autoCls, noteText){
+  // ★rid が案件を指す正式な目印。pn（社内No.）は表示のためだけに残す。
+  function dayCellHtml(d, rid, pn, line, autoText, autoCls, noteText){
     const ds = fmtDateForInput(d);
     return '<td class="'+dayCellCls(d)+'" data-date="'+ds+'">'
       + (autoText ? '<div class="autoLine '+autoCls+'">'+esc(autoText)+'</div>' : '')
-      + '<textarea class="dayInput" data-role="dayInput" data-pn="'+esc(pn)+'" data-line="'+line+'" data-date="'+ds+'"'
+      + '<textarea class="dayInput" data-role="dayInput" data-rid="'+esc(rid)+'" data-pn="'+esc(pn)+'" data-line="'+line+'" data-date="'+ds+'"'
       + ' placeholder="">'+esc(noteText||'')+'</textarea>'
       + '</td>';
   }
@@ -486,7 +512,7 @@
     const p = x.p, days = dayList();
     const due = parseDateStr(p.dueDate);
     const hasShikyu = !!(x.d.shikyu && x.d.shikyu.enabled);
-    let html = '<tr class="nouhinRow" data-pn="'+esc(p.productNo)+'" data-line="'+LINE_NOUHIN+'">';
+    let html = '<tr class="nouhinRow" data-rid="'+esc(p.recordId)+'" data-pn="'+esc(p.productNo)+'" data-line="'+LINE_NOUHIN+'">';
     html += '<td '+fx('orderNo')+'><span class="prodNo">'+esc(p.orderNo || '-')+'</span>'
       + (!p.orderNo ? '<span class="prodSub">社内No.未入力</span>' : '')
       + (hasShikyu ? '' : '<button type="button" class="miniBtn addShikyuBtn" data-role="addShikyu" title="この案件に支給行を追加します">＋支給</button>')
@@ -500,7 +526,7 @@
       // 納期の日にだけ自動表示する。品名が未入力でも「納品」と分かるように出す。
       const auto = (due && sameDay(due, d)) ? autoCellText(p, '納品') : '';
       const n = findNote(x.d, fmtDateForInput(d), LINE_NOUHIN);
-      html += dayCellHtml(d, p.productNo, LINE_NOUHIN, auto, 'nouhinAuto', n ? n.text : '');
+      html += dayCellHtml(d, p.recordId, p.productNo, LINE_NOUHIN, auto, 'nouhinAuto', n ? n.text : '');
     });
     html += '</tr>';
     return html;
@@ -509,7 +535,7 @@
   function shikyuRowHtml(x){
     const p = x.p, days = dayList();
     const sd = parseDateStr(x.d.shikyu.date);
-    let html = '<tr class="shikyuRow" data-pn="'+esc(p.productNo)+'" data-line="'+LINE_SHIKYU+'">';
+    let html = '<tr class="shikyuRow" data-rid="'+esc(p.recordId)+'" data-pn="'+esc(p.productNo)+'" data-line="'+LINE_SHIKYU+'">';
     html += '<td '+fx('orderNo')+'>'
       + '<span class="shikyuTag">支給</span>'
       + '<span class="shikyuDateWrap"><label>支給日</label>'
@@ -528,7 +554,7 @@
       // 支給日にだけ赤で自動表示する。文言は現場要望により「支給品」→「支給」。
       const auto = (sd && sameDay(sd, d)) ? autoCellText(p, '支給') : '';
       const n = findNote(x.d, fmtDateForInput(d), LINE_SHIKYU);
-      html += dayCellHtml(d, p.productNo, LINE_SHIKYU, auto, 'shikyuAuto', n ? n.text : '');
+      html += dayCellHtml(d, p.recordId, p.productNo, LINE_SHIKYU, auto, 'shikyuAuto', n ? n.text : '');
     });
     html += '</tr>';
     return html;
@@ -566,7 +592,7 @@
     const ws = fmtDateForInput(weekStart), we = fmtDateForInput(weekEndOf(weekStart));
     let nouhinThisWeek = 0, shikyuThisWeek = 0;
     allProducts.forEach(p=>{
-      const d = loadDetail(p.productNo);
+      const d = loadDetail(p);
       if(p.dueDate && p.dueDate >= ws && p.dueDate <= we) nouhinThisWeek++;
       if(d.shikyu.enabled && d.shikyu.date && d.shikyu.date >= ws && d.shikyu.date <= we) shikyuThisWeek++;
     });
@@ -600,38 +626,47 @@
     window.open('支給納品印刷_モック.html?week=' + encodeURIComponent(fmtDateForInput(weekStart)), '_blank');
   });
 
+  // 操作した行がどの案件かは data-rid（recordId）で決める。社内No.では決めない。
+  const rowRef = (el) => {
+    const tr = el && el.closest('tr[data-rid], tr[data-pn]');
+    if(!tr) return null;
+    return { productNo: tr.dataset.pn || '', recordId: tr.dataset.rid || '' };
+  };
+
   tableBody.addEventListener('click', (e)=>{
-    const tr = e.target.closest('tr[data-pn]');
-    if(!tr) return;
-    const pn = tr.dataset.pn;
+    const ref = rowRef(e.target);
+    if(!ref) return;
 
     if(e.target.closest('[data-role="addShikyu"]')){
-      const d = loadDetail(pn);
+      const d = loadDetail(ref);
       d.shikyu.enabled = true;                 // 支給日は空のまま。日付は利用者が入れる
-      saveDetail(pn, d);
+      saveDetail(ref, d);
       render();
-      const input = tableBody.querySelector('tr.shikyuRow[data-pn="'+CSS.escape(pn)+'"] [data-role="shikyuDate"]');
+      const sel = ref.recordId
+        ? 'tr.shikyuRow[data-rid="'+CSS.escape(ref.recordId)+'"] [data-role="shikyuDate"]'
+        : 'tr.shikyuRow[data-pn="'+CSS.escape(ref.productNo)+'"] [data-role="shikyuDate"]';
+      const input = tableBody.querySelector(sel);
       if(input){ input.focus(); try{ input.showPicker && input.showPicker(); }catch(err){} }
       return;
     }
     if(e.target.closest('[data-role="removeShikyu"]')){
       // ---- 支給行を閉じるだけ。支給日も自由入力も消さない（もう一度「＋支給」を押せばそのまま出る）----
       if(!window.confirm('この案件の支給行を閉じますか？\n\n支給日と入力した文章は消えません。もう一度「＋支給」を押すと元どおり出ます。')) return;
-      const d = loadDetail(pn);
+      const d = loadDetail(ref);
       d.shikyu.enabled = false;
-      saveDetail(pn, d);
+      saveDetail(ref, d);
       render();
       return;
     }
   });
 
   tableBody.addEventListener('change', (e)=>{
-    const tr = e.target.closest('tr[data-pn]');
-    if(!tr) return;
+    const ref = rowRef(e.target);
+    if(!ref) return;
     if(e.target.dataset.role === 'shikyuDate'){
-      const d = loadDetail(tr.dataset.pn);
+      const d = loadDetail(ref);
       d.shikyu.date = e.target.value || '';
-      saveDetail(tr.dataset.pn, d);
+      saveDetail(ref, d);
       render();
     }
   });
@@ -640,7 +675,8 @@
   tableBody.addEventListener('input', (e)=>{
     const ta = e.target.closest('[data-role="dayInput"]');
     if(!ta) return;
-    setNoteText(ta.dataset.pn, ta.dataset.date, ta.dataset.line, ta.value);
+    setNoteText({ productNo: ta.dataset.pn || '', recordId: ta.dataset.rid || '' },
+                ta.dataset.date, ta.dataset.line, ta.value);
   });
 
   // ---- 他のタブ・他の端末での変更を反映する（案件側の変更も、この画面の入力も対象） ----

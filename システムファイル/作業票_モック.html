@@ -722,11 +722,16 @@
   //   → 開いた時にカードが無かった場合だけ、従来どおり作業票側から新規作成する。
   // 削除の印（墓標）も新しい保存キーも作らない。この値はページを開いている間だけのメモリ上の判定。
   const hadOrderRecordAtLoad = (function(){
-    if(!urlProductNo) return false;
     try{
       const raw = localStorage.getItem(ORDER_RECORDS_KEY);
       const list = raw ? JSON.parse(raw) : [];
-      return Array.isArray(list) && list.some(r=> r && r.productNo === urlProductNo);
+      if(!Array.isArray(list)) return false;
+      // ★見るのは「いま開いている案件」があったかどうか。
+      //   社内No.で見ると、同じ社内No.の別の案件があるだけで「あった」ことになってしまう。
+      const rid = caseCtx && caseCtx.recordId;
+      if(rid) return list.some(r=> r && r.id === rid);
+      if(!urlProductNo) return false;
+      return list.some(r=> r && r.productNo === urlProductNo);
     }catch(e){ return false; }
   })();
 
@@ -747,7 +752,20 @@
       const raw = localStorage.getItem(ORDER_RECORDS_KEY);
       records = raw ? JSON.parse(raw) : [];
     }catch(e){ records = []; }
-    const idx = records.findIndex(r=>r.productNo === o.productNo);
+    // ---- どの案件へ書き戻すかは recordId で決める ----
+    // ★社内No.の先頭一致で探してはいけない。同じ社内No.の案件が2件あると、
+    //   いま開いている案件ではない方のカードを書き換えてしまう。
+    //   この画面が開いている案件は caseCtx が持っている（URLの recordId が正本）。
+    const idx = (function(){
+      const rid = caseCtx && caseCtx.recordId;
+      if(rid) return records.findIndex(r=> r && r.id === rid);
+      // recordId が無い旧い入口。社内No.で当たるものが1件だけなら、それは一意に決まる。
+      // 2件以上あるときは決められないので、どちらも書き換えない（先頭を選ばない）。
+      const hits = records.filter(r=> r && r.productNo === o.productNo);
+      if(hits.length === 1) return records.indexOf(hits[0]);
+      return hits.length > 1 ? -2 : -1;   // -2 ＝ 決められないので何もしない
+    })();
+    if(idx === -2) return;                // 同じ社内No.が複数。推測で書き換えない
     if(idx > -1){
       const r = records[idx];
       r.customer = o.customer;
