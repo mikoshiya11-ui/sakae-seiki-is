@@ -894,6 +894,100 @@
   const HOLD_PREFIX = 'sakaeLocal_pubhold_v1_';
   const HOLD_VERSION = 1;
 
+  // ============================================================
+  // 耐久 pending mutation（⑥-BLK-02 の是正）
+  //
+  // つながっていない間にこの端末で直した内容が、つないだ瞬間に共有の古い値で
+  // 上書きされて消えていた。原因は2つ。
+  //   ① 初回取り込みが「共有をローカルへ当てる」を先に行い、送るのは後だった
+  //   ② 送信に失敗しても、変更したという事実がどこにも残っていなかった
+  //     （pendingActions はメモリ上の実行予定で、失敗しても再読み込みでも消える）
+  //
+  // そこで、利用者がこの端末で同期対象キーを変えた時点で
+  //   base  … 変える直前にこの端末が持っていた値
+  //   local … いまこの端末が共有へ反映したい値
+  // を端末内に残す。これがあると、つないだときに
+  //   「この端末が変えたのか」「共有側が変わったのか」「両方変わったのか」
+  // を時計に頼らずに見分けられる。
+  //
+  // ★sakaeIS_ を付けない。付けると isSyncKey() が拾って共有へ配ってしまう。
+  //   これは製品データの正本ではなく、この端末だけの同期用メモである。
+  // ============================================================
+  const PENDING_PREFIX  = 'sakaeLocal_syncPending_v1_';
+  const CONFLICT_PREFIX = 'sakaeLocal_syncConflict_v1_';
+
+  // ---- 控えを取らないキー ----
+  // 「最終更新」の時刻表示だけに使う印。利用者が打った内容ではないので、
+  // 端末どうしで食い違っても失われて困るものが無い。
+  // ここを控えの対象にすると、両方の端末が触るたびに競合になってしまう。
+  const NO_PENDING_KEYS = { 'sakaeIS_lastUpdatedAt_v1': true };
+  function tracksPending(syncKey){
+    return !NO_PENDING_KEYS[syncKey] && !isTombKey(syncKey);
+  }
+
+  // キーの綴りは各画面で組み立てない。ここだけで作る。
+  function pendingKey(syncKey){ return PENDING_PREFIX + syncKey; }
+  function conflictKey(syncKey){ return CONFLICT_PREFIX + syncKey; }
+
+  function readPending(syncKey){
+    try{
+      const raw = localStorage.getItem(pendingKey(syncKey));
+      if(!raw) return null;
+      const p = JSON.parse(raw);
+      if(!p || typeof p !== 'object' || p.syncKey !== syncKey) return null;
+      return p;
+    }catch(e){ return null; }
+  }
+  function clearPending(syncKey){
+    try{ localStorage.removeItem(pendingKey(syncKey)); }catch(e){}
+  }
+
+  // 利用者がこの端末で変えたときだけ呼ぶ。共有から届いた分では呼ばない。
+  // 同じキーを何度直しても base は最初の1回だけ。local はいつも最新にする。
+  //   A → 圏外でB → さらにC   のとき   base=A / local=C
+  function notePending(syncKey, beforeValue, afterValue){
+    const now = readPending(syncKey);
+    const base = now ? now.base : beforeValue;
+    // 直した結果が元に戻ったのなら、変更は無かったのと同じ。控えを残さない。
+    if(base === afterValue){ clearPending(syncKey); return; }
+    const p = { version: 1, syncKey: syncKey, base: base, local: afterValue };
+    try{ localStorage.setItem(pendingKey(syncKey), JSON.stringify(p)); }catch(e){}
+  }
+
+  // 競合の記録。どちらのデータも消さないので、後から人が判断できるように3つとも残す。
+  function noteConflict(syncKey, base, local, remote){
+    const c = { version: 1, syncKey: syncKey, base: base, local: local, remote: remote,
+                detectedAt: new Date().toISOString() };   // 監査用。どちらが正しいかの判定には使わない
+    try{ localStorage.setItem(conflictKey(syncKey), JSON.stringify(c)); }catch(e){}
+    showConflictNotice();
+  }
+  function listConflicts(){
+    const out = [];
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(k && k.indexOf(CONFLICT_PREFIX) === 0) out.push(k.slice(CONFLICT_PREFIX.length));
+    }
+    return out;
+  }
+
+  // 競合を黙って抱え込まない。どの画面からでも同じ出方をするよう、同期層から出す。
+  // どちらを採用するかは今回作らない（勝手に決めない）。消していないことだけを伝える。
+  function showConflictNotice(){
+    try{
+      if(!document || !document.body) return;
+      if(document.getElementById('sakaeSyncConflictNotice')) return;
+      const d = document.createElement('div');
+      d.id = 'sakaeSyncConflictNotice';
+      d.setAttribute('role', 'alert');
+      d.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99999;'
+        + 'background:#c0392b;color:#fff;padding:10px 16px;font-size:14px;line-height:1.6;'
+        + 'font-family:"Hiragino Sans","Yu Gothic",sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.3);';
+      d.textContent = '同期の競合を検出しました。自動での上書きを止めています。'
+        + 'どちらのデータも削除していません。管理者へご連絡ください。';
+      document.body.appendChild(d);
+    }catch(e){}
+  }
+
   // 共有側に「その案件が既にある」と分かっている recordId。
   // 一度公開できたものを、hold が残っているという理由だけで共有から消さないために使う。
   const remoteKnownRecordIds = new Set();
@@ -1163,6 +1257,17 @@
     return { ok:true, 件数: results.length, results: results };
   }
 
+  // 同期の控え・競合を、試験と診断から見えるようにする（製品画面からは使わない）
+  window.sakaeSyncPending = {
+    PENDING_PREFIX: PENDING_PREFIX,
+    CONFLICT_PREFIX: CONFLICT_PREFIX,
+    pendingKey: pendingKey,
+    conflictKey: conflictKey,
+    getPending: readPending,
+    listConflicts: listConflicts,
+    flushPendingMutations: flushPendingMutations
+  };
+
   window.sakaeHold = {
     HOLD_PREFIX: HOLD_PREFIX,
     holdKey: holdKey,
@@ -1196,11 +1301,23 @@
   // ---- localStorageへの書き込み・削除を乗っ取り、対象キーならSupabaseにも送る ----
   // （確定解除・残品表の削除などlocalStorage.removeItem()を使う操作も、ここでフックしないと
   //   Supabase側に古い値が残り続け、他の人の画面や次回読み込み時に元の状態へ巻き戻ってしまうため必須）
+  const origGetItem = Storage.prototype.getItem;
+
   function installLocalStorageHook(){
     const origSetItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function(key, value){
+      // ★書き込む前に、この端末が持っていた値を控える（pending の base になる）。
+      //   書いたあとでは元の値が取れない。
+      let before = null;
+      const mine = (this === window.localStorage && isSyncKey(key) && !applyingRemoteUpdate);
+      if(mine && tracksPending(key)){
+        try{ before = origGetItem.call(this, key); }catch(e){ before = null; }
+      }
       origSetItem.apply(this, arguments);
-      if(this === window.localStorage && isSyncKey(key) && !applyingRemoteUpdate){
+      if(mine){
+        // 墓標・取消イベントは「起きた事実」であって後から書き換わらない。
+        // 既存の削除・取り消しの仕組みで確実に全員へ届くので、pending では扱わない。
+        if(tracksPending(key)) notePending(key, before, String(value));
         schedulePush(key, value);
       }
     };
@@ -1284,11 +1401,62 @@
         console.warn('[sakaeSync] push失敗:', key, error);
         return { ok:false, key: key, error: String((error && error.message) || error) };
       }
+      // ---- 送っただけでは控えを消さない ----
+      // 送信が通ったように見えても、共有側にその値が入ったとは限らない。
+      // 共有を読み直して、送りたかった値になっていることを確かめてからだけ控えを消す。
+      // 確かめられなければ控えを残す（次につないだ時にもう一度送る）。
+      await settlePendingAfterPush(key);
       return { ok:true, key: key };
     }catch(e){
       console.warn('[sakaeSync] push失敗:', key, e);
       return { ok:false, key: key, error: String((e && e.message) || e) };
     }
+  }
+
+  // つながっていない間に溜まった控えを、まとめて送り直す。
+  // 競合として止めてあるキーは触らない（勝手に片方を勝たせない）。
+  let flushingPending = false;
+  async function flushPendingMutations(){
+    if(flushingPending) return;
+    flushingPending = true;
+    try{
+      const keys = [];
+      for(let i=0;i<localStorage.length;i++){
+        const k = localStorage.key(i);
+        if(k && k.indexOf(PENDING_PREFIX) === 0) keys.push(k.slice(PENDING_PREFIX.length));
+      }
+      for(let i=0;i<keys.length;i++){
+        const sk = keys[i];
+        if(localStorage.getItem(conflictKey(sk))) continue;   // 競合中は触らない
+        const p = readPending(sk);
+        if(!p) continue;
+        const cur = localStorage.getItem(sk);
+        if(cur === null) continue;                            // 消えたキーはここでは扱わない
+        try{ await pushKey(sk, cur); }catch(e){}
+      }
+    }finally{ flushingPending = false; }
+  }
+
+  // 共有を読み直して、控えの内容が本当に共有へ入ったかを確かめる。
+  // 入っていれば控えを消す。入っていなければ何もしない（控えは残る）。
+  async function settlePendingAfterPush(key){
+    const p = readPending(key);
+    if(!p) return;
+    try{
+      const got = await readRemoteKeyExact([key]);
+      if(!got.ok) return;                       // 読めない＝確かめられない。控えは残す
+      const remote = got.values[key];
+      if(remote === null) return;               // 共有にまだ無い。控えは残す
+      // ★比べる相手は「控えを取った時点の値」ではなく「いまこの端末にある値」。
+      //   控えの値と比べると、送るときに中身が変わる場合（案件一覧は Publication Hold で
+      //   未公開の案件を伏せる。突き合わせで相手の変更が混ざることもある）に永久に一致せず、
+      //   控えが消えないまま base だけが古くなり、次の同期で誤って競合になる。
+      //   知りたいのは「この端末の内容が共有に入ったか」なので、いまの値で見るのが正しい。
+      const mine = localStorage.getItem(key);
+      if(mine === null) return;
+      const want = (key === RECORDS_KEY) ? publishableRecordsText(mine) : mine;
+      if(isSameJsonText(remote, want)) clearPending(key);
+    }catch(e){ /* 確かめられないときは控えを残す */ }
   }
 
   async function deleteKey(key){
@@ -1325,6 +1493,82 @@
   }
 
   // ---- Supabase側の値をlocalStorageへ反映する（自分のpushを誘発しないようフラグを立てる） ----
+  // ---- 共有から届いた値を当てる前に、この端末の未送信の変更と突き合わせる ----
+  // 控え（pending）が無ければ今までどおり。あるときは base / local / remote の3つで見る。
+  //   local == base            この端末は変えていない        → 共有を取り込む
+  //   remote == base           共有は変わっていない          → この端末の値を送る
+  //   remote == local          既に共有と同じ                → 控えを解く
+  //   3つとも違う              競合。どちらも捨てずに止める（fail-closed）
+  // 戻り値 true = 呼び出し側は共有の値を当ててよい。
+  function reconcileWithPending(key, remoteRaw){
+    const p = readPending(key);
+    if(!p) return true;                                   // 未送信の変更なし＝従来どおり
+    const local = localStorage.getItem(key);
+    if(isSameJsonText(remoteRaw, p.local) || remoteRaw === p.local){
+      clearPending(key);                                   // 共有に届いている
+      return true;
+    }
+    if(isSameJsonText(local, p.base) || local === p.base){
+      clearPending(key);                                   // この端末の変更は取り消されている
+      return true;
+    }
+    if(isSameJsonText(remoteRaw, p.base) || remoteRaw === p.base){
+      // 共有は変わっていない。この端末だけが変えた＝つながっていない間の変更。
+      // 共有の古い値を当てず、こちらの値を送る。送れたと確かめるまで控えは残す。
+      pushKey(key, p.local).catch(function(){});
+      return false;
+    }
+    // base / local / remote がどれも違う＝両側が変わっている。
+    // どちらかを勝たせると片方が黙って消えるので、当てない・送らない・控えも消さない。
+    noteConflict(key, p.base, local, remoteRaw);
+    return false;
+  }
+
+  // ---- 案件一覧の突き合わせは、案件（recordId）ごとに行う ----
+  // 端末Aが案件Aを、別の端末が案件Bを直しただけで一覧全体が競合になるのを避ける。
+  // 消えたかどうかは一覧の欠落では判断しない。削除の正本は墓標で、その規則は変えない。
+  // 戻り値：当てるべき一覧のテキスト。当ててはいけないときは null。
+  function reconcileRecordsWithPending(mergedRaw, remoteRaw){
+    const p = readPending(RECORDS_KEY);
+    if(!p) return mergedRaw;
+    const byId = (text) => {
+      const m = {};
+      parseRecordList(text).forEach(function(r){ if(r && r.id) m[r.id] = JSON.stringify(r); });
+      return m;
+    };
+    const base = byId(p.base), local = byId(localStorage.getItem(RECORDS_KEY)), remote = byId(remoteRaw);
+    const dead = activeTombRecordIds();
+    const conflicts = [];
+    const keep = {};      // この端末の内容を残す案件
+    Object.keys(local).forEach(function(id){
+      if(dead.has(id)) return;                       // 削除された案件は墓標の判断が優先
+      const b = base[id], l = local[id], rm = remote[id];
+      if(b === undefined) return;                    // この端末で作ったばかり＝従来の併合に任せる
+      if(l === b) return;                            // この端末は直していない
+      if(rm === undefined || rm === b){ keep[id] = l; return; }   // 共有は変わっていない→こちらを残す
+      if(rm === l) return;                           // 既に共有と同じ
+      conflicts.push(id);                            // 両方が同じ案件を別内容へ変えた
+    });
+    if(conflicts.length){
+      noteConflict(RECORDS_KEY, p.base, localStorage.getItem(RECORDS_KEY), remoteRaw);
+      return null;                                   // 当てない・送らない・控えも消さない
+    }
+    const keepIds = Object.keys(keep);
+    if(!keepIds.length){
+      // この端末だけの変更が残っていない＝控えの役目は終わり
+      if(isSameJsonText(remoteRaw, p.local) || isSameJsonText(localStorage.getItem(RECORDS_KEY), p.base)) clearPending(RECORDS_KEY);
+      return mergedRaw;
+    }
+    // 併合結果に、この端末で直した案件の内容を上書きして戻す
+    const list = parseRecordList(mergedRaw).map(function(r){
+      if(r && r.id && keep[r.id]){ try{ return JSON.parse(keep[r.id]); }catch(e){ return r; } }
+      return r;
+    });
+    const out = JSON.stringify(list);
+    pushKey(RECORDS_KEY, out).catch(function(){});
+    return out;
+  }
+
   function applyRemoteRow(row){
     if(!row || !row.key) return;
     applyingRemoteUpdate = true;
@@ -1346,6 +1590,12 @@
           parseRecordList(localStorage.getItem(RECORDS_KEY)),
           activeTombRecordIds());
         raw = JSON.stringify(merged.list);
+        // 案件一覧は1本の大きなキーなので、丸ごと比べると
+        // 「相手が別の案件を直しただけ」でも競合になってしまう。案件ごとに見る。
+        raw = reconcileRecordsWithPending(raw, JSON.stringify(row.value));
+        if(raw === null) return;
+      }else if(!reconcileWithPending(row.key, raw)){
+        return;
       }
       const cur = localStorage.getItem(row.key);
       if(cur === raw) return; // 変化が無ければ何もしない（余計な再描画を避ける）
@@ -1522,6 +1772,9 @@
       // 共有を読めないまま起動した場合に備えて、ときどき読み直して預かり分を送る。
       // 読めていれば何もしない（問い合わせも増えない）。
       setInterval(function(){
+        // つながっていない間に直した分を、利用者が何もしなくても送り直す。
+        // 送れたと確かめられるまで控えは消えないので、何度でもやり直せる。
+        flushPendingMutations().catch(function(){});
         if(remoteRecordsKnown && !recordsPushPending) return;
         ensureRemoteRecordsKnown().then(function(ok){ if(ok) return flushPendingRecordsPush(); })
           .catch(function(){});
