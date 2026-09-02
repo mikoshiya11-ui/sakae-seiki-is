@@ -833,6 +833,45 @@
     markUpdated();
   }
 
+  // ---- 受注に関する連絡書のフォームを通さずに案件を1件作るときの形 ----
+  // ★形をここ以外で新しく作らない。作業票データから補うときも、新規作成から作るときも同じ形にする。
+  //   別々に書いていると、どちらかにだけ項目が増えたときに案件によって形が違う状態になる。
+  function makeCaseRecord(o){
+    o = o || {};
+    return {
+      id: uid(),
+      productNo: o.productNo || '',
+      orderNo: o.orderNo || '',
+      customer: o.customer || '',
+      modelName: o.modelName || '',
+      itemName: o.itemName || '',
+      category: '型',
+      subject: '新作',
+      orderDate: o.orderDate || '',
+      dueDate: o.dueDate || '',
+      qty: o.qty || '',
+      amount: '',
+      manhour: '',
+      drafter: '',
+      note: o.note || '',
+      status: 'inprogress'
+    };
+  }
+
+  // ---- その案件が「本当に保存されたか」を、保存先から読み直して確かめる ----
+  // 画面上の配列に入れただけでは保存できたことにならない。
+  // 保存できていないまま recordId 付きのURLへ進むと、共通窓口が
+  // 「指定された案件が見つかりません」と判断して次の画面を止めてしまう。
+  // ★案件の無い recordId のURLを、製品が自分で作らないための確認。
+  function savedCaseExists(recordId){
+    if(!recordId) return false;
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) && list.some(function(r){ return r && r.id === recordId; });
+    }catch(e){ return false; }
+  }
+
   // ---- 「このパソコンのデータがいつ更新されたか」を画面に出す。
   // 出張先などで開いた時に、読み込みを忘れて古いデータのまま気づかない事故を防ぐため ----
   const LAST_UPDATED_KEY = 'sakaeIS_lastUpdatedAt_v1';
@@ -1706,21 +1745,45 @@
   // ---- 新規作成：実務では受注に関する連絡書より先に作業票から作ることが多いため、
   // ここでは社内No.（＝品番・全ページの紐付けキー）だけを確認して、すぐに作業票を新規品番で開く。
   // 受注に関する連絡書の詳しい項目は、作業票の上部の「受注に関する連絡書を開く」ボタンから後で入力する。 ----
+  //
+  // ★案件は「ここで」作る。作ってから作業票へ渡す。
+  //   以前はここで案件を作らず、社内No.だけを渡していた。そのため作業票側が保存のときに
+  //   自分で新しい recordId を採番していた。つまり案件の identity が下流で生まれていた。
+  //   同じ社内No.を使えるようにすると、作業票は社内No.から案件を決められなくなり、
+  //   この入口そのものが止まる。だから採番をこちら側へ移す。
+  //
+  //   ★順序を逆にしない。recordId を先にURLへ載せて後から案件を作ると、
+  //     作業票は「指定された案件が見つかりません」と判断してその場で止まる。
   async function startNewCase(){
     const input = window.prompt('新しい案件の社内No.を入力してください（後から変更できます）');
-    if(input == null) return; // キャンセル
+    if(input == null) return;            // キャンセル。案件は作らない
     const orderNo = input.trim();
     if(!orderNo){
       alert('社内No.を入力してください。');
-      return;
+      return;                            // 必須の入力が無い。案件は作らない
     }
     const dupRec = records.find(r=> r.orderNo === orderNo);
     if(dupRec){
       alert('社内No.「'+orderNo+'」は既に別の案件（'+(dupRec.modelName||dupRec.itemName||'名称未設定')+'）で使われています。別の番号にしてください。');
+      return;                            // 重複で断った。案件は作らない
+    }
+    // ---- ここまで通ったときだけ案件を作る ----
+    const rec = makeCaseRecord({ productNo: orderNo, orderNo: orderNo });
+    records.unshift(rec);
+    saveRecords();
+    // ---- 保存が成立したことを確かめてからでないと先へ進まない ----
+    if(!savedCaseExists(rec.id)){
+      // 中途半端な状態を残さない。画面上の配列からも取り消して、遷移もしない。
+      records = records.filter(function(r){ return !r || r.id !== rec.id; });
+      alert('新しい案件を保存できませんでした。もう一度お試しください。');
       return;
     }
+    render();
     if(window.sakaeSyncFlush){ try{ await window.sakaeSyncFlush(); }catch(e){} }
-    location.href = 'システムファイル/作業票_モック.html?productNo='+encodeURIComponent(orderNo)+'&orderNo='+encodeURIComponent(orderNo);
+    // 案件の識別は recordId が正本。社内No.は表示・帳票・旧URL互換のために添える。
+    location.href = 'システムファイル/作業票_モック.html?'
+      + window.sakaeCase.query({ productNo: rec.productNo, recordId: rec.id })
+      + '&orderNo=' + encodeURIComponent(rec.orderNo);
   }
 
   document.getElementById('newBtn').addEventListener('click', startNewCase);
@@ -2202,12 +2265,12 @@
         alert('品番「'+productNo+'」の案件が見つかりませんでした。');
         return;
       }
-      rec = {
-        id: uid(), productNo: productNo, orderNo: bs.order.orderNo||'', customer: bs.order.customer||'',
-        modelName: bs.order.model||'', itemName: bs.order.itemName||'', category:'型', subject:'新作',
+      rec = makeCaseRecord({
+        productNo: productNo, orderNo: bs.order.orderNo||'', customer: bs.order.customer||'',
+        modelName: bs.order.model||'', itemName: bs.order.itemName||'',
         orderDate: bs.order.orderDate||'', dueDate: bs.order.dueDate||'', qty: bs.order.qty||'',
-        amount:'', manhour:'', drafter:'', note:'作業票から自動作成', status:'inprogress'
-      };
+        note: '作業票から自動作成'
+      });
       records.unshift(rec);
       saveRecords();
       render();
@@ -2218,15 +2281,17 @@
 
   // ---- 別タブ（作業票・受注に関する連絡書）での品番データの変更を、TOP画面のカード表示にも
   // 即座に反映する（受注連絡書一覧データ自体の変更は既存のstorageリスナーで対応済み）----
+  // 戻り値：この中でカードを描き直したか。
+  //   呼び出し側は、描き直していないときだけ自分で描き直す（1イベントにつき1回だけ描く）。
   function syncRecordFromBuhinOrder(o){
-    if(!o || !o.productNo) return;
+    if(!o || !o.productNo) return false;
     const idx = records.findIndex(r=>r.productNo === o.productNo);
     if(idx > -1){
       const r = records[idx];
       const changed = r.customer!==(o.customer||'') || r.modelName!==(o.model||'') || r.dueDate!==(o.dueDate||'')
         || r.orderDate!==(o.orderDate||'') || r.orderNo!==(o.orderNo||'')
         || r.itemName!==(o.itemName||'') || r.qty!==(o.qty||'');
-      if(!changed) return;
+      if(!changed) return false;   // records は直さなくてよい（描き直すかは呼び出し側が決める）
       r.customer = o.customer||''; r.modelName = o.model||''; r.dueDate = o.dueDate||'';
       r.orderDate = o.orderDate||''; r.orderNo = o.orderNo||'';
       r.itemName = o.itemName||''; r.qty = o.qty||'';
@@ -2238,16 +2303,67 @@
       // （利用者は何も操作していないのに、この画面を開いているだけで復活していた）。
       // 案件の新規登録は「＋ 新規作成」から行う。作業票を先に作る運用は、作業票側が
       // 案件カードの有無を見て判断する（作業票_モック.html の syncToOrderRecords）。 ----
-      return;
+      return false;
     }
     saveRecords();
     render();
+    return true;
   }
+  // ---- 案件一覧が競合している間かどうかを、共通の窓口に聞く ----
+  // ★キーの綴りを自分で解析しない。競合の持ち方が変わってもこの画面を直さずに済むようにする。
+  //   確かめられないときは「競合していないだろう」と推測せず、反映を見送る（安全側）。
+  function recordsConflictBlocked(){
+    let reason = '';
+    try{
+      const R = window.sakaeSyncResolver;
+      const K = window.sakaeKeys;
+      if(!R || typeof R.listConflicts !== 'function' || !K || !K.RECORDS_KEY){
+        reason = '競合状態を聞く窓口が無い';
+      }else{
+        const list = R.listConflicts();   // 同期で配列が返る
+        if(!Array.isArray(list)) reason = '競合状態の形が想定と違う';
+        else return list.indexOf(K.RECORDS_KEY) >= 0;
+      }
+    }catch(err){
+      reason = '確認中に例外: ' + String((err && err.message) || err);
+    }
+    console.warn('[受注に関する連絡書一覧] ' + reason + 'ため、'
+      + '作業票データから案件一覧への反映を見送りました。画面を読み込み直すと最新になります。');
+    return true;
+  }
+
+  // ---- 作業票データが変わったら、カードを描き直す ----
+  //
+  // 役割の分け方（ここが要点）
+  //   案件一覧（sakaeIS_records_v1）  … 案件データの正本
+  //   作業票データ                    … カードの表示を作るための材料のひとつ
+  //   この listener                   … 表示を描き直す契機
+  //
+  // ★この listener から案件一覧を書き戻さない。
+  //   以前はここで作業票データの中身を案件一覧へ写していた。しかしこの書込みは
+  //   「共有から届いた変更を当てている最中」に走るため、同期層からは
+  //   「この端末が変えた」と見なされない。控えにも残らず共有へも送られないまま、
+  //   その端末の案件一覧だけが静かに共有とずれる。
+  //   ずれた内容はあとで圏外編集の控えの土台になり、本来関係のない案件まで
+  //   競合と判定される原因になっていた。
+  //   案件一覧の更新は、案件一覧そのもののキーが同期される正式な経路と、
+  //   作業票の画面自身の書き戻し（作業票_モック.html の syncToOrderRecords）に任せる。
+  //
+  // ★キーの綴りをこの画面で判定しない。共通窓口に「作業票データのキーか」を聞く。
+  //   ここは v1 の綴り（sakaeIS_buhinhyoMock_v1_）だけを見ていたため、
+  //   recordId ベース（_rid_）へ移った案件では描き直す契機が無かった。
+  //   isProductKey() は v1 と rid の両方を見る（NC日程表・実績入力も同じ窓口）。
   window.addEventListener('storage', (e)=>{
-    if(!e.key || e.key.indexOf(SK.productKeyPrefix('buhinhyo'))!==0 || e.newValue == null) return;
+    if(!e.key || !SK.isProductKey('buhinhyo', e.key) || e.newValue == null) return;
+    // ---- 案件一覧が競合している間は、描き直しもしない ----
+    //   カードは下の mergedRecForForm() で作業票データ側の値を優先して描くので、
+    //   描き直すだけでも案件一覧の表示が競合の囲いを先に越えてしまう。
+    //   競合が解けたあとは、同期層の解決処理が最新を取り直して回復させる。
+    if(recordsConflictBlocked()) return;
     let bs;
     try{ bs = JSON.parse(e.newValue); }catch(err){ return; }
-    if(bs && bs.order) syncRecordFromBuhinOrder(bs.order);
+    if(!bs || !bs.order) return;
+    render();
   });
 
   // ---- パスワード変更（本人が自分のログインパスワードを変更する）----
