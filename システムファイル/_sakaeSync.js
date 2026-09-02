@@ -954,12 +954,110 @@
     try{ localStorage.setItem(pendingKey(syncKey), JSON.stringify(p)); }catch(e){}
   }
 
-  // 競合の記録。どちらのデータも消さないので、後から人が判断できるように3つとも残す。
-  function noteConflict(syncKey, base, local, remote){
-    const c = { version: 1, syncKey: syncKey, base: base, local: local, remote: remote,
+  // ---- 競合の記録 ----
+  // どちらのデータも消さないので、後から人が判断できるように base / local / remote を3つとも残す。
+  // ★案件一覧は1本の大きなキーなので「どの案件が競合したのか」も一緒に残す。
+  //   これが無いと、人が3つの案件一覧を手で見比べないと対象が分からない。
+  const CONFLICT_VERSION = 2;
+  // 解消の途中かどうか。途中は控えを resolver 以外に触らせない。
+  let resolvingNow = false;
+
+  // キーの種類。文字列は組み立てず、必ずキー表から引く。
+  function conflictDataTypeOf(syncKey){
+    if(syncKey === RECORDS_KEY) return 'records';
+    const K = window.sakaeKeys;
+    const types = (K && K.PRODUCT_KEY_TYPES) || [];
+    for(let i=0;i<types.length;i++){
+      if(syncKey.indexOf(K.v2KeyPrefix(types[i])) === 0) return types[i];
+      if(syncKey.indexOf(K.v1KeyPrefix(types[i])) === 0) return types[i];
+    }
+    return '';
+  }
+  // 画面には社内No.も出す（人が案件を見分けるのは社内No.なので）。識別そのものは recordId で行う。
+  function productNoOfRecordId(recordId){
+    if(!recordId) return '';
+    const list = parseRecordList(localStorage.getItem(RECORDS_KEY));
+    for(let i=0;i<list.length;i++){ if(list[i] && list[i].id === recordId) return String(list[i].productNo || ''); }
+    return '';
+  }
+  // 案件一覧のテキストから、1件ぶんだけ取り出す／差し替える
+  function recordEntryText(listText, recordId){
+    const list = parseRecordList(listText);
+    for(let i=0;i<list.length;i++){ if(list[i] && list[i].id === recordId) return JSON.stringify(list[i]); }
+    return null;
+  }
+  function replaceRecordEntry(listText, recordId, entryText){
+    const list = parseRecordList(listText);
+    let hit = false;
+    const out = list.map(function(r){
+      if(r && r.id === recordId){ hit = true; try{ return JSON.parse(entryText); }catch(e){ return r; } }
+      return r;
+    });
+    if(!hit && entryText){ try{ out.push(JSON.parse(entryText)); }catch(e){} }
+    return JSON.stringify(out);
+  }
+  // 「両側が同じ案件を別内容へ変えた」ものだけを拾う。突き合わせの規則は reconcile と同じ。
+  function conflictingRecordIds(baseText, localText, remoteText){
+    const byId = function(t){
+      const m = {};
+      parseRecordList(t).forEach(function(r){ if(r && r.id) m[r.id] = JSON.stringify(r); });
+      return m;
+    };
+    const b = byId(baseText), l = byId(localText), rm = byId(remoteText);
+    const out = [];
+    Object.keys(l).forEach(function(id){
+      if(b[id] === undefined) return;
+      if(l[id] === b[id]) return;
+      if(rm[id] === undefined || rm[id] === b[id]) return;
+      if(rm[id] === l[id]) return;
+      out.push(id);
+    });
+    return out;
+  }
+  function buildConflictEntries(syncKey, base, local, remote, recordIds){
+    const type = conflictDataTypeOf(syncKey);
+    if(syncKey !== RECORDS_KEY){
+      const rid = (window.sakaeKeys && window.sakaeKeys.recordIdOfKey(syncKey)) || '';
+      return [{ recordId: rid, productNo: productNoOfRecordId(rid), dataType: type,
+                base: base, local: local, remote: remote }];
+    }
+    const ids = (recordIds && recordIds.length) ? recordIds : conflictingRecordIds(base, local, remote);
+    return ids.map(function(id){
+      return { recordId: id, productNo: productNoOfRecordId(id), dataType: type,
+               base: recordEntryText(base, id),
+               local: recordEntryText(local, id),
+               remote: recordEntryText(remote, id) };
+    });
+  }
+  function noteConflict(syncKey, base, local, remote, recordIds){
+    const c = { version: CONFLICT_VERSION, syncKey: syncKey,
+                dataType: conflictDataTypeOf(syncKey),
+                recordId: (syncKey === RECORDS_KEY) ? '' : ((window.sakaeKeys && window.sakaeKeys.recordIdOfKey(syncKey)) || ''),
+                base: base, local: local, remote: remote,
+                conflicts: buildConflictEntries(syncKey, base, local, remote, recordIds),
                 detectedAt: new Date().toISOString() };   // 監査用。どちらが正しいかの判定には使わない
     try{ localStorage.setItem(conflictKey(syncKey), JSON.stringify(c)); }catch(e){}
-    showConflictNotice();
+    refreshConflictNotice();
+  }
+  function writeConflict(c){
+    try{ localStorage.setItem(conflictKey(c.syncKey), JSON.stringify(c)); }catch(e){}
+  }
+  function clearConflict(syncKey){
+    try{ localStorage.removeItem(conflictKey(syncKey)); }catch(e){}
+  }
+  function readConflict(syncKey){
+    try{
+      const raw = localStorage.getItem(conflictKey(syncKey));
+      if(!raw) return null;
+      const c = JSON.parse(raw);
+      if(!c || typeof c !== 'object' || c.syncKey !== syncKey) return null;
+      // 旧版（version 1）の記録には案件の内訳が無い。読むときに組み立てて補う。
+      if(!Array.isArray(c.conflicts) || !c.conflicts.length){
+        c.dataType = c.dataType || conflictDataTypeOf(syncKey);
+        c.conflicts = buildConflictEntries(syncKey, c.base, c.local, c.remote, null);
+      }
+      return c;
+    }catch(e){ return null; }
   }
   function listConflicts(){
     const out = [];
@@ -969,23 +1067,498 @@
     }
     return out;
   }
+  // 中身が同じかを、null も含めて安全に見る
+  function sameText(a, b){
+    if(a === b) return true;
+    if(a === null || a === undefined || b === null || b === undefined) return false;
+    return isSameJsonText(a, b);
+  }
 
-  // 競合を黙って抱え込まない。どの画面からでも同じ出方をするよう、同期層から出す。
-  // どちらを採用するかは今回作らない（勝手に決めない）。消していないことだけを伝える。
-  function showConflictNotice(){
+  // ============================================================
+  // 解決監査記録（resolved-conflict audit）
+  //
+  // active な競合記録は解決が成立してから消すが、消す前に必ずここへ残す。
+  // 「消して無かったことにする」をさせないための土台なので、
+  // 記録が書けなかったときは競合を消さない。
+  //
+  // ★sakaeIS_ を付けない。この端末だけの記録で、共有はしない。
+  // ============================================================
+  const RESOLVED_PREFIX = 'sakaeLocal_syncResolved_v1_';
+  function newResolutionId(){
+    return 'res_' + Math.random().toString(36).slice(2,9) + Math.random().toString(36).slice(2,6);
+  }
+  function writeResolutionAudit(entry){
     try{
-      if(!document || !document.body) return;
-      if(document.getElementById('sakaeSyncConflictNotice')) return;
+      localStorage.setItem(RESOLVED_PREFIX + entry.resolutionId, JSON.stringify(entry));
+      return !!localStorage.getItem(RESOLVED_PREFIX + entry.resolutionId);
+    }catch(e){ return false; }
+  }
+  function listResolutions(){
+    const out = [];
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(!k || k.indexOf(RESOLVED_PREFIX) !== 0) continue;
+      try{ const e = JSON.parse(localStorage.getItem(k)); if(e) out.push(e); }catch(e){}
+    }
+    return out;
+  }
+
+  // ============================================================
+  // 競合の解消（resolver）
+  //
+  // どちらを採用するかは必ず人が選ぶ。時計では決めない。自動でも決めない。
+  // 途中で1つでも確かめられなければ、解決済みにしない・控えも競合も消さない。
+  // ============================================================
+  function resolverStop(syncKey, stage, reason){
+    return { ok:false, resolved:false, syncKey: syncKey, stage: stage, reason: reason,
+             message: '競合はまだ解消されていません。' + reason };
+  }
+  // 画面に出したあとで共有側が動いていたら、記録を最新にしてから止める（古い前提で決めない）
+  function refreshConflictFromRemote(c, remoteNow){
+    const ids = (c.syncKey === RECORDS_KEY) ? (c.conflicts || []).map(function(e){ return e.recordId; }) : null;
+    noteConflict(c.syncKey, c.base, localStorage.getItem(c.syncKey), remoteNow, ids);
+  }
+  // 共有から届いた値として local へ当てる（この端末の書き込みとして送り返さない）
+  function applyLocalValue(key, raw){
+    applyingRemoteUpdate = true;
+    try{
+      localStorage.setItem(key, raw);
+      try{
+        window.dispatchEvent(new StorageEvent('storage', { key: key, newValue: raw, storageArea: localStorage }));
+      }catch(e){
+        const ev = document.createEvent('Event');
+        ev.initEvent('storage', false, false);
+        ev.key = key; ev.newValue = raw; ev.storageArea = localStorage;
+        window.dispatchEvent(ev);
+      }
+    }finally{ applyingRemoteUpdate = false; }
+  }
+  // 控えを「対象の案件ぶんだけ」進める。
+  // ★案件一覧の控えを丸ごと消してはいけない。消すと、他の案件の未送信の変更を
+  //   守るものが無くなり、次の同期で共有の古い値に上書きされて消える。
+  function settlePendingForResolution(syncKey, recordId, adoptedEntry){
+    if(syncKey !== RECORDS_KEY){ clearPending(syncKey); return; }
+    const p = readPending(RECORDS_KEY);
+    if(!p) return;
+    p.base  = replaceRecordEntry(p.base, recordId, adoptedEntry);
+    p.local = localStorage.getItem(RECORDS_KEY);
+    if(sameText(p.base, p.local)){ clearPending(RECORDS_KEY); return; }
+    try{ localStorage.setItem(pendingKey(RECORDS_KEY), JSON.stringify(p)); }catch(e){}
+  }
+  // 解決したあと、共有の最新をもう一度取り込む。
+  // 競合で止めていたあいだに他の案件が更新されていれば、ここで入ってくる（NT-K の復帰）。
+  async function resyncAfterResolution(syncKey){
+    try{
+      const got = await readRemoteKeyExact([syncKey]);
+      if(!got.ok) return;
+      const raw = got.values[syncKey];
+      if(raw === null || raw === undefined) return;
+      applyRemoteRow({ key: syncKey, value: JSON.parse(raw) }, { force: true });
+    }catch(e){}
+  }
+  async function currentUserId(){
+    try{
+      const r = await sb.auth.getUser();
+      return (r && r.data && r.data.user) ? r.data.user.id : '';
+    }catch(e){ return ''; }
+  }
+
+  // 解消の入口。二重に走らせない。成立したときだけ再同期する。
+  async function resolveConflict(syncKey, adopt, options){
+    if(resolvingNow) return resolverStop(syncKey, '実行中', 'ほかの解消処理が動いています。終わってからもう一度お試しください。');
+    resolvingNow = true;
+    let r;
+    try{ r = await resolveConflictCore(syncKey, adopt, options); }
+    catch(e){ r = resolverStop(syncKey, '例外', String((e && e.message) || e)); }
+    finally{ resolvingNow = false; }
+    if(r && r.ok){
+      // ⑪ 再同期。競合で止めていたあいだの別案件の更新は、ここで入ってくる。
+      await resyncAfterResolution(syncKey);
+      try{ await flushPendingMutations(); }catch(e){}
+    }
+    refreshConflictNotice();
+    return r;
+  }
+
+  async function resolveConflictCore(syncKey, adopt, options){
+    const opt = options || {};
+    if(adopt !== 'LOCAL' && adopt !== 'REMOTE'){
+      return resolverStop(syncKey, '引数', 'どちらを採用するか（LOCAL / REMOTE）が指定されていません。');
+    }
+    const who = String(opt['判断者'] || '').trim();
+    if(!who) return resolverStop(syncKey, '判断者', '判断した人の名前が入っていません。');
+
+    const c = readConflict(syncKey);
+    if(!c) return resolverStop(syncKey, '競合', 'この競合は記録にありません。');
+
+    const isRecords = (syncKey === RECORDS_KEY);
+    let recordId = String(opt.recordId || '');
+    let entry = null;
+    if(isRecords){
+      if(!recordId) return resolverStop(syncKey, '対象', 'どの案件を解決するのかが指定されていません。');
+      entry = (c.conflicts || []).filter(function(e){ return e.recordId === recordId; })[0] || null;
+      if(!entry) return resolverStop(syncKey, '対象', 'その案件はこの競合に含まれていません。');
+    }else{
+      recordId = (window.sakaeKeys && window.sakaeKeys.recordIdOfKey(syncKey)) || recordId;
+      entry = (c.conflicts || [])[0] || { base: c.base, local: c.local, remote: c.remote };
+    }
+
+    // ① 共有の最新を読み直す
+    const got = await readRemoteKeyExact([syncKey]);
+    if(!got.ok) return resolverStop(syncKey, '共有読込', '共有を読めませんでした（' + got.error + '）。');
+    const remoteNow = got.values[syncKey];
+
+    // ② 画面に出したときの共有側と、いまの共有側が同じか確かめる。
+    //    ★案件一覧は「対象の案件の中身」だけで比べる。
+    //      別の案件が動いただけで解決を止めると、いつまでも解決できなくなる。
+    // ★人が画面で見た共有側の値を基準にする。
+    //   記録だけを基準にすると、見ている最中に記録が更新された場合に
+    //   「人が見ていない値」で決めたことになってしまう。
+    const shownRemote = (opt.seenRemote !== undefined)
+      ? opt.seenRemote
+      : (isRecords ? entry.remote : c.remote);
+    const nowRemote   = isRecords ? recordEntryText(remoteNow, recordId) : remoteNow;
+    if(!sameText(shownRemote, nowRemote)){
+      refreshConflictFromRemote(c, remoteNow);
+      return resolverStop(syncKey, '再確認',
+        '確認している間に共有側がさらに変わりました。もう一度内容を見てから選び直してください。');
+    }
+
+    let adoptedWhole = null;    // 共有・端末で「合意した」全体の値
+    let adoptedEntry = null;    // 対象の案件ぶん（案件一覧のとき）
+    let remoteCheck = '';
+
+    if(adopt === 'LOCAL'){
+      // ③ 採用値を組む
+      if(isRecords){
+        adoptedEntry = recordEntryText(localStorage.getItem(RECORDS_KEY), recordId);
+        if(adoptedEntry === null) return resolverStop(syncKey, '採用値', 'この端末にその案件がありません。');
+        // ★共有の最新を土台にして、対象の案件だけこの端末の内容を載せる。
+        //   他の案件は共有の最新のまま＝無関係な案件を巻き込まない。
+        adoptedWhole = replaceRecordEntry(remoteNow, recordId, adoptedEntry);
+      }else{
+        adoptedWhole = localStorage.getItem(syncKey);
+        if(adoptedWhole === null) return resolverStop(syncKey, '採用値', 'この端末にそのデータがありません。');
+        adoptedEntry = adoptedWhole;
+      }
+      // ④ 送る
+      const pushed = await pushKey(syncKey, adoptedWhole);
+      if(!pushed || !pushed.ok){
+        return resolverStop(syncKey, '送信', '共有へ送れませんでした（' + ((pushed && pushed.error) || '') + '）。');
+      }
+      // ⑤ 共有から読み戻す
+      const back = await readRemoteKeyExact([syncKey]);
+      if(!back.ok) return resolverStop(syncKey, '読み戻し', '共有を読み直せませんでした（' + back.error + '）。');
+      const gotBack = back.values[syncKey];
+      // ⑥ 共有が採用値になっているか
+      const gotEntry = isRecords ? recordEntryText(gotBack, recordId) : gotBack;
+      if(!sameText(gotEntry, adoptedEntry)){
+        return resolverStop(syncKey, '照合', '共有の内容が採用値と一致しません。');
+      }
+      remoteCheck = '一致';
+      // ⑦ この端末の内容が変わっていないか
+      const localNow = isRecords ? recordEntryText(localStorage.getItem(RECORDS_KEY), recordId)
+                                 : localStorage.getItem(syncKey);
+      if(!sameText(localNow, adoptedEntry)){
+        return resolverStop(syncKey, 'ローカル照合', '確認している間にこの端末の内容が変わりました。');
+      }
+    }else{
+      // ③ 共有側の値を採用する。共有へは書かない。
+      adoptedEntry = isRecords ? recordEntryText(remoteNow, recordId) : remoteNow;
+      if(adoptedEntry === null || adoptedEntry === undefined){
+        return resolverStop(syncKey, '採用値', '共有側にそのデータがありません。');
+      }
+      // この端末へ当てる。★対象の案件だけ。他の案件は触らない。
+      adoptedWhole = isRecords
+        ? replaceRecordEntry(localStorage.getItem(RECORDS_KEY), recordId, adoptedEntry)
+        : adoptedEntry;
+      applyLocalValue(syncKey, adoptedWhole);
+      // ④ 当たったか確かめる
+      const localNow = isRecords ? recordEntryText(localStorage.getItem(RECORDS_KEY), recordId)
+                                 : localStorage.getItem(syncKey);
+      if(!sameText(localNow, adoptedEntry)){
+        return resolverStop(syncKey, 'ローカル照合', 'この端末へ共有の内容を反映できませんでした。');
+      }
+      remoteCheck = '共有へは書いていない';
+    }
+
+    // ⑧ 控えを対象ぶんだけ進める
+    settlePendingForResolution(syncKey, recordId, adoptedEntry);
+
+    // ⑨ 監査記録。★これが残せないなら競合は消さない。
+    const audit = {
+      version: 1,
+      resolutionId: newResolutionId(),
+      syncKey: syncKey,
+      dataType: c.dataType || conflictDataTypeOf(syncKey),
+      recordId: recordId,
+      productNo: productNoOfRecordId(recordId),
+      base: entry.base, local: entry.local, remote: entry.remote,
+      '採用': adopt,
+      '採用値': adoptedEntry,
+      '判断者': who,
+      '判断者ID': await currentUserId(),
+      'remote照合': remoteCheck,
+      '結果': 'RESOLVED',
+      at: new Date().toISOString()   // 監査用。値の正しさの判定には使わない
+    };
+    if(!writeResolutionAudit(audit)){
+      return resolverStop(syncKey, '監査', '解決の記録を残せませんでした。競合は消していません。');
+    }
+
+    // ⑩ active な競合を解く。ほかの案件がまだ競合していれば残す。
+    const rest = (c.conflicts || []).filter(function(e){ return e.recordId !== recordId; });
+    if(isRecords && rest.length){
+      c.conflicts = rest;
+      c.local = localStorage.getItem(syncKey);
+      c.remote = remoteNow;
+      writeConflict(c);
+    }else{
+      clearConflict(syncKey);
+    }
+
+    return { ok:true, resolved:true, syncKey: syncKey, recordId: recordId,
+             resolutionId: audit.resolutionId, '採用': adopt,
+             '残りの競合': rest.length, message: '競合を解消しました。' };
+  }
+
+  // ============================================================
+  // 競合バナーと解消画面
+  //
+  // 競合を黙って抱え込まない。どの画面からでも同じ出方をするよう、同期層から出す。
+  // 画面も同期層が作る。業務画面ごとには置かない。
+  // ============================================================
+  const RESOLVER_UI_ID = 'sakaeSyncResolverUI';
+  let resolverSelection = null;   // { syncKey, recordId }
+
+  function allConflictEntries(){
+    const out = [];
+    listConflicts().forEach(function(sk){
+      const c = readConflict(sk);
+      if(!c) return;
+      (c.conflicts || []).forEach(function(e){
+        out.push({ syncKey: sk, dataType: c.dataType || '', recordId: e.recordId || '',
+                   productNo: e.productNo || productNoOfRecordId(e.recordId),
+                   local: e.local, remote: e.remote });
+      });
+    });
+    return out;
+  }
+
+  function refreshConflictNotice(){
+    try{
+      if(typeof document === 'undefined' || !document || !document.body) return;
+      const keys = listConflicts();
+      const cur = document.getElementById('sakaeSyncConflictNotice');
+      if(!keys.length){
+        if(cur && cur.parentNode) cur.parentNode.removeChild(cur);
+        closeResolverUI();
+        return;
+      }
+      const n = allConflictEntries().length;
+      const text = '同期の競合を検出しました（' + n + '件）。自動での上書きを止めています。'
+        + 'どちらのデータも削除していません。内容を確認して、どちらを採用するか選んでください。';
+      if(cur){
+        const label = cur.querySelector('[data-sakae="conflictText"]');
+        if(label) label.textContent = text;
+        renderResolverUI();
+        return;
+      }
       const d = document.createElement('div');
       d.id = 'sakaeSyncConflictNotice';
       d.setAttribute('role', 'alert');
       d.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99999;'
         + 'background:#c0392b;color:#fff;padding:10px 16px;font-size:14px;line-height:1.6;'
         + 'font-family:"Hiragino Sans","Yu Gothic",sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.3);';
-      d.textContent = '同期の競合を検出しました。自動での上書きを止めています。'
-        + 'どちらのデータも削除していません。管理者へご連絡ください。';
+      const span = document.createElement('span');
+      span.setAttribute('data-sakae', 'conflictText');
+      span.textContent = text;
+      const btn = document.createElement('button');
+      btn.id = 'sakaeSyncConflictOpen';
+      btn.type = 'button';
+      btn.textContent = '競合内容を確認';
+      btn.style.cssText = 'margin-left:12px;padding:4px 12px;font-size:13px;cursor:pointer;'
+        + 'background:#fff;color:#c0392b;border:1px solid #fff;border-radius:4px;';
+      btn.addEventListener('click', function(){ openResolverUI(); });
+      d.appendChild(span); d.appendChild(btn);
       document.body.appendChild(d);
     }catch(e){}
+  }
+  // 既存の呼び出し名をそのまま残す
+  function showConflictNotice(){ refreshConflictNotice(); }
+
+  function closeResolverUI(){
+    try{
+      const el = document.getElementById(RESOLVER_UI_ID);
+      if(el && el.parentNode) el.parentNode.removeChild(el);
+    }catch(e){}
+  }
+  function openResolverUI(){
+    try{
+      if(typeof document === 'undefined' || !document || !document.body) return null;
+      if(document.getElementById(RESOLVER_UI_ID)){ renderResolverUI(); return document.getElementById(RESOLVER_UI_ID); }
+      const root = document.createElement('div');
+      root.id = RESOLVER_UI_ID;
+      root.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.45);'
+        + 'display:flex;align-items:center;justify-content:center;'
+        + 'font-family:"Hiragino Sans","Yu Gothic",sans-serif;';
+      const box = document.createElement('div');
+      box.setAttribute('data-sakae', 'resolverBox');
+      box.style.cssText = 'background:#fff;color:#222;width:min(960px,94vw);max-height:88vh;overflow:auto;'
+        + 'border-radius:8px;padding:18px 20px;font-size:13px;line-height:1.7;';
+      root.appendChild(box);
+      document.body.appendChild(root);
+      renderResolverUI();
+      return root;
+    }catch(e){ return null; }
+  }
+  function prettyJson(text){
+    if(text === null || text === undefined) return '（ありません）';
+    try{ return JSON.stringify(JSON.parse(text), null, 2); }catch(e){ return String(text); }
+  }
+  function renderResolverUI(){
+    const root = document.getElementById(RESOLVER_UI_ID);
+    if(!root) return;
+    const box = root.querySelector('[data-sakae="resolverBox"]');
+    if(!box) return;
+    const list = allConflictEntries();
+    while(box.firstChild) box.removeChild(box.firstChild);
+
+    const h = document.createElement('div');
+    h.textContent = '同期の競合';
+    h.style.cssText = 'font-size:17px;font-weight:700;margin-bottom:4px;';
+    box.appendChild(h);
+    const lead = document.createElement('div');
+    lead.textContent = 'どちらのデータも消していません。内容を見比べて、どちらを採用するかを人が選んでください。'
+      + '別の値にしたいときは、いったん閉じて通常の画面で直してから「この端末の内容を採用」を押してください。';
+    lead.style.cssText = 'color:#555;margin-bottom:12px;';
+    box.appendChild(lead);
+
+    if(!list.length){
+      const none = document.createElement('div');
+      none.setAttribute('data-sakae', 'resolverEmpty');
+      none.textContent = '競合はありません。';
+      box.appendChild(none);
+    }else{
+      if(!resolverSelection || !list.some(function(e){
+        return e.syncKey === resolverSelection.syncKey && e.recordId === resolverSelection.recordId; })){
+        resolverSelection = { syncKey: list[0].syncKey, recordId: list[0].recordId };
+      }
+      const ul = document.createElement('div');
+      ul.setAttribute('data-sakae', 'resolverList');
+      ul.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;';
+      list.forEach(function(e){
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'sakaeResolverItem';
+        b.setAttribute('data-synckey', e.syncKey);
+        b.setAttribute('data-rid', e.recordId);
+        const on = (resolverSelection.syncKey === e.syncKey && resolverSelection.recordId === e.recordId);
+        b.textContent = '社内No. ' + (e.productNo || '(不明)') + '／案件ID ' + (e.recordId || '(なし)') + '／' + e.dataType;
+        b.style.cssText = 'padding:5px 10px;border-radius:4px;cursor:pointer;font-size:12px;border:1px solid #999;'
+          + (on ? 'background:#173a68;color:#fff;border-color:#173a68;' : 'background:#f4f4f4;color:#222;');
+        b.addEventListener('click', function(){
+          resolverSelection = { syncKey: e.syncKey, recordId: e.recordId };
+          renderResolverUI();
+        });
+        ul.appendChild(b);
+      });
+      box.appendChild(ul);
+
+      const sel = list.filter(function(e){
+        return e.syncKey === resolverSelection.syncKey && e.recordId === resolverSelection.recordId; })[0];
+
+      const meta = document.createElement('div');
+      meta.setAttribute('data-sakae', 'resolverTarget');
+      meta.textContent = '対象：社内No. ' + (sel.productNo || '(不明)')
+        + '／案件ID(recordId) ' + (sel.recordId || '(なし)')
+        + '／データ種別 ' + sel.dataType + '／キー ' + sel.syncKey;
+      meta.style.cssText = 'font-weight:700;margin-bottom:8px;';
+      box.appendChild(meta);
+
+      const cols = document.createElement('div');
+      cols.style.cssText = 'display:flex;gap:12px;';
+      [['この端末（Local）', 'resolverLocal', sel.local],
+       ['共有側（Remote）', 'resolverRemote', sel.remote]].forEach(function(p){
+        const w = document.createElement('div');
+        w.style.cssText = 'flex:1;min-width:0;';
+        const t = document.createElement('div');
+        t.textContent = p[0];
+        t.style.cssText = 'font-weight:700;margin-bottom:4px;';
+        const pre = document.createElement('pre');
+        pre.setAttribute('data-sakae', p[1]);
+        pre.textContent = prettyJson(p[2]);
+        pre.style.cssText = 'margin:0;padding:8px;background:#f7f7f7;border:1px solid #ddd;border-radius:4px;'
+          + 'max-height:34vh;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-all;';
+        w.appendChild(t); w.appendChild(pre);
+        cols.appendChild(w);
+      });
+      box.appendChild(cols);
+
+      const whoWrap = document.createElement('div');
+      whoWrap.style.cssText = 'margin-top:12px;';
+      const whoLabel = document.createElement('span');
+      whoLabel.textContent = '判断した人：';
+      const who = document.createElement('input');
+      who.type = 'text';
+      who.id = 'sakaeResolverJudge';
+      who.placeholder = 'お名前を入力してください';
+      who.style.cssText = 'padding:4px 8px;font-size:13px;border:1px solid #999;border-radius:4px;width:220px;';
+      whoWrap.appendChild(whoLabel); whoWrap.appendChild(who);
+      box.appendChild(whoWrap);
+
+      const msg = document.createElement('div');
+      msg.setAttribute('data-sakae', 'resolverMessage');
+      msg.style.cssText = 'margin-top:10px;color:#c0392b;min-height:1.6em;';
+      box.appendChild(msg);
+
+      const btns = document.createElement('div');
+      btns.style.cssText = 'margin-top:10px;display:flex;gap:10px;';
+      const mk = function(id, label, adopt, confirmText, color){
+        const b = document.createElement('button');
+        b.type = 'button'; b.id = id; b.textContent = label;
+        b.style.cssText = 'padding:8px 16px;font-size:13px;cursor:pointer;border:0;border-radius:4px;'
+          + 'color:#fff;background:' + color + ';';
+        b.addEventListener('click', async function(){
+          const name = String(who.value || '').trim();
+          if(!name){ msg.textContent = '判断した人の名前を入れてください。'; return; }
+          // ★1クリックでは実行しない
+          if(!window.confirm(confirmText)) return;
+          b.disabled = true;
+          try{
+            const r = await resolveConflict(sel.syncKey, adopt,
+              { recordId: sel.recordId, '判断者': name, seenRemote: sel.remote });
+            if(r && r.ok){
+              resolverSelection = null;
+              refreshConflictNotice();
+              const stillOpen = document.getElementById(RESOLVER_UI_ID);
+              if(stillOpen){
+                renderResolverUI();
+                const m2 = stillOpen.querySelector('[data-sakae="resolverMessage"]');
+                if(m2){ m2.style.color = '#1e7d32'; m2.textContent = '解消しました（記録ID ' + r.resolutionId + '）。'; }
+              }
+            }else{
+              msg.textContent = (r && r.message) || '競合はまだ解消されていません。';
+            }
+          }finally{ b.disabled = false; }
+        });
+        return b;
+      };
+      btns.appendChild(mk('sakaeResolverTakeLocal', 'この端末の内容を採用', 'LOCAL',
+        'この端末の内容を共有へ反映します。\n共有側の現在値は置き換わります。\nよろしいですか？', '#173a68'));
+      btns.appendChild(mk('sakaeResolverTakeRemote', '共有側の内容を採用', 'REMOTE',
+        '共有側の内容をこの端末へ反映します。\nこの端末の現在値は置き換わります。\nよろしいですか？', '#c0392b'));
+      box.appendChild(btns);
+    }
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.id = 'sakaeResolverClose';
+    close.textContent = '閉じる';
+    close.style.cssText = 'margin-top:14px;padding:6px 14px;font-size:13px;cursor:pointer;'
+      + 'background:#eee;border:1px solid #999;border-radius:4px;';
+    close.addEventListener('click', function(){ closeResolverUI(); });
+    box.appendChild(close);
   }
 
   // 共有側に「その案件が既にある」と分かっている recordId。
@@ -1280,6 +1853,22 @@
     readRemoteKeyExact: readRemoteKeyExact
   };
 
+  // ---- 競合の解消（正式運用の窓口） ----
+  // 控えや競合記録を利用者が直接消す道は開けない。必ずこの入口を通す。
+  window.sakaeSyncResolver = {
+    RESOLVED_PREFIX: RESOLVED_PREFIX,
+    listConflicts: listConflicts,
+    getConflict: function(syncKey){
+      const c = readConflict(syncKey);
+      return c ? JSON.parse(JSON.stringify(c)) : null;
+    },
+    resolveWithLocal:  function(syncKey, options){ return resolveConflict(syncKey, 'LOCAL',  options); },
+    resolveWithRemote: function(syncKey, options){ return resolveConflict(syncKey, 'REMOTE', options); },
+    listResolutions: listResolutions,
+    openResolver: openResolverUI,
+    closeResolver: closeResolverUI
+  };
+
   // ---- ページ遷移などの直前に、まだデバウンス待ちのSupabase送信をすべて即時実行する。
   // 500msのデバウンスを待たずにページが破棄されると、直前の変更がSupabase側（＝他の端末）に届かないまま
   // 消えてしまうことがあるため、「作業票⇄受注に関する連絡書」など画面をまたぐ主要な遷移の直前に呼び出す想定。
@@ -1440,6 +2029,10 @@
   // 共有を読み直して、控えの内容が本当に共有へ入ったかを確かめる。
   // 入っていれば控えを消す。入っていなければ何もしない（控えは残る）。
   async function settlePendingAfterPush(key){
+    // ★解消の途中は、控えを消すかどうかを resolver が決める。ここでは触らない。
+    //   ここで消すと、読み戻しに失敗して解決を取りやめたときに控えだけが消え、
+    //   まだ共有へ届いていない変更を守るものが無くなる。
+    if(resolvingNow) return;
     const p = readPending(key);
     if(!p) return;
     try{
@@ -1550,7 +2143,7 @@
       conflicts.push(id);                            // 両方が同じ案件を別内容へ変えた
     });
     if(conflicts.length){
-      noteConflict(RECORDS_KEY, p.base, localStorage.getItem(RECORDS_KEY), remoteRaw);
+      noteConflict(RECORDS_KEY, p.base, localStorage.getItem(RECORDS_KEY), remoteRaw, conflicts);
       return null;                                   // 当てない・送らない・控えも消さない
     }
     const keepIds = Object.keys(keep);
@@ -1569,7 +2162,7 @@
     return out;
   }
 
-  function applyRemoteRow(row){
+  function applyRemoteRow(row, opts){
     if(!row || !row.key) return;
     applyingRemoteUpdate = true;
     try{
@@ -1577,7 +2170,10 @@
       // ---- 自分が送った更新が返ってきただけなら、何もしない ----
       // これを取り込むと、送った後に打った文字が送った時点の内容で上書きされて消える。
       // 「今のlocalStorageと同じか」ではなく「自分が送ったものか」で見分ける（上の outbox 参照）。
-      if(isOwnOutbound(row.key, raw)) return;
+      // ★競合の解消のあとだけは、この除外を通さない（opts.force）。
+      //   送った値と同じでも、共有の一覧には競合で止めていたあいだの
+      //   別案件の更新が入っている。ここで弾くとそれが取り込まれない。
+      if(!(opts && opts.force) && isOwnOutbound(row.key, raw)) return;
       // ---- 案件一覧だけは丸ごと上書きしない ----
       // つながっていない間にこの端末で作った案件は、まだ共有に無い。
       // 届いた一覧をそのまま書くと、その案件がこの端末から消え、
@@ -1766,6 +2362,8 @@
       await initialSync();
       subscribeRealtime();
       hideGate();
+      // 前に開いたときの競合が残っていれば、開いた時点で知らせる（黙って抱え込まない）
+      refreshConflictNotice();
       // 初回取り込みが終わってから、まだ共有へ出していない案件を片づける。
       // 画面を止めたくないので待たない。二重に走らないことは中で見ている。
       resumePublicationHolds().catch(function(e){ console.warn('[sakaeSync] Publication Hold の再開に失敗:', e); });
