@@ -1762,11 +1762,11 @@
       alert('社内No.を入力してください。');
       return;                            // 必須の入力が無い。案件は作らない
     }
-    const dupRec = records.find(r=> r.orderNo === orderNo);
-    if(dupRec){
-      alert('社内No.「'+orderNo+'」は既に別の案件（'+(dupRec.modelName||dupRec.itemName||'名称未設定')+'）で使われています。別の番号にしてください。');
-      return;                            // 重複で断った。案件は作らない
-    }
+    // ---- 同じ社内No.の案件が既にあっても、ここでは断らない（同一社内No. 正式解禁）----
+    // 案件を見分けているのは recordId で、社内No.は人が読むための番号。
+    // ここで作る案件は必ず新しい recordId を持つので、同じ社内No.の別案件として並べる。
+    // ★取り違えを防いでいるのは recordId による分離と、社内No.しか手がかりが無い
+    //   旧い入口での ambiguous fail-closed（同期層）。そちらは変えていない。
     // ---- ここまで通ったときだけ案件を作る ----
     const rec = makeCaseRecord({ productNo: orderNo, orderNo: orderNo });
     records.unshift(rec);
@@ -1845,12 +1845,9 @@
       alert('社内No.と客先名は必須です。');
       return null;
     }
-    // 社内No.は全ページの紐付けキーとして使われるため、他の案件と重複していないか確認する（編集中の自分自身は除く）
-    const dupRec = records.find(r=> r.orderNo === orderNo && r.id !== formEditId);
-    if(dupRec){
-      alert('社内No.「'+orderNo+'」は既に別の案件（'+(dupRec.modelName||dupRec.itemName||'名称未設定')+'）で使われています。別の番号にしてください。');
-      return null;
-    }
+    // ---- 他の案件が同じ社内No.を使っていても、ここでは断らない（同一社内No. 正式解禁）----
+    // 社内No.は表示・帳票のための番号で、案件の識別は recordId が行う。
+    // 同じ社内No.を2件以上に付けても、保存先も画面遷移も recordId で決まる。
     const wasNew = !formEditId;
     const rec = {
       status2: getRadio('f_status'),
@@ -2283,6 +2280,12 @@
   // 即座に反映する（受注連絡書一覧データ自体の変更は既存のstorageリスナーで対応済み）----
   // 戻り値：この中でカードを描き直したか。
   //   呼び出し側は、描き直していないときだけ自分で描き直す（1イベントにつき1回だけ描く）。
+  // ★DEPRECATED（NT-P）：この関数は呼び出し元が0件の死コード。
+  //   作業票データから案件一覧へ書き戻す処理だったが、共有から届いた変更を当てている
+  //   最中に走ると、その端末の案件一覧だけが静かにずれるため NT-N で呼び出しを廃止した。
+  //   案件一覧の更新は、案件一覧そのもののキーの同期と、作業票の画面自身の書き戻し
+  //   （作業票_モック.html の syncToOrderRecords）が行う。
+  //   ★新しく呼び出さない。次に手を入れるときは削除してよい。
   function syncRecordFromBuhinOrder(o){
     if(!o || !o.productNo) return false;
     const idx = records.findIndex(r=>r.productNo === o.productNo);
