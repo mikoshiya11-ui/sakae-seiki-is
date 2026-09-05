@@ -81,6 +81,12 @@
   const caseCtx = window.sakaeCase.resolveFromLocation();
   if(window.sakaeCase.blockIfUnsafe(caseCtx)) return;
   const productNo = caseCtx.productNo;
+  // ---- 保存データを探すときは案件そのもの（recordId）で指す ----
+  // ★社内No.は「業務上の番号」であって案件そのものではない。同じ社内No.の案件が2件あると、
+  //   社内No.だけを渡した先で案件を決められず、旧い社内No.のキーへ落ちて何も見つからなくなる。
+  //   URLには既に recordId が載っているので、それを捨てずにそのまま渡す。
+  //   productNo は引き続き「指定が無いとき」の判定と、見つからないときの案内文に使う。
+  const caseRef = { productNo: caseCtx.productNo, recordId: caseCtx.recordId };
   const P = window.sakaeWorkStartPrint;
   document.getElementById('backLink').setAttribute('href', window.sakaeCase.withCase('作業開始印刷セット_モック.html', caseCtx));
 
@@ -101,7 +107,7 @@
   }
 
   function render(){
-    const bs = P.loadBs(productNo);
+    const bs = P.loadBs(caseRef);
     if(!bs || !bs.order){
       sheetOuter.innerHTML = '<div class="emptyState">品番「'+P.esc(productNo)+'」の作業票データが見つかりません。先に作業票を作成してください。</div>';
       return;

@@ -505,14 +505,42 @@
   // ---- 納品完了にした案件は、残品として追いかける必要がなくなるので残品表から丸ごと外す。
   // 正本は受注側の records[].status（案件詳細の「納品完了にする」）で、こちらは表示条件として読むだけ。
   // データは何も消していないので、納品完了を取り消せばそのまま元どおり出る ----
-  function loadDoneRecordProductNos(){
-    const set = new Set();
+  //
+  // ★外す単位は「案件（recordId）」であって社内No.ではない。
+  //   社内No.で外すと、同じ社内No.の別案件まで巻き添えで消える。片方を納品完了にしただけで
+  //   まだ作っている案件が残品表から見えなくなり、現場が追いかけられなくなる。
+  //
+  // ★旧い保存データ（社内No.のキー＝v1）は、どの案件のものか決められない。
+  //   決めつけて外すと、まだ未完了の案件の分まで消してしまう。
+  //   そのため v1 は「その社内No.の現存案件が全部 納品完了のときだけ」外す。
+  //   1件でも未完了が残っていれば表示したままにする（消しすぎない側へ倒す）。
+  function loadDoneCases(){
+    const doneIds = new Set();      // 納品完了にした案件の recordId
+    const statusByNo = {};          // 社内No. → その社内No.を使っている案件の status 一覧
     try{
       const raw = localStorage.getItem(RECORDS_KEY);
       const list = raw ? JSON.parse(raw) : [];
-      list.forEach(r=>{ if(r && r.status === 'done' && r.productNo) set.add(String(r.productNo)); });
+      list.forEach(r=>{
+        if(!r) return;
+        if(r.status === 'done' && r.id) doneIds.add(String(r.id));
+        const no = String(r.productNo || '');
+        if(no) (statusByNo[no] = statusByNo[no] || []).push(r.status);
+      });
     }catch(e){}
-    return set;
+    const allDoneNos = new Set();
+    Object.keys(statusByNo).forEach(no=>{
+      const ss = statusByNo[no];
+      if(ss.length && ss.every(s=> s === 'done')) allDoneNos.add(no);
+    });
+    return { doneIds: doneIds, allDoneNos: allDoneNos };
+  }
+  // その保存データ（entry）が、納品完了した案件のものとして外してよいか
+  function isDoneEntry(entry, doneCases){
+    if(!entry) return false;
+    // recordId が分かっているデータは、その案件の状態だけを見る
+    if(entry.recordId) return doneCases.doneIds.has(String(entry.recordId));
+    // recordId を持たない旧データは、持ち主を推測しない
+    return doneCases.allDoneNos.has(String(entry.productNo || ''));
   }
 
   // ---- 全受注（作業票のlocalStorage）を横断して、部品ごとに「今の工程」を拾い、
@@ -520,16 +548,16 @@
   function buildData(){
     const data = {};
     const doneIds = loadDoneProcIds();
-    const doneProductNos = loadDoneRecordProductNos();
+    const doneCases = loadDoneCases();
     const todayStr = todayISO();
     // ★v1 と rid の両方をまとめて回す（共通層）
     const entries = window.sakaeKeys.listProductEntries('buhinhyo');
     for(let i=0;i<entries.length;i++){
       const key = entries[i].key;
-      // 納品完了した案件は品番ごと読み飛ばす。
+      // 納品完了した案件の保存データは読み飛ばす（案件＝recordId 単位。社内No.単位ではない）。
       // ★必ず部品ループより前で外すこと。手配忘れ防止の注意行（isArrange）は部品ループの中で
       // 「現在の工程」の判定より前に積まれるため、部品ループの中で外すと手配行だけが残ってしまう
-      if(doneProductNos.has(entries[i].productNo)) continue;
+      if(isDoneEntry(entries[i], doneCases)) continue;
       let bs;
       try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
       if(!bs || !bs.order) continue;
