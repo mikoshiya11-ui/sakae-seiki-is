@@ -12,8 +12,8 @@
 // 逆に「service_role」というキーは絶対にここに書かない・使わないでください
 // （そちらはRLSを無視して全データにアクセスできる管理者用の鍵です）。
 // ============================================================
-window.SAKAE_SUPABASE_URL = 'https://qzsxscyvidihltvfzouc.supabase.co';
-window.SAKAE_SUPABASE_ANON_KEY = 'sb_publishable_M1Jq2Fmql_3YQ7d0d9rxGw_Eslf7URO';
+window.SAKAE_SUPABASE_URL = 'https://rtqntyliomtepxzosgnf.supabase.co';
+window.SAKAE_SUPABASE_ANON_KEY = 'sb_publishable_mQYWmlKO0CC6fwq1s7ZTLA_-F-DZerg';
 
 // テスト共有機能そのもののON/OFFスイッチ。
 // falseにすると、今まで通りブラウザのlocalStorageだけで動きます（Supabase未設定でもエラーになりません）。
