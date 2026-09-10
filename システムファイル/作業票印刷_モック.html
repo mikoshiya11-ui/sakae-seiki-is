@@ -206,6 +206,16 @@
     table.procTable tr.procHeadRow th{ background:#f7f9fc !important; }
     .infoCell .iLabel{ background:#f7f9fc !important; }
     .ticketHeadRow{ background:#f7f9fc !important; }
+
+    /* ---- 4分割の境目を紙の物理中心に合わせる（横方向のみ）----
+       A3横の高さ297mm から上下の余白8mm×2 を引くと、紙の内容領域は281mm。
+       帳票をこの高さぴったりにし、上段をその半分に固定すると、
+       上段と下段の境目が紙の高さ50%の位置に来る。
+       　8mm(余白) + 1px(枠線) + (281mm - 2px)/2 = 148.5mm = 297mm ÷ 2
+       左右は .slipPanel の flex:1 1 0 で既に等分されている（実測50.00%）ので触らない。
+       中身は上端から積むままで、増えた分は切り取り線の手前の余白になる。 */
+    .slipSheet{ height:281mm; }
+    .slipMain{ flex:0 0 50%; }
   }
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
