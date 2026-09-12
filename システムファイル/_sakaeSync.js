@@ -1007,9 +1007,9 @@
     const out = [];
     Object.keys(l).forEach(function(id){
       if(b[id] === undefined) return;
-      if(l[id] === b[id]) return;
-      if(rm[id] === undefined || rm[id] === b[id]) return;
-      if(rm[id] === l[id]) return;
+      if(sameText(l[id], b[id])) return;
+      if(rm[id] === undefined || sameText(rm[id], b[id])) return;
+      if(sameText(rm[id], l[id])) return;
       out.push(id);
     });
     return out;
@@ -1938,25 +1938,56 @@
   //
   // 「今のlocalStorageと届いた値が同じか」で見分ける方法は使えない。
   // 同期の受け側が先にlocalStorageを書き換えてしまうため、その時点で見分けがつかなくなるため。
-  // そこで「自分がその内容を送ったかどうか」を控えておき、それが返ってきたときだけ捨てる。
+  // 「送った内容と同じか」で見分ける方法も使わない。別のタブ・別の端末が偶然同じ内容を
+  // 送ったときに自分の送信と取り違えるし、同じ localStorage を共有する別タブの送信は
+  // このタブの控えに無いので、内容で見ても自己エコーと分からない。
   //
-  // 他のタブ・他の人が送った更新は、こちらの控えに無いので従来どおり受け取る
-  // （万一まったく同じ内容だった場合は、取り込んでも取り込まなくても結果が同じなので害はない）。
+  // ---- 自分の送信の識別子（mutation id）で自己エコーを見分ける（内容では見ない）----
+  // 送るたびに新しい id を作り、送る前に台帳へ控え、行と一緒に共有へ送る。
+  // 返ってきた行の id が台帳にあれば自分（このブラウザのどれかのタブ）の送信。
+  // 台帳は 1 mutation = 1 キー（sakaeLocal_syncOutbound_v1_<mid>）。同期対象外・全タブ共有・再読込でも消えない。
+  // 配列にしないのは、別タブと同時に送ったときに read→append→write で相手の追加を消さないため。
+  // 台帳に無い・期限切れ・id が無い（旧クライアントや同じ id の再送は共有側で NULL になる）ときは
+  // 「捨てない」側に倒れ、従来どおり控えとの突き合わせへ進む（安全側）。
   const OUTBOX_TTL_MS = 120000;   // 往復が遅れても拾えるよう長めに持ち、古いものは捨てる
-  const outbox = {};              // { [key]: [ { raw, at }, … ] }
-
-  function rememberOutbound(key, raw){
-    const now = Date.now();
-    const list = (outbox[key] || []).filter(e=> now - e.at < OUTBOX_TTL_MS);
-    list.push({ raw, at: now });
-    outbox[key] = list;
+  const LEDGER_PREFIX = 'sakaeLocal_syncOutbound_v1_';
+  const LEDGER_MAX = 200;
+  const LEDGER_SWEEP_MS = 10000;
+  let ledgerSweptAt = 0;
+  function newMutationId(){
+    try{ if(crypto && crypto.randomUUID) return crypto.randomUUID(); }catch(e){}
+    const b = new Uint8Array(16); crypto.getRandomValues(b); b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+    const h = Array.from(b, x=> x.toString(16).padStart(2, '0')).join('');
+    return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
   }
-  function isOwnOutbound(key, raw){
+  function sweepLedger(now){                       // best-effort。失敗しても送信は続ける
+    if(now - ledgerSweptAt < LEDGER_SWEEP_MS) return;
+    ledgerSweptAt = now;
+    try{
+      const live = [];
+      for(let i = localStorage.length - 1; i >= 0; i--){
+        const k = localStorage.key(i);
+        if(!k || k.indexOf(LEDGER_PREFIX) !== 0) continue;
+        let e = null; try{ e = JSON.parse(localStorage.getItem(k)); }catch(err){}
+        if(!e || typeof e.at !== 'number' || now - e.at >= OUTBOX_TTL_MS){ localStorage.removeItem(k); continue; }
+        live.push({ k: k, at: e.at });
+      }
+      if(live.length > LEDGER_MAX){
+        live.sort((a, b)=> a.at - b.at).slice(0, live.length - LEDGER_MAX).forEach(x=> localStorage.removeItem(x.k));
+      }
+    }catch(e){}
+  }
+  function rememberOutbound(key, mid){
     const now = Date.now();
-    const list = (outbox[key] || []).filter(e=> now - e.at < OUTBOX_TTL_MS);
-    outbox[key] = list;
-    // 同じ内容が二度届くことがあるので、見つけても控えからは消さない（TTLで自然に落とす）
-    return list.some(e=> e.raw === raw);
+    try{ localStorage.setItem(LEDGER_PREFIX + mid, JSON.stringify({ key: key, at: now })); }catch(e){} // 書けなければ「捨てない」側へ倒れる
+    sweepLedger(now);
+  }
+  function isOwnMutation(key, mid){
+    if(!mid) return false;                          // 列なし／NULL（旧クライアント・select の行）は捨てない
+    try{
+      const e = JSON.parse(localStorage.getItem(LEDGER_PREFIX + mid) || 'null');
+      return !!e && e.key === key && (Date.now() - e.at) < OUTBOX_TTL_MS;
+    }catch(err){ return false; }
   }
 
   async function pushKey(key, value){
@@ -1980,12 +2011,13 @@
     const outValue = (key === RECORDS_KEY) ? publishableRecordsText(value) : value;
     let parsed;
     try{ parsed = JSON.parse(outValue); }catch(e){ parsed = outValue; } // 値がJSONでない場合も念のためそのまま送る
-    // 送り出す前に控えておく。返ってきたときに自分のものだと分かるようにするため。
-    // 控える形は、受け取り側が組み立てる形（row.value を JSON.stringify したもの）に揃える。
-    try{ rememberOutbound(key, JSON.stringify(parsed)); }catch(e){}
+    // 送り出す前に、この送信の識別子を台帳へ控えておく。返ってきたときに自分のものだと分かるようにするため。
+    // ★送る前に控える（Realtime の echo が upsert の応答より先に届いてもよいように）。
+    const mid = newMutationId();
+    rememberOutbound(key, mid);
     try{
       const { data:{ user } } = await sb.auth.getUser();
-      const { error } = await sb.from('kv_store').upsert({ key, value: parsed, updated_by: user ? user.id : null }, { onConflict:'key' });
+      const { error } = await sb.from('kv_store').upsert({ key, value: parsed, updated_by: user ? user.id : null, client_mutation_id: mid }, { onConflict:'key' });
       if(error){
         console.warn('[sakaeSync] push失敗:', key, error);
         return { ok:false, key: key, error: String((error && error.message) || error) };
@@ -2063,8 +2095,8 @@
   }
 
   // ---- 「中身が同じかどうか」をキーの並び順に左右されずに判定するための正規化 ----
-  // Supabaseの value は jsonb で、保存するとキーの並び順がPostgres側の規則（長さ→バイト順）へ
-  // 並べ替えられて返ってくる。そのため「自分が保存した値がそのまま返ってきただけ」でも
+  // Supabaseの value は jsonb で、JSONBではJSONオブジェクトのキー順保持を前提にできず、
+  // 保存前後でJSON.stringify()の文字列表現が変わり得る。そのため「自分が保存した値がそのまま返ってきただけ」でも
   // 文字列としては別物になり、下の重複抑止をすり抜けて localStorage を書き直し、
   // 各ページの storage ハンドラを起動して画面を作り直してしまっていた。
   // （工程を追加した直後など、ローカルのキー順が jsonb 順と食い違うときに起きる）
@@ -2137,9 +2169,9 @@
       if(dead.has(id)) return;                       // 削除された案件は墓標の判断が優先
       const b = base[id], l = local[id], rm = remote[id];
       if(b === undefined) return;                    // この端末で作ったばかり＝従来の併合に任せる
-      if(l === b) return;                            // この端末は直していない
-      if(rm === undefined || rm === b){ keep[id] = l; return; }   // 共有は変わっていない→こちらを残す
-      if(rm === l) return;                           // 既に共有と同じ
+      if(sameText(l, b)) return;                     // この端末は直していない
+      if(rm === undefined || sameText(rm, b)){ keep[id] = l; return; }   // 共有は変わっていない→こちらを残す
+      if(sameText(rm, l)) return;                    // 既に共有と同じ
       conflicts.push(id);                            // 両方が同じ案件を別内容へ変えた
     });
     if(conflicts.length){
@@ -2169,11 +2201,12 @@
       let raw = JSON.stringify(row.value);
       // ---- 自分が送った更新が返ってきただけなら、何もしない ----
       // これを取り込むと、送った後に打った文字が送った時点の内容で上書きされて消える。
-      // 「今のlocalStorageと同じか」ではなく「自分が送ったものか」で見分ける（上の outbox 参照）。
+      // 「今のlocalStorageと同じか」でも「送った内容と同じか」でもなく、
+      // 行に付いてきた送信の識別子（client_mutation_id）が台帳にあるかで見分ける（上の台帳参照）。
       // ★競合の解消のあとだけは、この除外を通さない（opts.force）。
       //   送った値と同じでも、共有の一覧には競合で止めていたあいだの
       //   別案件の更新が入っている。ここで弾くとそれが取り込まれない。
-      if(!(opts && opts.force) && isOwnOutbound(row.key, raw)) return;
+      if(!(opts && opts.force) && isOwnMutation(row.key, row.client_mutation_id)) return;
       // ---- 案件一覧だけは丸ごと上書きしない ----
       // つながっていない間にこの端末で作った案件は、まだ共有に無い。
       // 届いた一覧をそのまま書くと、その案件がこの端末から消え、
