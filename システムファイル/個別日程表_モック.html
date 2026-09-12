@@ -2308,9 +2308,9 @@
   window.addEventListener('scroll', closeBarCtxMenu, true);
   ctxAddBar.addEventListener('click', ()=>{
     if(!ctxBarTarget || ctxBarTarget.kind!=='track') return;
+    const { key, trackEl, startUnit } = ctxBarTarget;
     closeBarCtxMenu();
     if(!checkEditable()) return;
-    const { key, trackEl, startUnit } = ctxBarTarget;
     const newId = uid();
     // 幅が狭いと工程記号が読めないので初期幅は3コマ（1.5日分）にしておく
     const initEnd = Math.min(startUnit+2, trackViewEndHalf(trackEl));
