@@ -234,6 +234,7 @@
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
+<script src="_sakaeLocalMerge.js"></script>
 </head>
 <body>
 
@@ -693,7 +694,10 @@
   // ---- 自分がこの画面で編集した回数。増えるだけの番号 ----
   // 「届いた内容を取り込んでよいか」を、localStorage ではなくこの番号で判断する。
   let editSeq = 0;
-  let remoteBaseSeq = 0;   // いまの state が共有内容と同じだった時点の editSeq
+  // ---- 届いた内容の取り込みは共通の取り込み係（_sakaeLocalMerge.js の guard）に任せる ----
+  // 以前ここにあった remoteBaseSeq（「一度でも保存したら F5 まで取り込まない」）は廃止した（G9-⑥ / STORAGE-LOOP-01）。
+  // guard は base／自分の値／届いた値を欄ごとに突き合わせ、受信をきっかけに保存し直すことをしない。
+  let syncGuard = null;
 
   function save(){
     // ---- 保存先は、URLで指定された案件のキーだけにする ----
@@ -705,7 +709,10 @@
     // ★保存先の決定と touch migration は共通層に一本化する（この画面では判定を持たない）。
     //   新規作成は「作業票を保存 → 案件カードができる」の順なので、保存のたびに解決し直す。
     //   1回目は案件カードがまだ無く v1 へ、カードができた次の保存で rid へ移る。
-    window.sakaeKeys.writeProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }, JSON.stringify(state));
+    // 未解決の「同じ欄の重なり」がある間は、その欄だけ保存先の現在値で書く（自分の値を黙って共有へ流さない）。
+    const text = JSON.stringify(syncGuard ? syncGuard.prepareSave(state) : state);
+    window.sakaeKeys.writeProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }, text);
+    if(syncGuard) syncGuard.noteOwnSave(text);   // 「自分が書いた値」を控え、共有へ届いたら基準を進める
     syncToOrderRecords();
   }
 
@@ -1261,38 +1268,12 @@
       pendingConfirmChange = false;
       changed = true;
     }
-    if(pendingRemoteState){
-      const raw = pendingRemoteState;
-      pendingRemoteState = null;
-      // ---- 届いた内容を取り込むか捨てるかの判断 ----
-      // localStorage は正本に使えない。同期の受け側が、この画面へ知らせるより先に
-      // localStorage を届いた内容へ書き換えてしまうため、そこを見ても新旧が分からない。
-      // （テーマAでここを localStorage で判定していたため、判定が常に空振りし、
-      //   打った文字が「離れた瞬間」に古い内容へ巻き戻って消えていた。）
-      // 正本はメモリ上の state。editSeq は自分が編集するたびに増える。
-      // remoteBaseSeq は「いま持っている state が、共有されている内容と同じだった時点」の値。
-      //   editSeq === remoteBaseSeq → こちらは何も編集していない → 取り込んでよい
-      //   editSeq !== remoteBaseSeq → こちらに未共有の編集がある → 取り込むと打った文字が消える → 捨てる
-      if(editSeq === remoteBaseSeq){
-        try{
-          state = migrateState(JSON.parse(raw));
-          changed = true;
-          remoteBaseSeq = editSeq;   // いま取り込んだ内容が新しい基準になる
-        }catch(err){}
-      }else{
-        // 取り込まないと決めた場合、保存先には届いた古い内容が既に書かれている
-        // （同期の受け側が、この画面へ知らせるより先に書き換えてしまうため）。
-        // そのままにすると画面には残っているのに保存先は古いままで、
-        // 次に開いたときに打った文字が消える。こちらの内容で保存し直す。
-        save();
-        console.warn('[作業票] 編集中に届いた他の人の変更は、こちらの入力を消さないため取り込みませんでした。'
-          + 'こちらの入力はそのまま保存しています。相手の変更を見るには画面を読み込み直してください。');
-      }
-    }
     if(changed){
       if(procPickerOpen) closeProcPickerSilently();
       render();
     }
+    // 保護中に届いていた作業票データの取り込みは guard が行う（保存先の現在値を読み直し、欄ごとに突き合わせる）
+    if(syncGuard) syncGuard.onProtectionEnd();
   }
   partsBody.addEventListener('focusout', (e)=>{
     if(!e.target.classList || !e.target.classList.contains('cellInput')) return;
@@ -1321,32 +1302,29 @@
     //   作業票データは rid へ移ったため、v1 キーとの一致では他端末の変更が届かない。
     //   共通窓口で「この案件のキーか（rid でも v1 でも）」を見る。
     //   別の recordId のキーには当たらないので、同じ社内No.の別案件は取り違えない。
-    if(!window.sakaeKeys.isProductKeyOfCase('buhinhyo', e.key, caseCtx)) return;
-    if(e.newValue == null) return;
-    if(isProtectedFromRemoteRedraw()){
-      pendingRemoteState = e.newValue;
-      // 画面はこのまま守るが、保存先は届いた内容に書き換えられてしまっている
-      // （同期の受け側が、この画面へ知らせるより先に書き換えるため）。
-      // こちらに未共有の編集があるなら、その場で保存し直しておく。
-      // ここで直さずに保留の解除まで待つと、その間に画面を閉じた場合に
-      // 打った文字が保存先に残らず消えてしまう。画面は作り直さない（入力を壊さない）。
-      if(editSeq !== remoteBaseSeq) save();
-      return;
-    }
-    // 編集していない間に届いたものは、その場で取り込む。
-    // ここでも「こちらに未共有の編集があるなら取り込まない」を守る（打った文字を巻き戻さないため）。
-    if(editSeq !== remoteBaseSeq){
-      // 上と同じ理由で、こちらの内容を保存し直しておく（保存先が古い内容のまま残らないように）
-      save();
-      console.warn('[作業票] 届いた他の人の変更は、こちらの入力を消さないため取り込みませんでした。'
-        + 'こちらの入力はそのまま保存しています。相手の変更を見るには画面を読み込み直してください。');
-      return;
-    }
-    try{ state = migrateState(JSON.parse(e.newValue)); }catch(err){ return; }
-    remoteBaseSeq = editSeq;
-    if(procPickerOpen) closeProcPickerSilently();
-    render();
+    // ---- 作業票データ（自分の案件のキー）と、同期の控え・送信台帳・重なりの退避キー ----
+    // ★受信をきっかけに保存し直さない（別画面と往復するため）。取り込みは guard に一本化する。
+    //   guard は「保護中（入力中・工程エディタ中）なら保留、そうでなければ保存先の現在値を base／自分／相手で欄ごとに突き合わせて取り込む」。
+    const own = window.sakaeKeys.isProductKeyOfCase('buhinhyo', e.key, caseCtx);
+    if(syncGuard) syncGuard.onStorage(e, own);
   });
+
+  // ---- 取り込み係（guard）の生成。state・render・保護判定が揃ったここで作る ----
+  if(window.sakaeLocalMerge && urlProductNo){
+    syncGuard = window.sakaeLocalMerge.createGuard({
+      page: '作業票', dataType: 'buhinhyo', recordId: caseCtx.recordId || '', productNo: urlProductNo,
+      syncKey: ()=> window.sakaeKeys.productKeyOf('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }).key,
+      getMem: ()=> state,
+      setMem: (obj)=>{ state = migrateState(obj); },
+      parse: (raw)=> migrateState(JSON.parse(raw)),
+      save: ()=> save(),
+      render: ()=>{ if(procPickerOpen) closeProcPickerSilently(); render(); },
+      isProtected: ()=> isProtectedFromRemoteRedraw(),
+      merge: (base, mine, incoming)=> window.sakaeLocalMerge.merge3Buhin(base, mine, incoming)
+    });
+    syncGuard.init();
+    if(syncGuard.snapshot().entries.length) render();   // 未解決の重なりがあれば自分の値を復旧して描き直す
+  }
 
   // ---- 工程エディタ（大型モーダル） ----
   // 1行＝1工程。行は工程ID（procId）で固定し、編集はその工程1件だけをその場で書き換える。

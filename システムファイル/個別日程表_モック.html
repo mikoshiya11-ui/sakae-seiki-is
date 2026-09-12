@@ -376,6 +376,7 @@
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
+<script src="_sakaeLocalMerge.js"></script>
 </head>
 <body>
 
@@ -567,22 +568,20 @@
     if(!urlProductNo || !buhinState) return;
     editSeq++;
     // 保存先の決定と touch migration は共通層に一本化する
-    SK.writeProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }, JSON.stringify(buhinState));
+    // 未解決の「同じ欄の重なり」がある間は、その欄だけ保存先の現在値で書く（自分の値を黙って共有へ流さない）
+    const text = JSON.stringify(syncGuard ? syncGuard.prepareSave(buhinState) : buhinState);
+    SK.writeProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }, text);
+    if(syncGuard) syncGuard.noteOwnSave(text);   // 「自分が書いた値」を控え、共有へ届いたら基準を進める
   }
+  let syncGuard = null;   // 取り込み係（_sakaeLocalMerge.js）。下の方で buhinState・render が揃ってから作る
   let buhinState = loadBuhinState();
   const handoff = !!buhinState;
 
-  // ---- 自分がこの画面で編集した回数。増えるだけの番号 ----
-  // 「届いた内容を取り込んでよいか」を、localStorage ではなくこの番号で判断する。
-  // localStorage は正本に使えない。同期の受け側が、この画面へ知らせるより先に localStorage を
-  // 届いた内容へ書き換えてしまうため、そこを見ても新旧が分からない。
-  // 作業票_モック.html で既に使っている考え方をそのまま移植したもので、意味も同じ。
-  //   editSeq === remoteBaseSeq → こちらは何も編集していない → 届いた内容を取り込んでよい
-  //   editSeq !== remoteBaseSeq → こちらに未共有の編集がある → 取り込むと編集が巻き戻る → 捨てる
-  // 保存はしない（新しいlocalStorageキー・Supabase項目・永続フラグは作らない）。
+  // ---- 自分がこの画面で編集した回数。増えるだけの番号（診断用に残す） ----
   let editSeq = 0;
-  let remoteBaseSeq = 0;   // いまの buhinState が共有内容と同じだった時点の editSeq
-  let pendingRemoteState = null;   // ドラッグ中に届いた作業票データ（操作が終わってから判断する）
+  // 以前ここにあった remoteBaseSeq（「一度でも保存したら F5 まで取り込まない」）と pendingRemoteState は廃止した
+  // （G9-⑥ / STORAGE-LOOP-01）。届いた作業票データの取り込みは guard が欄ごとに突き合わせて行い、
+  // 受信をきっかけに保存し直すことはしない。
   let pendingConfirmChange = false; // ドラッグ中に届いた確定／解除の通知
 
   // ---- 直前の1操作だけ元に戻せる仕組み（バーの削除など）。このページを開いている間だけ有効（保存はしない）。
@@ -2912,42 +2911,34 @@
 
   function applyPendingRemoteUpdates(){
     if(isProtectedFromRemoteRedraw()) return; // まだ操作中なら保留したままにする
-    let changed = false;
     if(pendingConfirmChange){
       confirmState = loadConfirm();
       pendingConfirmChange = false;
-      changed = true;
-    }
-    if(pendingRemoteState){
-      const raw = pendingRemoteState;
-      pendingRemoteState = null;
-      if(editSeq === remoteBaseSeq){
-        // こちらは何も編集していない。届いた内容をそのまま取り込む（従来どおりの同期）。
-        try{
-          buhinState = JSON.parse(raw);
-          refreshFromBuhin();
-          remoteBaseSeq = editSeq;   // いま取り込んだ内容が新しい基準になる
-          changed = true;
-        }catch(err){}
-      }else{
-        // こちらに未共有の編集がある。取り込むとバーの移動・伸縮が巻き戻るため捨てる。
-        // ただし保存先には届いた古い内容が既に書かれている（同期の受け側が、この画面へ
-        // 知らせるより先に書き換えてしまうため）。こちらの内容で保存し直しておく。
-        saveBuhinState();
-        refreshFromBuhin();
-        changed = true;
-        console.warn('[個別日程表] 届いた他の人の変更は、こちらの編集を巻き戻さないため取り込みませんでした。'
-          + 'こちらの編集はそのまま保存しています。相手の変更を見るには画面を読み込み直してください。');
-      }
-    }
-    if(changed){
       renderOrderCard();
       render();
     }
+    // 保護中に届いていた作業票データの取り込みは guard が行う（保存先の現在値を読み直し、欄ごとに突き合わせる）
+    if(syncGuard) syncGuard.onProtectionEnd();
   }
 
   // ---- 作業票など、同じ品番のデータを共有する別タブでの変更をリアルタイムに反映する ----
+  // ★受信をきっかけに保存し直さない（別画面と往復するため）。取り込みは guard に一本化する。
   if(handoff){
+    syncGuard = window.sakaeLocalMerge ? window.sakaeLocalMerge.createGuard({
+      page: '個別日程表', dataType: 'buhinhyo', recordId: caseCtx.recordId || '', productNo: urlProductNo,
+      syncKey: ()=> buhinKeyNow(),
+      getMem: ()=> buhinState,
+      setMem: (obj)=>{ buhinState = migrateBuhinState(obj).st; },
+      parse: (raw)=> migrateBuhinState(JSON.parse(raw)).st,
+      save: ()=> saveBuhinState(),
+      render: ()=>{ refreshFromBuhin(); renderOrderCard(); render(); },
+      isProtected: ()=> isProtectedFromRemoteRedraw(),
+      merge: (base, mine, incoming)=> window.sakaeLocalMerge.merge3Buhin(base, mine, incoming)
+    }) : null;
+    if(syncGuard){
+      syncGuard.init();
+      if(syncGuard.snapshot().entries.length){ refreshFromBuhin(); renderOrderCard(); render(); }   // 未解決の重なりがあれば自分の値を復旧
+    }
     window.addEventListener('storage', (e)=>{
       if(SK.isProductKeyOfCase('kobetsuConfirm', e.key, CONFIRM_REF())){
         if(isProtectedFromRemoteRedraw()){ pendingConfirmChange = true; return; }
@@ -2955,16 +2946,7 @@
         render();
         return;
       }
-      if(e.key !== buhinKeyNow()) return;
-      if(e.newValue == null) return;
-      pendingRemoteState = e.newValue;
-      if(isProtectedFromRemoteRedraw()){
-        // 操作中。画面はこのまま守る。保存先は既に届いた内容へ書き換えられているので、
-        // こちらに未共有の編集があるならその場で保存し直しておく（操作の結果が消えないように）。
-        if(editSeq !== remoteBaseSeq) saveBuhinState();
-        return;
-      }
-      applyPendingRemoteUpdates();
+      if(syncGuard) syncGuard.onStorage(e, e.key === buhinKeyNow());
     });
   }
 })();

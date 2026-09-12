@@ -1830,6 +1830,17 @@
     return { ok:true, 件数: results.length, results: results };
   }
 
+  // ---- 製品画面から使ってよい読取専用の窓口（契約 version 1）----
+  //   getPending(key)  控え { version, syncKey, base, local } の写し。無ければ null。副作用なし・例外を投げない
+  //   hasConflict(key) その同期キーに競合記録があるか
+  //   画面側の取り込み（_sakaeLocalMerge.js）が「自分の保存が共有へ届いたか」を判定するために使う。
+  //   形を変えるときは version を上げる。書込みの窓口はここには置かない。
+  window.sakaeSyncRead = Object.freeze({
+    version: 1,
+    getPending: function(key){ try{ const p = readPending(key); return p ? JSON.parse(JSON.stringify(p)) : null; }catch(e){ return null; } },
+    hasConflict: function(key){ try{ return !!localStorage.getItem(conflictKey(key)); }catch(e){ return false; } }
+  });
+
   // 同期の控え・競合を、試験と診断から見えるようにする（製品画面からは使わない）
   window.sakaeSyncPending = {
     PENDING_PREFIX: PENDING_PREFIX,

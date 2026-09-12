@@ -371,6 +371,7 @@
 </style>
 <script src="システムファイル/_sakaeSupabaseConfig.js"></script>
 <script src="システムファイル/_sakaeSync.js"></script>
+<script src="システムファイル/_sakaeLocalMerge.js"></script>
 </head>
 <body>
 
@@ -815,21 +816,19 @@
   function loadRecords(){
     return dropTombed(loadRecordsRaw());
   }
-  // ---- 自分がこの画面で案件一覧を変更した回数。増えるだけの番号 ----
-  // 「届いた内容を取り込んでよいか」を、localStorage ではなくこの番号で判断する。
-  // localStorage は正本に使えない。同期の受け側が、この画面へ知らせるより先に localStorage を
-  // 届いた内容へ書き換えてしまうため、そこを見ても新旧が分からない。
-  // 作業票_モック.html・個別日程表_モック.html で既に使っている考え方をそのまま移植したもので、意味も同じ。
-  //   editSeq === remoteBaseSeq → こちらは何も変えていない → 届いた内容を取り込んでよい
-  //   editSeq !== remoteBaseSeq → こちらに未共有の変更がある → 取り込むと変更が巻き戻る → 捨てる
-  // 案件の削除も「この画面での変更」に含まれるため、削除の直後に古い一覧が届いても巻き戻らない。
-  // 保存はしない（新しいlocalStorageキー・Supabase項目・削除の印は作らない）。
+  // ---- 自分がこの画面で案件一覧を変更した回数。増えるだけの番号（診断用に残す） ----
+  // 以前ここにあった remoteBaseSeq（「一度でも保存したら F5 まで取り込まない」）は廃止した（G9-⑥ / STORAGE-LOOP-01）。
+  // 届いた一覧の取り込みは共通の取り込み係（_sakaeLocalMerge.js の guard）が案件（recordId）ごと・欄ごとに突き合わせて行い、
+  // 受信をきっかけに保存し直すことはしない。案件を「消す」のは従来どおり墓標（dropTombed）だけ。
   let editSeq = 0;
-  let remoteBaseSeq = 0;   // いまの records が共有内容と同じだった時点の editSeq
+  let syncGuard = null;
 
   function saveRecords(){
     editSeq++;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    // 未解決の「同じ欄の重なり」がある間は、その欄だけ保存先の現在値で書く（自分の値を黙って共有へ流さない）
+    const text = JSON.stringify(syncGuard ? syncGuard.prepareSave(records) : records);
+    localStorage.setItem(STORAGE_KEY, text);
+    if(syncGuard) syncGuard.noteOwnSave(text);
     markUpdated();
   }
 
@@ -1130,25 +1129,32 @@
   }
 
   // ---- 作業票など、別タブでの受注連絡書一覧データの変更をリアルタイムに反映する ----
-  window.addEventListener('storage', (e)=>{
-    if(e.key !== STORAGE_KEY) return;
-    if(e.newValue == null) return;
-    if(editSeq !== remoteBaseSeq){
-      // こちらに未共有の変更がある（案件を消した直後など）。
-      // 取り込むと消した案件が戻ってしまうため捨てる。
-      // ただし保存先には届いた古い内容が既に書かれている（同期の受け側が、この画面へ
-      // 知らせるより先に書き換えてしまうため）。こちらの内容で保存し直しておく。
-      saveRecords();
-      console.warn('[受注に関する連絡書一覧] 届いた他の人の変更は、こちらの変更を巻き戻さないため取り込みませんでした。'
-        + 'こちらの内容はそのまま保存しています。相手の変更を見るには画面を読み込み直してください。');
-      return;
+  // ★受信をきっかけに保存し直さない（別画面と往復するため）。取り込みは guard に一本化する。
+  //   案件一覧は汎用の欄併合を通さず、案件（recordId）専用の突き合わせ（mergeRecords）を使う：
+  //     ・「届いた一覧に無い」を削除とは解釈しない（削除の正本は墓標。dropTombed だけが案件を外す）
+  //     ・届いた一覧に無い自分の案件（Publication Hold 中・未共有）は残す
+  //     ・両方にある案件だけ欄ごとに突き合わせる（同じ欄の重なりは自動で選ばない）
+  syncGuard = window.sakaeLocalMerge ? window.sakaeLocalMerge.createGuard({
+    page: 'TOP', dataType: 'records',
+    syncKey: ()=> STORAGE_KEY,
+    getMem: ()=> records,
+    setMem: (list)=>{ records = dropTombed(Array.isArray(list) ? list : []); },
+    parse: (raw)=> { const a = JSON.parse(raw); return Array.isArray(a) ? a : []; },
+    save: ()=> saveRecords(),
+    render: ()=> render(),
+    isProtected: ()=> { const ov = document.getElementById('newOverlay'); return !!(ov && ov.style.display !== 'none'); },   // 新規・編集フォームを開いている間は保留
+    merge: (base, mine, incoming)=>{
+      const r = window.sakaeLocalMerge.mergeRecords(base, mine, incoming);
+      r.merged = dropTombed(r.merged);
+      return r;
     }
-    // 墓標のある案件は、届いた一覧に入っていても取り込まない（表示も再保存もしない）。
-    // 保存先そのものは書き換えない。書き換えてしまうと、別の端末で「元に戻す」が行われて
-    // 墓標が取り消された時に、戻すべき内容がこの端末から失われるため。
-    try{ records = dropTombed(JSON.parse(e.newValue)); }catch(err){ return; }
-    remoteBaseSeq = editSeq;   // いま取り込んだ内容が新しい基準になる
-    render();
+  }) : null;
+  if(syncGuard){
+    syncGuard.init();
+    if(syncGuard.snapshot().entries.length) render();
+  }
+  window.addEventListener('storage', (e)=>{
+    if(syncGuard) syncGuard.onStorage(e, e.key === STORAGE_KEY);
   });
 
   // ---- 削除イベント／取消イベントが他の端末から届いた時に、この画面へ反映する ----
