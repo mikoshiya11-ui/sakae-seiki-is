@@ -710,9 +710,13 @@
     //   新規作成は「作業票を保存 → 案件カードができる」の順なので、保存のたびに解決し直す。
     //   1回目は案件カードがまだ無く v1 へ、カードができた次の保存で rid へ移る。
     // 未解決の「同じ欄の重なり」がある間は、その欄だけ保存先の現在値で書く（自分の値を黙って共有へ流さない）。
-    const text = JSON.stringify(syncGuard ? syncGuard.prepareSave(state) : state);
-    window.sakaeKeys.writeProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }, text);
-    if(syncGuard) syncGuard.noteOwnSave(text);   // 「自分が書いた値」を控え、共有へ届いたら基準を進める
+    // 因果同期（SYNC-RACE-01）：guard が「どの保存先テキストを見て作った保存か」（_sync）を付ける。付けられない時は書かない（旧 setItem へ戻さない）
+    const prepared = syncGuard ? syncGuard.prepareSave(state) : null;
+    if(prepared === null) return;
+    const text = JSON.stringify(prepared);
+    const res = window.sakaeKeys.writeProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }, text, { kind: 'stamped' });
+    if(syncGuard) syncGuard.noteOwnSave(res);   // 「自分が書いた値」を控え、共有へ届いたら基準を進める（書かなかった時は数えない）
+    if(!res || !res.ok) return;
     syncToOrderRecords();
   }
 
@@ -938,9 +942,12 @@
   }
 
   function procChipsHtml(part){
-    if(!part.processes.length) return '<span style="color:#c7cfdc;font-size:11px;">未設定</span>';
+    // DE/SU/PN は「通常工程」ではなく個別日程表専用の日付項目（基本仕様 v1.0）。作業票の工程欄には出さない。
+    // データ（processes[] の当該工程）はそのまま保持し、表示だけを分ける。「未設定」は通常工程が無いという意味。
+    const shown = (part.processes||[]).filter(p=> !DATE_ONLY_CODES[p.code]);
+    if(!shown.length) return '<span style="color:#c7cfdc;font-size:11px;">未設定</span>';
     // 日程の若い順（未設定の日付は末尾）に並べ替えて表示する
-    const sorted = part.processes.slice().sort((a,b)=>{
+    const sorted = shown.slice().sort((a,b)=>{
       const da = a.date || '';
       const db = b.date || '';
       if(!da && !db) return 0;
@@ -1312,7 +1319,7 @@
   // ---- 取り込み係（guard）の生成。state・render・保護判定が揃ったここで作る ----
   if(window.sakaeLocalMerge && urlProductNo){
     syncGuard = window.sakaeLocalMerge.createGuard({
-      page: '作業票', dataType: 'buhinhyo', recordId: caseCtx.recordId || '', productNo: urlProductNo,
+      page: '作業票', dataType: 'buhinhyo', recordId: caseCtx.recordId || '', productNo: urlProductNo, causal: true,
       syncKey: ()=> window.sakaeKeys.productKeyOf('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }).key,
       getMem: ()=> state,
       setMem: (obj)=>{ state = migrateState(obj); },
@@ -1347,7 +1354,12 @@
     if(!dl) return;
     let html = '';
     PROCESS_GROUPS.forEach(g=>{
-      g.items.forEach(code=>{ html += '<option value="'+esc(code)+'"></option>'; });
+      g.items.forEach(code=>{
+        // DE/SU/PN は個別日程表の左側に専用の日付欄があるため、通常工程の候補には出さない（基本仕様 v1.0）。
+        // 記号そのものや既存データ・日付だけの扱い（DATE_ONLY_CODES）は変えない。手で入力することは従来どおりできる。
+        if(DATE_ONLY_CODES[code]) return;
+        html += '<option value="'+esc(code)+'"></option>';
+      });
     });
     dl.innerHTML = html;
   })();
@@ -1378,7 +1390,9 @@
       + '</tr>';
   }
   function buildPpList(part){
-    const list = part.processes || [];
+    // DE/SU/PN は個別日程表の専用欄で扱うため、ここでは行として出さない。part.processes 自体は触らない
+    // （編集・削除は工程 id で配列を直接更新し、保存はメモリの state 全体を書くので、隠した工程が消えることはない）。
+    const list = (part.processes || []).filter(p=> !DATE_ONLY_CODES[p.code]);
     ppList.innerHTML = list.map(ppRowHtml).join('');
     ppEmpty.style.display = list.length ? 'none' : 'block';
   }

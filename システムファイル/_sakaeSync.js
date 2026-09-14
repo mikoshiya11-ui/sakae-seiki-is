@@ -27,6 +27,162 @@
 // ★いまは案件を「社内No.」で識別している（従来どおり）。
 //   将来 records[].id で識別する形へ移す時も、直すのはこの1か所だけで済む。
 // ============================================================
+// ============================================================
+// 因果同期の共通実装（window.sakaeCausal）— SYNC-RACE-01 CAUSAL BASE（実装契約 v2.1〜v2.3）
+//
+// 作業票データ（buhinhyo）の保存 1 件ごとに「どの状態を見て作った保存か」を持たせる。
+//   _sync: { v:1, mid, parent }
+//     content  … 保存する値から最上位キー _sync を除いたもの（業務データはこれだけ。_sync は同期の目印であって欄ではない）
+//     parent   … その保存が読んで基にした保存先テキストの identity（無ければ null＝本当に何も無かった root だけ）
+//     mid      … H(content, parent)。内容と親から決まる（乱数ではない）。同じ内容を同じ親から保存し直しても同じ mid＝同じ文字列
+//   identity(text) = H(content(text), text._sync.parent)（stamp が無い legacy は parent=null で計算する＝同じ内容を見た全員で同じ id）
+//   H = SHA-256("sakae-causal\nv=1\nparent=<parent|空>\ncontent=" + canon(content))（全 64 hex。version を入力に含めるので版が変われば全 id が変わる）
+//   canon = キーを UTF-16 コード単位の昇順に並べ、undefined の値はキーごと省略（配列中は null）、JSON.stringify と同じ数値／文字列規則、空白なし
+//
+// ★ここが唯一の実装。別ファイルへ写さない（guard・writeProductData ともここを使う）。
+//   canon／hash が例外を投げたら呼び出し側は書かない（fail-closed）。SHA-256 は保存関数が同期のため純 JS（crypto.subtle は非同期で使えない）。
+// ============================================================
+(function(){
+  'use strict';
+  const VERSION = 1;
+  const HEX64 = /^[0-9a-f]{64}$/;
+
+  // ---- canonical JSON ----
+  function canon(x){
+    const stack = [];
+    function walk(v){
+      if(v === null) return 'null';
+      const t = typeof v;
+      if(t === 'number') return Number.isFinite(v) ? JSON.stringify(v) : 'null';   // NaN / Infinity は JSON と同じく null。-0 は "0"
+      if(t === 'string' || t === 'boolean') return JSON.stringify(v);
+      if(t === 'undefined' || t === 'function' || t === 'symbol') return undefined;   // 呼び出し側で省略／null
+      if(t === 'bigint') throw new Error('canon: bigint は扱えない');
+      if(typeof v.toJSON === 'function') return walk(v.toJSON());
+      if(stack.indexOf(v) >= 0) throw new Error('canon: 循環参照');
+      stack.push(v);
+      let out;
+      if(Array.isArray(v)){
+        out = '[' + v.map(function(e){ const c = walk(e); return c === undefined ? 'null' : c; }).join(',') + ']';
+      }else{
+        const parts = [];
+        Object.keys(v).sort().forEach(function(k){ const c = walk(v[k]); if(c !== undefined) parts.push(JSON.stringify(k) + ':' + c); });
+        out = '{' + parts.join(',') + '}';
+      }
+      stack.pop();
+      return out;
+    }
+    const r = walk(x);
+    return r === undefined ? 'null' : r;
+  }
+
+  // ---- SHA-256（FIPS 180-4・純 JS・同期）----
+  const K = [
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2 ];
+  function sha256hex(str){
+    const msg = new TextEncoder().encode(String(str));           // UTF-8（孤立サロゲートは U+FFFD）
+    const l = msg.length;
+    const bitLenHi = Math.floor((l * 8) / 0x100000000), bitLenLo = (l * 8) >>> 0;
+    const padLen = (((l + 9) + 63) >> 6) << 6;
+    const buf = new Uint8Array(padLen);
+    buf.set(msg); buf[l] = 0x80;
+    const dv = new DataView(buf.buffer);
+    dv.setUint32(padLen - 8, bitLenHi); dv.setUint32(padLen - 4, bitLenLo);
+    let h0=0x6a09e667,h1=0xbb67ae85,h2=0x3c6ef372,h3=0xa54ff53a,h4=0x510e527f,h5=0x9b05688c,h6=0x1f83d9ab,h7=0x5be0cd19;
+    const w = new Uint32Array(64);
+    const rotr = (x, n)=> (x >>> n) | (x << (32 - n));
+    for(let off = 0; off < padLen; off += 64){
+      for(let i=0;i<16;i++) w[i] = dv.getUint32(off + i*4);
+      for(let i=16;i<64;i++){
+        const s0 = rotr(w[i-15],7) ^ rotr(w[i-15],18) ^ (w[i-15] >>> 3);
+        const s1 = rotr(w[i-2],17) ^ rotr(w[i-2],19) ^ (w[i-2] >>> 10);
+        w[i] = (w[i-16] + s0 + w[i-7] + s1) >>> 0;
+      }
+      let a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,h=h7;
+      for(let i=0;i<64;i++){
+        const S1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);
+        const ch = (e & f) ^ (~e & g);
+        const t1 = (h + S1 + ch + K[i] + w[i]) >>> 0;
+        const S0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);
+        const maj = (a & b) ^ (a & c) ^ (b & c);
+        const t2 = (S0 + maj) >>> 0;
+        h=g; g=f; f=e; e=(d + t1) >>> 0; d=c; c=b; b=a; a=(t1 + t2) >>> 0;
+      }
+      h0=(h0+a)>>>0; h1=(h1+b)>>>0; h2=(h2+c)>>>0; h3=(h3+d)>>>0; h4=(h4+e)>>>0; h5=(h5+f)>>>0; h6=(h6+g)>>>0; h7=(h7+h)>>>0;
+    }
+    return [h0,h1,h2,h3,h4,h5,h6,h7].map(x=> ('00000000' + x.toString(16)).slice(-8)).join('');
+  }
+
+  // ---- 業務内容・identity ----
+  function contentOf(obj){
+    if(!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+    const o = {};
+    Object.keys(obj).forEach(function(k){ if(k !== '_sync') o[k] = obj[k]; });
+    return o;
+  }
+  function hashOf(content, parent){
+    return sha256hex('sakae-causal\nv=' + VERSION + '\nparent=' + (parent == null ? '' : parent) + '\ncontent=' + canon(content));
+  }
+  function stampFor(content, parent){
+    const p = (parent == null) ? null : String(parent);
+    if(p !== null && !HEX64.test(p)) throw new Error('stampFor: parent の形式が不正');
+    return { v: VERSION, parent: p, mid: hashOf(contentOf(content), p) };
+  }
+  // shape（V4）：作業票データの最低形。records 系は配列
+  function shapeOk(content){
+    if(Array.isArray(content)) return true;
+    if(!content || typeof content !== 'object') return false;
+    if(content.order !== undefined && (content.order === null || typeof content.order !== 'object' || Array.isArray(content.order))) return false;
+    if(content.parts !== undefined && !Array.isArray(content.parts)) return false;
+    return true;
+  }
+  // 判定：{ state:'VALID'|'LEGACY'|'INVALID', identity, parent, content, obj, reasons[] }
+  //   VALID  … _sync が v/mid/parent とも検証に通る（mid は再計算で一致）
+  //   LEGACY … _sync が無い（identity = H(content, null)）
+  //   INVALID… 形が壊れている／mid 不一致／版違い（identity は H(content, null) で扱い、parent 欄は信用しない）
+  function identityOf(textOrObj){
+    let obj = textOrObj;
+    if(typeof textOrObj === 'string'){ try{ obj = JSON.parse(textOrObj); }catch(e){ return { state:'INVALID', identity:null, parent:null, content:null, obj:null, reasons:['parse'] }; } }
+    if(!obj || typeof obj !== 'object') return { state:'INVALID', identity:null, parent:null, content:null, obj:obj, reasons:['shape'] };
+    const content = contentOf(obj);
+    const reasons = [];
+    if(!shapeOk(content)) reasons.push('shape');
+    const s = Array.isArray(obj) ? undefined : obj._sync;
+    if(s === undefined){
+      if(reasons.length) return { state:'INVALID', identity:null, parent:null, content:content, obj:obj, reasons:reasons };
+      return { state:'LEGACY', identity: hashOf(content, null), parent:null, content:content, obj:obj, reasons:[] };
+    }
+    let parent = null, valid = true;
+    if(!s || typeof s !== 'object' || Array.isArray(s)){ reasons.push('shape'); valid = false; }
+    else{
+      if(s.v !== VERSION) { reasons.push('version'); valid = false; }
+      if(!(s.parent === null || (typeof s.parent === 'string' && HEX64.test(s.parent)))) { reasons.push('parent'); valid = false; }
+      else parent = s.parent;
+      if(valid && reasons.length === 0){
+        const want = hashOf(content, parent);
+        if(s.mid !== want){ reasons.push('mid'); valid = false; }
+      }
+    }
+    if(!valid || reasons.length) return { state:'INVALID', identity: hashOf(content, null), parent:null, content:content, obj:obj, reasons:reasons };
+    return { state:'VALID', identity: s.mid, parent: parent, content:content, obj:obj, reasons:[] };
+  }
+  // 保存文字列（canonical）：同じ内容・同じ parent なら必ず同一文字列
+  function canonicalText(content, stamp){
+    const o = contentOf(content);
+    if(stamp) o._sync = { v: stamp.v, parent: stamp.parent, mid: stamp.mid };
+    return canon(o);
+  }
+  const sameContent = (a, b)=> canon(contentOf(a)) === canon(contentOf(b));
+
+  window.sakaeCausal = Object.freeze({
+    VERSION: VERSION,
+    canon: canon, sha256hex: sha256hex, contentOf: contentOf, hashOf: hashOf,
+    identityOf: identityOf, stampFor: stampFor, canonicalText: canonicalText, sameContent: sameContent,
+    isHex64: function(s){ return typeof s === 'string' && HEX64.test(s); }
+  });
+})();
 (function(){
   'use strict';
 
@@ -353,10 +509,21 @@
     // 順序は絶対に次のとおり。v1削除 → rid保存 の順にはしない。
     //   ① rid へ保存 → ② 読み戻して一致を確認 → ③ 条件を満たすときだけ v1 を削除
     // 途中で失敗しても旧データは失わない。
-    writeProductData: function(type, ref, value){
+    // ---- 因果同期（SYNC-RACE-01 CAUSAL BASE）：作業票データ（buhinhyo）はここが唯一の書込み入口 ----
+    //   causal = { kind:'stamped' }                      guard の prepareSave が付けた stamp をそのまま（再計算一致を検証）
+    //          | { kind:'derived', parentText:<読んだテキスト> }  guard を通らない読み書き（TOP の書戻し・手配・補完）。parent = 読んだテキストの identity
+    //          | { kind:'replay' }                       無改変の複写（JSON 取込・移行・resolver）。stamp はそのまま／INVALID は _sync を落として legacy へ
+    //          | { kind:'root' }                         保存先が本当に無い時だけ（parent=null）。あれば拒否
+    //   causal 省略・未知 kind ＝ 書かない（推定しない）。sakaeCausal が無い＝書かない（旧 setItem へ戻さない）。
+    //   業務内容が保存先の VALID な現在値と同じなら mid を作らず書かない（wrote:'skip'）。ただしこのタブに未発火の push が残っていれば
+    //   その内容だけ保存先の現在値へ差し替える（既存の「送る直前に最新へ差し替える」機能の置き換え。push を新設はしない）。
+    //   保存文字列は常に canonical（同じ内容・同じ parent ＝ 必ず同一文字列）。
+    writeProductData: function(type, ref, value, causal){
       const SK = window.sakaeKeys;
-      const raw = (typeof value === 'string') ? value : JSON.stringify(value);
-      const r = SK._refOf(ref);
+      let raw = (typeof value === 'string') ? value : JSON.stringify(value);
+      // 新規案件の作成（ひな形からの複製）は、案件カードが一覧へ載る前に子データを書く。root（保存先が無い）に限り recordId をそのまま使う
+      const creating = !!(causal && causal.kind === 'root' && ref && typeof ref === 'object' && ref.creating && ref.recordId);
+      const r = creating ? { state:'ok', recordId:String(ref.recordId), productNo:String(ref.productNo || ''), reason:'', explicitRecordId:true } : SK._refOf(ref);
 
       // recordId を指定されたのに見つからない／矛盾している → 保存先を推測せず、書かない
       if(r.explicitRecordId && r.state !== 'ok'){
@@ -368,15 +535,67 @@
       }
 
       const k1 = r.productNo ? SK.v1Key(type, r.productNo) : '';
+      const k2 = (r.state === 'ok') ? SK.v2Key(type, r.recordId) : '';
+      const target = (r.state === 'ok') ? k2 : k1;
+
+      let identity = null;
+      if(type === 'buhinhyo'){
+        const C = window.sakaeCausal;
+        if(!C) return { ok:false, wrote:null, key:target, migrated:false, state:r.state, error:'causal-unavailable' };
+        const kind = (causal && typeof causal === 'object') ? causal.kind : undefined;
+        if(kind !== 'stamped' && kind !== 'derived' && kind !== 'replay' && kind !== 'root'){
+          return { ok:false, wrote:null, key:target, migrated:false, state:r.state, error: causal ? 'causal-kind-unknown' : 'causal-required' };
+        }
+        let cur = null; try{ cur = localStorage.getItem(target); }catch(e){ cur = null; }
+        let text, curInfo;
+        try{
+          const info = C.identityOf(raw);
+          if(!info.content || info.reasons.indexOf('parse') >= 0 || info.reasons.indexOf('shape') >= 0){
+            return { ok:false, wrote:null, key:target, migrated:false, state:r.state, error:'invalid-product', reasons: info.reasons };
+          }
+          const content = info.content;
+          curInfo = (cur == null) ? null : C.identityOf(cur);
+          if(kind === 'root' && cur != null) return { ok:false, wrote:null, key:target, migrated:false, state:r.state, error:'root-but-exists' };
+          // 業務内容の no-op（C-06）：保存先が VALID で内容が同じなら mid を作らず書かない
+          if(curInfo && curInfo.state === 'VALID' && C.sameContent(curInfo.content, content)){
+            if(typeof SK._outboundRetarget === 'function'){ try{ SK._outboundRetarget(target); }catch(e){} }
+            return { ok:true, wrote:'skip', key:target, migrated:false, state:r.state, recordId:r.recordId, identity: curInfo.identity, text: cur };
+          }
+          let stamp = null;
+          if(kind === 'stamped'){
+            if(info.state !== 'VALID') return { ok:false, wrote:null, key:target, migrated:false, state:r.state, error:'stamp-invalid', reasons: info.reasons };
+            stamp = { v: C.VERSION, parent: info.parent, mid: info.identity };
+          }else if(kind === 'derived'){
+            if(typeof causal.parentText !== 'string') return { ok:false, wrote:null, key:target, migrated:false, state:r.state, error:'derived-needs-parentText' };
+            const pInfo = C.identityOf(causal.parentText);
+            if(!pInfo.identity) return { ok:false, wrote:null, key:target, migrated:false, state:r.state, error:'derived-parent-unparsable' };
+            stamp = C.stampFor(content, pInfo.identity);          // INVALID／LEGACY の親は H(content,null) の identity（parent 欄は信用しない）
+          }else if(kind === 'root'){
+            if(cur != null) return { ok:false, wrote:null, key:target, migrated:false, state:r.state, error:'root-but-exists' };
+            stamp = C.stampFor(content, null);
+          }else{ // replay：無改変。VALID はそのまま／LEGACY はそのまま／INVALID は _sync を落とす
+            stamp = (info.state === 'VALID') ? { v: C.VERSION, parent: info.parent, mid: info.identity } : null;
+          }
+          text = C.canonicalText(content, stamp);
+          identity = stamp ? stamp.mid : C.hashOf(content, null);
+        }catch(e){
+          return { ok:false, wrote:null, key:target, migrated:false, state:r.state, error:'causal-hash-failed: ' + (e && e.message) };
+        }
+        if(cur != null && cur === text){
+          if(typeof SK._outboundRetarget === 'function'){ try{ SK._outboundRetarget(target); }catch(e){} }
+          return { ok:true, wrote:'skip', key:target, migrated:false, state:r.state, recordId:r.recordId, identity: identity, text: cur };
+        }
+        raw = text;
+      }
 
       // 解決できない・曖昧 → 従来どおり v1 へ保存する（今日とまったく同じ挙動）。
       // ★曖昧なときに、どちらかの recordId へ rid 保存するのは禁止。
       if(r.state !== 'ok'){
         localStorage.setItem(k1, raw);
-        return { ok:true, wrote:'v1', key:k1, migrated:false, state:r.state, reason:r.reason };
+        SK._noteWriteToGuards(k1, raw);
+        return { ok:true, wrote:'v1', key:k1, migrated:false, state:r.state, reason:r.reason, identity: identity, text: raw };
       }
 
-      const k2 = SK.v2Key(type, r.recordId);
       const hadV1 = k1 ? localStorage.getItem(k1) !== null : false;
 
       // ① rid へ保存
@@ -398,8 +617,14 @@
       const del = SK.canRemoveLegacy(r.productNo, r.recordId);
       let removed = false;
       if(hadV1 && del.ok){ localStorage.removeItem(k1); removed = true; }
+      SK._noteWriteToGuards(k2, raw);
       return { ok:true, wrote:'rid', key:k2, migrated:removed, state:r.state, recordId:r.recordId,
-               legacyKept: hadV1 && !del.ok, legacyReason: del.ok ? '' : del.reason };
+               legacyKept: hadV1 && !del.ok, legacyReason: del.ok ? '' : del.reason, identity: identity, text: raw };
+    },
+
+    // 同じタブにある取り込み係（guard）へ、唯一の入口で書いたテキストを知らせる（同じタブの書込みは storage event が来ないため）
+    _noteWriteToGuards: function(k, text){
+      try{ (window.__sakaeGuards || []).forEach(function(g){ if(g && typeof g.noteWrite === 'function') g.noteWrite(k, text); }); }catch(e){}
     },
 
     // ---- storage イベント用：届いたキーが「この案件のこの種別」のものか ----
@@ -1414,7 +1639,8 @@
   }
   function prettyJson(text){
     if(text === null || text === undefined) return '（ありません）';
-    try{ return JSON.stringify(JSON.parse(text), null, 2); }catch(e){ return String(text); }
+    // 因果同期の目印（_sync）は業務データではないので、人が見比べる表示からは外す（値そのものは変えない）
+    try{ const o = JSON.parse(text); if(o && typeof o === 'object' && !Array.isArray(o) && o._sync !== undefined){ const c = {}; Object.keys(o).forEach(function(k){ if(k !== '_sync') c[k] = o[k]; }); return JSON.stringify(c, null, 2); } return JSON.stringify(o, null, 2); }catch(e){ return String(text); }
   }
   function renderResolverUI(){
     const root = document.getElementById(RESOLVER_UI_ID);
@@ -1935,6 +2161,24 @@
     pendingActions[key] = ()=> pushKey(key, value);
     pushTimers[key] = setTimeout(()=> pushKey(key, value), PUSH_DEBOUNCE_MS);
   }
+  // ---- 未発火 push の再標的（SYNC-RACE-01 C-06）----
+  // 業務内容が同じ保存は書かない（no-op）ので、その保存が担っていた「デバウンス中の古い内容を最新へ差し替える」役目だけを引き継ぐ。
+  // このタブに未発火のデバウンス push がある時だけ、送る内容と控えの local を保存先の現在値へ差し替える。無ければ何もしない（push も控えも新設しない）。
+  function retargetOutbound(key){
+    if(!pushTimers[key]) return false;
+    let cur = null; try{ cur = localStorage.getItem(key); }catch(e){ return false; }
+    if(cur == null) return false;
+    schedulePush(key, cur);
+    try{
+      const p = readPending(key);
+      if(p && p.local !== cur){
+        if(p.base === cur) clearPending(key);
+        else { p.local = cur; localStorage.setItem(pendingKey(key), JSON.stringify(p)); }
+      }
+    }catch(e){}
+    return true;
+  }
+  try{ if(window.sakaeKeys) window.sakaeKeys._outboundRetarget = retargetOutbound; }catch(e){}
 
   function scheduleDelete(key){
     if(pushTimers[key]) clearTimeout(pushTimers[key]);
@@ -2154,6 +2398,11 @@
       pushKey(key, p.local).catch(function(){});
       return false;
     }
+    // ★因果同期の目印（_sync）だけが違い、業務内容は同じ＝両側が同じ内容へ変えた。競合ではない（相手の目印付きの値を当ててよい）。
+    try{
+      const C = window.sakaeCausal;
+      if(C && local != null && remoteRaw != null && C.sameContent(JSON.parse(local), JSON.parse(remoteRaw))){ clearPending(key); return true; }
+    }catch(e){}
     // base / local / remote がどれも違う＝両側が変わっている。
     // どちらかを勝たせると片方が黙って消えるので、当てない・送らない・控えも消さない。
     noteConflict(key, p.base, local, remoteRaw);
@@ -2207,6 +2456,8 @@
 
   function applyRemoteRow(row, opts){
     if(!row || !row.key) return;
+    // ★共有対象のキー（sakaeIS_）以外は当てない。sakaeLocal_（因果記録・控え・台帳・退避）は端末内だけの目印であって、共有から来ても受け取らない
+    if(!isSyncKey(row.key)) return;
     applyingRemoteUpdate = true;
     try{
       let raw = JSON.stringify(row.value);
@@ -2260,6 +2511,7 @@
   // ---- 他の人がSupabase側でキーを削除した（確定解除・残品表の削除など）ときに、このブラウザのlocalStorageからも消す ----
   function applyRemoteDelete(key){
     if(!key) return;
+    if(!isSyncKey(key)) return;   // 共有対象外のキー（sakaeLocal_ 等）は共有の削除でも消さない
     applyingRemoteUpdate = true;
     try{
       if(localStorage.getItem(key) === null) return; // 元々無ければ何もしない

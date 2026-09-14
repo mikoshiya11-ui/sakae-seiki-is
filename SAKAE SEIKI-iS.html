@@ -1051,7 +1051,10 @@
     }
 
     // ---- 子データを書く（hold のあと・親の保存より前）----
-    localStorage.setItem(destBuhinKey, JSON.stringify(bs));
+    // 因果同期（SYNC-RACE-01）：新しい案件の保存先はまだ無い＝root。ひな形の _sync（別 key の因果）は持ち込まない
+    delete bs._sync;
+    const wroteBs = SK.writeProductData('buhinhyo', { productNo: rec.productNo, recordId: rec.id, creating: true }, JSON.stringify(bs), { kind: 'root' });
+    if(!wroteBs || !wroteBs.ok){ console.warn('[TOP] ひな形からの作業票データ作成に失敗:', wroteBs && wroteBs.error); return; }
     if(newRowRaw !== null && newLaneRaw !== null){
       localStorage.setItem(destRowKey,  newRowRaw);
       localStorage.setItem(destLaneKey, newLaneRaw);
@@ -1075,9 +1078,9 @@
     // 保存先は共通層が決める（rid があれば rid、無ければ従来の v1）
     const key = SK.productKeyOf('buhinhyo', { productNo: rec.productNo, recordId: rec.id }).key;
     if(!key) return;
-    let bs;
+    let bs, raw = null;
     try{
-      const raw = localStorage.getItem(key);
+      raw = localStorage.getItem(key);
       if(!raw) return;
       bs = JSON.parse(raw);
     }catch(e){ return; }
@@ -1096,7 +1099,8 @@
     bs.order.orderNo = rec.orderNo || '';
     bs.orderNotice = bs.orderNotice || {};
     NOTICE_FIELD_KEYS.forEach(k=>{ bs.orderNotice[k] = rec[k]; });
-    localStorage.setItem(key, JSON.stringify(bs));
+    // 因果同期（SYNC-RACE-01）：この書戻しは「いま読んだテキスト（raw）」を基にした変更＝derived として親を明示する（唯一の入口を通す）
+    SK.writeProductData('buhinhyo', { productNo: rec.productNo, recordId: rec.id }, JSON.stringify(bs), { kind: 'derived', parentText: raw });
   }
   // ---- 作業票データ（bs.order／bs.orderNotice）を、案件カード側のrecに上書きマージして返す。
   // 作業票側で客先・型式・納期などが更新されていた場合、こちらを開いた時に必ず最新値が見えるようにする ----

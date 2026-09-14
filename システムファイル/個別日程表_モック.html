@@ -321,6 +321,7 @@
   .labelPicker{
     position:fixed; z-index:500; background:#fff; border-radius:10px; box-shadow:0 8px 28px rgba(20,35,70,.28);
     padding:12px; width:300px; display:none; border:1px solid #e6eaf1;
+    max-height:calc(100vh - 20px); overflow-y:auto; box-sizing:border-box;   /* 低い画面では中でスクロールして決定・キャンセルまで届くように */
   }
   .labelPicker.open{ display:block; }
   .labelPicker input[type=text]{
@@ -558,7 +559,8 @@
       const got = SK.readProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId });
       if(got.value){
         const { st, changed } = migrateBuhinState(JSON.parse(got.value));
-        if(changed) localStorage.setItem(got.key, JSON.stringify(st));
+        // 補完の書戻しも唯一の入口（writeProductData）を通す。読んだテキスト（got.value）を基にした保存＝derived
+        if(changed) SK.writeProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }, JSON.stringify(st), { kind: 'derived', parentText: got.value });
         return st;
       }
     }catch(e){}
@@ -569,9 +571,12 @@
     editSeq++;
     // 保存先の決定と touch migration は共通層に一本化する
     // 未解決の「同じ欄の重なり」がある間は、その欄だけ保存先の現在値で書く（自分の値を黙って共有へ流さない）
-    const text = JSON.stringify(syncGuard ? syncGuard.prepareSave(buhinState) : buhinState);
-    SK.writeProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }, text);
-    if(syncGuard) syncGuard.noteOwnSave(text);   // 「自分が書いた値」を控え、共有へ届いたら基準を進める
+    // 因果同期（SYNC-RACE-01）：guard が _sync（どの保存先テキストを見て作った保存か）を付ける。付けられない時は書かない
+    const prepared = syncGuard ? syncGuard.prepareSave(buhinState) : null;
+    if(prepared === null) return;
+    const text = JSON.stringify(prepared);
+    const res = SK.writeProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }, text, { kind: 'stamped' });
+    if(syncGuard) syncGuard.noteOwnSave(res);   // 「自分が書いた値」を控え、共有へ届いたら基準を進める（書かなかった時は数えない）
   }
   let syncGuard = null;   // 取り込み係（_sakaeLocalMerge.js）。下の方で buhinState・render が揃ってから作る
   let buhinState = loadBuhinState();
@@ -1858,6 +1863,9 @@
     let html = '<div class="lpList">';
     LABEL_PRESETS.forEach(g=>{
       g.items.forEach(code=>{
+        // DE/SU/PN は左の専用日付欄（SIDE_BOX）で入力するため、バーの設置・編集の候補には出さない（基本仕様 v1.0）。
+        // 記号そのもの・既存データ・専用欄の動きは変えない。手で入力することは従来どおりできる。
+        if(SIDE_BOX_CODES.indexOf(code) >= 0) return;
         const color = CODE_COLORS[code] || DEFAULT_BAR_COLOR;
         html += '<button type="button" class="lpItem" data-code="'+esc(code)+'"><span class="lpItemSwatch" style="background:'+color+';"></span>'+esc(code)+'</button>';
       });
@@ -1907,15 +1915,22 @@
     lpInput.value = currentLabel || '';
     const proc0 = isNew ? null : findProcByBar(key, rangeId);
     lpHoursInput.value = (proc0 && proc0.hours != null) ? String(proc0.hours) : '';
-    const pickerW = 300;
+    // 位置は表示してから実寸（offsetWidth/offsetHeight）で決める。以前は高さを 300px と決め打ちしていたが、
+    // 実際は工程の候補一覧・工数欄を含めて約 410px あり、「入る」と誤判定して決定・キャンセルが画面の下に隠れていた。
+    // 基本はバーの下。下に入らなければバーの上へ反転し、上にも入らなければ画面内に収める（最低 10px の余白）。
+    labelPicker.classList.add('open');
+    const pickerW = labelPicker.offsetWidth || 300;
+    const pickerH = labelPicker.offsetHeight || 300;
+    const vw = document.documentElement.clientWidth || window.innerWidth;    // スクロールバーを除いた画面幅・高さ
+    const vh = document.documentElement.clientHeight || window.innerHeight;
     let left = anchorRect.left;
     let top = anchorRect.bottom + 6;
-    if(left + pickerW > window.innerWidth - 10) left = window.innerWidth - pickerW - 10;
+    if(left + pickerW > vw - 10) left = vw - pickerW - 10;
     if(left < 10) left = 10;
-    if(top + 300 > window.innerHeight){ top = anchorRect.top - 306; if(top < 10) top = 10; }
+    if(top + pickerH > vh - 10) top = anchorRect.top - pickerH - 6;
+    if(top < 10) top = Math.max(10, vh - pickerH - 10);
     labelPicker.style.left = left+'px';
     labelPicker.style.top = top+'px';
-    labelPicker.classList.add('open');
     lpInput.focus();
     lpInput.select();
   }
@@ -2147,15 +2162,26 @@
   // 工程記号に「NC2オモテ」がまるごと入り、識別BOXが空になっていた。
   let copiedBarData = null; // { label, display, days }
 
-  function openBarCtxMenu(x, y){
-    barCtxMenu.classList.add('open');
-    const menuW = 150;
+  // ---- 右クリックメニュー（段用／バー用・部品行・メモ）をクリック位置に出し、実寸で画面内に収める共通処理 ----
+  // 以前は幅を 150px 等の決め打ちで右寄せするだけで、上下方向の補正が無かった。画面の下の方の段やバーで右クリックすると
+  // メニューがそのまま画面外に出て、「バーの設置」「編集」「削除」などが押せなかった（BAR-POP-03）。
+  // 表示してから offsetWidth/offsetHeight を測り、右端を超えるなら左へ、下端を超えるならクリック位置の上へ出す（最低 10px の余白）。
+  function placeFixedAt(el, x, y){
+    el.classList.add('open');
+    el.style.left = '0px'; el.style.top = '0px';      // 前回の位置（右端寄り）のまま測ると幅が縮んで測れるため、いったん左上で実寸を取る
+    const w = el.offsetWidth, h = el.offsetHeight;
+    // 画面の大きさはスクロールバーを除いた幅・高さで見る（innerWidth だとスクロールバーの分だけ右にはみ出し、メニューが細く潰れる）
+    const vw = document.documentElement.clientWidth || window.innerWidth;
+    const vh = document.documentElement.clientHeight || window.innerHeight;
     let left = x, top = y;
-    if(left + menuW > window.innerWidth - 10) left = window.innerWidth - menuW - 10;
+    if(left + w > vw - 10) left = vw - w - 10;
     if(left < 10) left = 10;
-    barCtxMenu.style.left = left+'px';
-    barCtxMenu.style.top = top+'px';
+    if(top + h > vh - 10) top = y - h;
+    if(top < 10) top = Math.max(10, vh - h - 10);
+    el.style.left = left+'px';
+    el.style.top = top+'px';
   }
+  function openBarCtxMenu(x, y){ placeFixedAt(barCtxMenu, x, y); }
   function closeBarCtxMenu(){
     barCtxMenu.classList.remove('open');
     ctxBarTarget = null;
@@ -2164,15 +2190,7 @@
   const partRowCtxMenu = document.getElementById('partRowCtxMenu');
   const ctxDuplicatePartRow = document.getElementById('ctxDuplicatePartRow');
   let ctxPartRowIdx = null;
-  function openPartRowCtxMenu(x, y){
-    partRowCtxMenu.classList.add('open');
-    const menuW = 150;
-    let left = x, top = y;
-    if(left + menuW > window.innerWidth - 10) left = window.innerWidth - menuW - 10;
-    if(left < 10) left = 10;
-    partRowCtxMenu.style.left = left+'px';
-    partRowCtxMenu.style.top = top+'px';
-  }
+  function openPartRowCtxMenu(x, y){ placeFixedAt(partRowCtxMenu, x, y); }
   function closePartRowCtxMenu(){
     partRowCtxMenu.classList.remove('open');
     ctxPartRowIdx = null;
@@ -2833,15 +2851,7 @@
   const ctxDeleteMemo = document.getElementById('ctxDeleteMemo');
   const ctxToggleMemoVertical = document.getElementById('ctxToggleMemoVertical');
   let ctxMemoTarget = null;
-  function openMemoCtxMenu(x, y){
-    memoCtxMenu.classList.add('open');
-    const menuW = 140;
-    let left = x, top = y;
-    if(left + menuW > window.innerWidth - 10) left = window.innerWidth - menuW - 10;
-    if(left < 10) left = 10;
-    memoCtxMenu.style.left = left+'px';
-    memoCtxMenu.style.top = top+'px';
-  }
+  function openMemoCtxMenu(x, y){ placeFixedAt(memoCtxMenu, x, y); }
   function closeMemoCtxMenu(){
     memoCtxMenu.classList.remove('open');
     ctxMemoTarget = null;
@@ -2925,7 +2935,7 @@
   // ★受信をきっかけに保存し直さない（別画面と往復するため）。取り込みは guard に一本化する。
   if(handoff){
     syncGuard = window.sakaeLocalMerge ? window.sakaeLocalMerge.createGuard({
-      page: '個別日程表', dataType: 'buhinhyo', recordId: caseCtx.recordId || '', productNo: urlProductNo,
+      page: '個別日程表', dataType: 'buhinhyo', recordId: caseCtx.recordId || '', productNo: urlProductNo, causal: true,
       syncKey: ()=> buhinKeyNow(),
       getMem: ()=> buhinState,
       setMem: (obj)=>{ buhinState = migrateBuhinState(obj).st; },

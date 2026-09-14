@@ -46,11 +46,17 @@ window.sakaeWorkStartPrint = (function(){
   // 戻り値は書き込んだ最新の作業票データ。読み直せなかった場合は null を返し、何も書かない。 ----
   function saveArrangementCheck(productNo, ac){
     if(!productNo || !ac) return null;
-    const latest = loadBs(productNo);
+    let got = null;
+    try{ got = window.sakaeKeys.readProductData('buhinhyo', productNo); }catch(e){ got = null; }
+    if(!got || !got.value) return null;
+    let latest = null;
+    try{ latest = JSON.parse(got.value); }catch(e){ return null; }
     if(!latest) return null;
     latest.arrangementCheck = ac;
-    // 保存先の決定と touch migration は共通層に一本化する
-    window.sakaeKeys.writeProductData('buhinhyo', productNo, JSON.stringify(latest));
+    // 保存先の決定と touch migration は共通層に一本化する。
+    // 因果同期（SYNC-RACE-01）：この保存は「いま読んだテキスト（got.value）」を基にした変更＝derived として親を明示する
+    const res = window.sakaeKeys.writeProductData('buhinhyo', productNo, JSON.stringify(latest), { kind: 'derived', parentText: got.value });
+    if(!res || !res.ok) return null;
     return latest;
   }
   function ensureArrangementCheck(bs){
