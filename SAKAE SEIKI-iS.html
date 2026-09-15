@@ -400,8 +400,8 @@
       <a class="zanpinLink" href="システムファイル/実績入力_モック.html">実績入力 →</a>
     </div>
     <div class="quickLinks" id="quickLinks">
-      <button data-filter="all" class="active">すべて</button>
-      <button data-filter="inprogress">進行中案件</button>
+      <button data-filter="all">すべて</button>
+      <button data-filter="inprogress" class="active">進行中案件</button>
       <button data-filter="done">完了案件(CSV出力)</button>
     </div>
     <div class="quickLinks" id="dataTransferRow" style="margin-top:6px;">
@@ -1192,7 +1192,7 @@
   }
 
   let records = loadRecords();
-  let filterMode = 'all';
+  let filterMode = 'inprogress';   // TOP-DEFAULT-01：開いた直後は進行中案件だけを出す（上の class="active" と一致させる）
 
   // ---- 直前の1操作だけ元に戻せる仕組み（削除・ひな形解除など）。このページを開いている間だけ有効（保存はしない）。
   // 新しく別の操作をすると、前の「戻す」は上書きされて消える（複数段階は戻せない）。 ----
