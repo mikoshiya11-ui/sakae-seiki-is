@@ -1132,6 +1132,12 @@
     return merged;
   }
 
+  // ★TOPBOOT-01：records は下の guard（getMem: ()=> records）の init が「同じ欄の重なり」の控えを読み戻すときに参照する。
+  //   以前は guard の後ろで宣言していたため、控えが残った状態で開き直すと TDZ（ReferenceError）で起動が止まり、案件一覧が出なかった。
+  //   宣言を guard より前へ置く（読み込む内容・初期値は変えない）。
+  let records = loadRecords();
+  let filterMode = 'inprogress';   // TOP-DEFAULT-01：開いた直後は進行中案件だけを出す（上の class="active" と一致させる）
+
   // ---- 作業票など、別タブでの受注連絡書一覧データの変更をリアルタイムに反映する ----
   // ★受信をきっかけに保存し直さない（別画面と往復するため）。取り込みは guard に一本化する。
   //   案件一覧は汎用の欄併合を通さず、案件（recordId）専用の突き合わせ（mergeRecords）を使う：
@@ -1155,7 +1161,7 @@
   }) : null;
   if(syncGuard){
     syncGuard.init();
-    if(syncGuard.snapshot().entries.length) render();
+    // 控えを読み戻したときの描き直しは、描画に使う要素を取得した後（下の「const quickLinks = …」の直後）で行う（TOPBOOT-01）
   }
   window.addEventListener('storage', (e)=>{
     if(syncGuard) syncGuard.onStorage(e, e.key === STORAGE_KEY);
@@ -1190,9 +1196,6 @@
         amount:'200000', manhour:'', drafter:'見越', note:'', status:'inprogress' },
     ];
   }
-
-  let records = loadRecords();
-  let filterMode = 'inprogress';   // TOP-DEFAULT-01：開いた直後は進行中案件だけを出す（上の class="active" と一致させる）
 
   // ---- 直前の1操作だけ元に戻せる仕組み（削除・ひな形解除など）。このページを開いている間だけ有効（保存はしない）。
   // 新しく別の操作をすると、前の「戻す」は上書きされて消える（複数段階は戻せない）。 ----
@@ -1238,6 +1241,7 @@
   const resultsMeta = document.getElementById('resultsMeta');
   const hero = document.getElementById('hero');
   const quickLinks = document.getElementById('quickLinks');
+  if(syncGuard && syncGuard.snapshot().entries.length) render();   // guard.init が控え（同じ欄の重なり）を読み戻していれば、その内容で描く（TOPBOOT-01：元は init 直後）
 
   function esc(s){
     return (s||'').toString().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
