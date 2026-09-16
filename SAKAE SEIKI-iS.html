@@ -1073,8 +1073,10 @@
     'infoForecast','drafter','mfgResp','salesResp','designResp','issueDate1','issueDate2','note',
     'status2','designSchedule','designPlan','costSummary','registration'
   ];
-  function syncToBuhinState(rec){
+  function syncToBuhinState(rec, patch){
     if(!rec.productNo) return;
+    // SAKAE-TOPFORM-01：patch（{欄名:true}）があれば、その欄だけを作業票データへ写す。無ければ従来どおり全欄（新規作成・ひな形・社内No.変更）
+    if(patch && !Object.keys(patch).length) return;   // 書く欄が無い＝書かない
     // 保存先は共通層が決める（rid があれば rid、無ければ従来の v1）
     const key = SK.productKeyOf('buhinhyo', { productNo: rec.productNo, recordId: rec.id }).key;
     if(!key) return;
@@ -1085,6 +1087,16 @@
       bs = JSON.parse(raw);
     }catch(e){ return; }
     bs.order = bs.order || {};
+    if(patch){
+      const notice = bs.orderNotice = bs.orderNotice || {};
+      Object.keys(patch).forEach(k=>{
+        if(TOPFORM_BS_KEY[k]){ bs.order[TOPFORM_BS_KEY[k]] = rec[k] || ''; if(k === 'orderNo') bs.order.productNo = rec.productNo || ''; return; }
+        if(k.indexOf('registration.') === 0){ notice.registration = Object.assign({}, notice.registration || {}); notice.registration[k.slice('registration.'.length)] = (rec.registration || {})[k.slice('registration.'.length)]; return; }
+        if(NOTICE_FIELD_KEYS.indexOf(k) >= 0) notice[k] = rec[k];
+      });
+      SK.writeProductData('buhinhyo', { productNo: rec.productNo, recordId: rec.id }, JSON.stringify(bs), { kind: 'derived', parentText: raw });
+      return;
+    }
     // ★社内No.は作業票データの中にも持っている。
     // 従来は社内No.を変えると migrateProductData() がキーを移すときに中身も書き換えていたが、
     // recordId ベース（_rid_）へ移った案件はキーを移さないため、ここで書き換えないと
@@ -1151,6 +1163,7 @@
     setMem: (list)=>{ records = dropTombed(Array.isArray(list) ? list : []); },
     parse: (raw)=> { const a = JSON.parse(raw); return Array.isArray(a) ? a : []; },
     save: ()=> saveRecords(),
+    onResolve: (info)=> syncResolvedFieldToBs(info),   // SAKAE-TOPFORM-01：重なりの解決結果（基本 7 欄）を作業票データへ derived で反映
     render: ()=> render(),
     isProtected: ()=> { const ov = document.getElementById('newOverlay'); return !!(ov && ov.style.display !== 'none'); },   // 新規・編集フォームを開いている間は保留
     merge: (base, mine, incoming)=>{
@@ -1674,6 +1687,120 @@
   };
   const REG_FIELD_KEYS = { f_mbSpec:'mbSpec', f_slideCount:'slideCount', f_cavityMaterial:'cavityMaterial', f_plateSize:'plateSize', f_shapeArea:'shapeArea', f_expectedProfit:'expectedProfit' };
 
+  // ===== SAKAE-TOPFORM-01：フォームの field 単位保存権 =====
+  // 「フォームに値が表示されている」≠「その値を保存してよい」。利用者が実際に変えた欄（dirty）だけが TOP の write intent を持ち、
+  // 未変更の欄は保存直前の正式値（REMOTE）を守る。BASE＝フォームを開いた時点の DOM 値（正規化）／LOCAL＝保存時の DOM 値／REMOTE＝保存直前の正式値。
+  //   基本 7 欄（作業票データ bs.order と共有）… 正本＝作業票データ（records はカード表示のキャッシュ）
+  //   受注連絡書 20 項目 … 正本＝records（書く入口は TOP フォームだけ。bs.orderNotice はコピー）。registration は 9 欄に分け、表 3 種は「表ごとに 1 欄」（行 id が無いため）
+  //   status／isTemplate はフォームの intent 外（納品完了・ひな形の専用経路だけが変える）
+  const TOPFORM_BASIC = ['orderNo','customer','modelName','itemName','qty','orderDate','dueDate'];
+  const TOPFORM_BS_KEY = { orderNo:'orderNo', customer:'customer', modelName:'model', itemName:'itemName', qty:'qty', orderDate:'orderDate', dueDate:'dueDate' };
+  const TOPFORM_NOTICE_TEXT = ['tCode','komeSu','amount','extraDocs','drafter','mfgResp','salesResp','designResp','issueDate1','issueDate2','note'];
+  const TOPFORM_RADIO = { category:'f_category', subject:'f_subject', shikyu:'f_shikyu', infoForecast:'f_infoForecast', status2:'f_status' };
+  const TOPFORM_TABLES = ['designSchedule','designPlan','costSummary'];
+  const TOPFORM_REG_RADIO = { hinshu:'f_hinshu', precision:'f_precision', partingChange:'f_partingChange' };
+  const TOPFORM_REG_TEXT = { mbSpec:'f_mbSpec', slideCount:'f_slideCount', cavityMaterial:'f_cavityMaterial', plateSize:'f_plateSize', shapeArea:'f_shapeArea', expectedProfit:'f_expectedProfit' };
+  const TOPFORM_REG_KEYS = Object.keys(TOPFORM_REG_RADIO).concat(Object.keys(TOPFORM_REG_TEXT));
+  const TOPFORM_LEAVES = [].concat(TOPFORM_BASIC, TOPFORM_NOTICE_TEXT, Object.keys(TOPFORM_RADIO), TOPFORM_TABLES, TOPFORM_REG_KEYS.map(k=> 'registration.' + k));
+  // 新規フォームの「まっさら」な値（radio の既定表示は intent ではない）。orderDate は新規既定（当日）として別扱い
+  const TOPFORM_PRISTINE = { status2:'検討', category:'型', subject:'新作', 'registration.hinshu':'試作', 'registration.precision':'A', 'registration.partingChange':'無' };
+  function topformCanon(v){ try{ if(window.sakaeCausal && typeof window.sakaeCausal.canon === 'function') return window.sakaeCausal.canon(v); }catch(e){} return JSON.stringify(v); }
+  // 比較前の正規化：null/undefined/'' は同値・前後空白は無視・日付は文字列のまま・数値は文字列化。表は正規化 JSON を 1 値として比べる
+  function normalizeTopField(key, v){
+    if(TOPFORM_TABLES.indexOf(key) >= 0) return topformCanon(Array.isArray(v) ? v : []);
+    return (v === null || v === undefined) ? '' : String(v).trim();
+  }
+  // フォーム DOM から LOCAL を読む。values＝保存に使う値（従来の persistOrderForm と同じ作り方）／leaves＝正規化した比較用
+  function readTopFormLocal(){
+    const values = {};
+    FORM_FIELD_IDS.forEach(id=>{
+      const el = document.getElementById(id), k = FORM_FIELD_KEYS[id];
+      values[k] = (k === 'amount' || k === 'extraDocs' || k === 'issueDate1' || k === 'issueDate2') ? el.value : el.value.trim();
+    });
+    values.orderDate = document.getElementById('f_orderDate').value;
+    values.dueDate = document.getElementById('f_dueDate').value;
+    Object.keys(TOPFORM_RADIO).forEach(k=>{ values[k] = getRadio(TOPFORM_RADIO[k]); });
+    values.designSchedule = collectDesignRows();
+    values.designPlan = collectPlanMilestones();
+    values.costSummary = collectTableRows(COST_ITEMS, 'cost');
+    values.registration = {};
+    Object.keys(TOPFORM_REG_RADIO).forEach(k=>{ values.registration[k] = getRadio(TOPFORM_REG_RADIO[k]); });
+    Object.keys(TOPFORM_REG_TEXT).forEach(k=>{
+      const el = document.getElementById(TOPFORM_REG_TEXT[k]);
+      values.registration[k] = (k === 'slideCount' || k === 'expectedProfit') ? el.value : el.value.trim();
+    });
+    const leaves = {};
+    TOPFORM_LEAVES.forEach(k=>{ leaves[k] = normalizeTopField(k, topformLeafValue(values, k)); });
+    return { values: values, leaves: leaves };
+  }
+  function topformLeafValue(obj, key){
+    if(key.indexOf('registration.') === 0) return obj && obj.registration ? obj.registration[key.slice('registration.'.length)] : undefined;
+    return obj ? obj[key] : undefined;
+  }
+  function topformSetLeaf(obj, key, value){
+    if(key.indexOf('registration.') === 0){ obj.registration = Object.assign({}, obj.registration || {}); obj.registration[key.slice('registration.'.length)] = value; return; }
+    obj[key] = value;
+  }
+  // BASE：フォームを開いた時点のスナップショット（比較専用。保存には使わない）
+  let formBase = null;
+  function captureTopFormBase(isEdit, recordId, productNo){
+    const L = readTopFormLocal();
+    formBase = { isEdit: !!isEdit, recordId: recordId || null, productNo: productNo || '', leaves: L.leaves };
+  }
+  function pristineNewFormLeaves(){
+    const o = {};
+    TOPFORM_LEAVES.forEach(k=>{ o[k] = (k in TOPFORM_PRISTINE) ? TOPFORM_PRISTINE[k] : normalizeTopField(k, TOPFORM_TABLES.indexOf(k) >= 0 ? [] : ''); });
+    return o;
+  }
+  function diffTopFormFields(baseLeaves, local){
+    const dirty = {};
+    TOPFORM_LEAVES.forEach(k=>{ if(!baseLeaves || baseLeaves[k] !== local.leaves[k]) dirty[k] = true; });
+    return dirty;
+  }
+  // REMOTE：保存直前の正式値。基本 7 欄＝作業票データ raw の bs.order（無ければ records）／連絡書 20 項目＝records の保存先（保留中の受信も含む LS）
+  function readLatestOrderState(recordId, productNo){
+    const out = { bsRaw: null, bs: null, rec: null, values: {}, leaves: {} };
+    try{
+      const k = SK.productKeyOf('buhinhyo', { productNo: productNo, recordId: recordId }).key;
+      if(k){ const raw = localStorage.getItem(k); if(raw){ out.bsRaw = raw; out.bs = JSON.parse(raw); } }
+    }catch(e){ out.bs = null; }
+    try{
+      const list = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      out.rec = (Array.isArray(list) ? list : []).find(r=> r && r.id === recordId) || null;
+    }catch(e){ out.rec = null; }
+    TOPFORM_LEAVES.forEach(k=>{
+      let v;
+      if(TOPFORM_BASIC.indexOf(k) >= 0 && out.bs && out.bs.order) v = out.bs.order[TOPFORM_BS_KEY[k]];
+      else v = topformLeafValue(out.rec, k);
+      out.values[k] = v;
+      out.leaves[k] = normalizeTopField(k, v);
+    });
+    return out;
+  }
+  // field 単位の 3-way：A LOCAL==BASE→REMOTE維持／B REMOTE==BASE→LOCAL／C LOCAL==REMOTE→同値／D 三者相違→FIELD CONFLICT（自動採用しない）
+  function mergeTopFormFields(baseLeaves, local, remote, pendingPaths, recordId){
+    const write = {}, conflicts = [], skipped = [];
+    TOPFORM_LEAVES.forEach(k=>{
+      const path = 'records[' + recordId + '].' + k;
+      if(pendingPaths && pendingPaths.has(path)){ skipped.push(k); return; }   // 未解決の重なりがある欄は TOP 保存で確定しない（FIELD 単位停止）
+      const B = baseLeaves ? baseLeaves[k] : undefined, L = local.leaves[k], Rm = remote.leaves[k];
+      if(baseLeaves && L === B) return;                       // A：未変更＝write intent なし
+      if(L === Rm) return;                                     // C：同じ最終値
+      if(!baseLeaves || Rm === B){ write[k] = true; return; }  // B：TOP だけが変えた
+      conflicts.push({ path: path, base: B, mine: local.values ? topformLeafValue(local.values, k) : L, incoming: remote.values[k], cause: 'same-field' });   // D
+    });
+    return { write: write, conflicts: conflicts, skipped: skipped };
+  }
+  // 解決結果を作業票データへ（TOP guard の resolveMine／resolveTheirs から。基本 7 欄だけ・因果 derived）
+  function syncResolvedFieldToBs(info){
+    const m = /^records\[([^\]]+)\]\.([A-Za-z0-9_.]+)$/.exec(info && info.path || '');
+    if(!m) return;
+    const rec = records.find(r=> r && r.id === m[1]);
+    if(!rec || TOPFORM_BASIC.indexOf(m[2]) === -1) return;
+    const patch = {}; patch[m[2]] = true;
+    syncToBuhinState(rec, patch);
+  }
+
   function fillDesignTable(rows){
     designTbody.innerHTML = '';
     designRowCount = 0;
@@ -1746,11 +1873,12 @@
         delete backBtn.dataset.productNo;
       }
     }
+    captureTopFormBase(isEdit, isEdit ? rec.id : null, isEdit ? rec.productNo : '');   // SAKAE-TOPFORM-01：開いた時点の値（比較専用）
     newOverlay.style.display = 'flex';
     if(!isEdit) document.getElementById('f_orderNo').focus();
   }
   function openNew(){ templateSourceRef = null; openForm(null); }
-  function closeNew(){ newOverlay.style.display = 'none'; formEditId = null; }
+  function closeNew(){ newOverlay.style.display = 'none'; formEditId = null; formBase = null; }
   function todayStr(){
     const d = new Date();
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -1853,8 +1981,10 @@
   // ---- 入力内容の検証・保存本体（登録ボタン・「作業票に戻る」ボタンの両方から使う）。
   // 保存できなければnullを返す（呼び出し側は画面を閉じたり遷移したりせず、その場でとどまる）。 ----
   function persistOrderForm(){
-    const orderNo = document.getElementById('f_orderNo').value.trim();
-    const customer = document.getElementById('f_customer').value.trim();
+    // SAKAE-TOPFORM-01：フォームの値は「利用者が変えた欄」だけを保存する。未変更の欄は保存直前の正式値（REMOTE）を守る
+    const L = readTopFormLocal();
+    const orderNo = L.values.orderNo;
+    const customer = L.values.customer;
     if(!orderNo || !customer){
       alert('社内No.と客先名は必須です。');
       return null;
@@ -1863,84 +1993,73 @@
     // 社内No.は表示・帳票のための番号で、案件の識別は recordId が行う。
     // 同じ社内No.を2件以上に付けても、保存先も画面遷移も recordId で決まる。
     const wasNew = !formEditId;
-    const rec = {
-      status2: getRadio('f_status'),
-      tCode: document.getElementById('f_tCode').value.trim(),
-      orderNo: orderNo,
-      productNo: orderNo, // 内部の紐付けキー名はproductNoのままだが、値は社内No.をそのまま使う
-      customer: customer,
-      modelName: document.getElementById('f_modelName').value.trim(),
-      itemName: document.getElementById('f_itemName').value.trim(),
-      category: getRadio('f_category'),
-      subject: getRadio('f_subject'),
-      shikyu: getRadio('f_shikyu'),
-      orderDate: document.getElementById('f_orderDate').value,
-      dueDate: document.getElementById('f_dueDate').value,
-      qty: document.getElementById('f_qty').value.trim(),
-      komeSu: document.getElementById('f_komeSu').value.trim(),
-      amount: document.getElementById('f_amount').value,
-      extraDocs: document.getElementById('f_extraDocs').value,
-      infoForecast: getRadio('f_infoForecast'),
-      drafter: document.getElementById('f_drafter').value.trim(),
-      mfgResp: document.getElementById('f_mfgResp').value.trim(),
-      salesResp: document.getElementById('f_salesResp').value.trim(),
-      designResp: document.getElementById('f_designResp').value.trim(),
-      issueDate1: document.getElementById('f_issueDate1').value,
-      issueDate2: document.getElementById('f_issueDate2').value,
-      note: document.getElementById('f_note').value.trim(),
-      designSchedule: collectDesignRows(),
-      designPlan: collectPlanMilestones(),
-      costSummary: collectTableRows(COST_ITEMS, 'cost'),
-      registration: {
-        hinshu: getRadio('f_hinshu'),
-        mbSpec: document.getElementById('f_mbSpec').value.trim(),
-        slideCount: document.getElementById('f_slideCount').value,
-        cavityMaterial: document.getElementById('f_cavityMaterial').value.trim(),
-        plateSize: document.getElementById('f_plateSize').value.trim(),
-        precision: getRadio('f_precision'),
-        partingChange: getRadio('f_partingChange'),
-        shapeArea: document.getElementById('f_shapeArea').value.trim(),
-        expectedProfit: document.getElementById('f_expectedProfit').value
-      }
-    };
     if(formEditId){
       const idx = records.findIndex(r=>r.id===formEditId);
-      if(idx>-1){
-        const oldProductNo = records[idx].productNo;
-        rec.id = formEditId;
-        rec.status = records[idx].status;
-        records[idx] = rec;
-        // 社内No.を変更・新規入力した結果、内部の紐付けキーが変わった場合は既存の作業票データ等を引き継ぐ
-        if(oldProductNo !== rec.productNo){
-          migrateProductData(oldProductNo, rec.productNo);
-        }
-      }
-    }else{
-      // ---- ひな形から作成する場合だけ、日程を展開できるかを先に確認する ----
-      // ひな形は「受注日を0日目とした標準工程パターン」として展開するため、
-      // 元ひな形の受注日と新しい案件の受注日が両方そろっていないと展開できない。
-      // 揃っていない場合はここで中止し、案件そのものも作らない（元ひな形・既存データは変更しない）。
-      if(templateSourceRef && !canExpandTemplate(templateSourceRef, rec.orderDate)){
-        alert(TEMPLATE_ORDER_DATE_MISSING_MSG);
+      // ---- 開いている間に案件が削除された：古いフォームから復活させない（fail-closed） ----
+      if(idx === -1 || tombIds().has(formEditId)){
+        alert('対象案件は削除されたため保存できません。');
+        closeNew();
         return null;
       }
-      // ---- ひな形側のレイアウトが引き継げる状態かを、案件を作る前に確かめる ----
-      // 段数とレーン配置の片方しか無い場合は fail-closed。
-      // 親案件を作らず、共有へも出さない（片方だけの状態を新しい案件へ持ち込まない）。
-      let tplLayout = null;
-      if(templateSourceRef){
-        tplLayout = readTemplateLayout(templateSourceRef);
-        if(!tplLayout.ok){
-          alert(TEMPLATE_LAYOUT_BROKEN_MSG + tplLayout.reason);
-          return null;
-        }
+      const target = records[idx];
+      const oldProductNo = target.productNo;
+      const remote = readLatestOrderState(formEditId, oldProductNo);
+      // BASE が無い（想定外）ときは「保存直前の正式値」を BASE にする＝差のある欄だけ書き、重なりは作らない（安全側）
+      const baseLeaves = (formBase && formBase.isEdit && formBase.recordId === formEditId) ? formBase.leaves : remote.leaves;
+      const pending = new Set(syncGuard ? syncGuard.snapshot().entries.map(e=> e.path) : []);
+      const m = mergeTopFormFields(baseLeaves, L, remote, pending, formEditId);
+      // B：TOP が変えた欄だけ records へ
+      Object.keys(m.write).forEach(k=>{ topformSetLeaf(target, k, topformLeafValue(L.values, k)); });
+      if(m.write.orderNo) target.productNo = L.values.orderNo;   // 内部の紐付けキー名は productNo のままだが、値は社内No.をそのまま使う
+      // A：未変更の基本 7 欄は作業票データ（正本）に揃える（records はカード表示のキャッシュ）
+      if(remote.bs && remote.bs.order){
+        TOPFORM_BASIC.forEach(k=>{
+          if(m.write[k] || m.skipped.indexOf(k) >= 0 || m.conflicts.some(c=> c.path === 'records[' + formEditId + '].' + k)) return;
+          const bv = remote.bs.order[TOPFORM_BS_KEY[k]];
+          if(bv !== undefined && normalizeTopField(k, target[k]) !== normalizeTopField(k, bv)) target[k] = bv;
+        });
       }
-      rec.id = uid();
-      rec.status = 'inprogress';
-      records.unshift(rec);
-      if(templateSourceRef){
-        copyBuhinPartsFromTemplate(templateSourceRef, rec, tplLayout);
+      // 社内No.を変更した結果、内部の紐付けキーが変わった場合は既存の作業票データ等を引き継ぐ
+      if(oldProductNo !== target.productNo){
+        migrateProductData(oldProductNo, target.productNo);
       }
+      // D：同じ欄を両方が別の値に変えた → 自動で選ばず、案件一覧の「同じ欄の重なり」控えへ（利用者が 元に戻す／了解 で決める）
+      if(m.conflicts.length && syncGuard && typeof syncGuard.noteConflicts === 'function') syncGuard.noteConflicts(m.conflicts);
+      templateSourceRef = null;
+      saveRecords();
+      syncToBuhinState(target, m.write);   // 変えた欄だけを作業票データへ（未変更・重なり・保留の欄は書かない）
+      target._wasNew = false;
+      return target;
+    }
+    // ---- 新規作成：入力した欄と新規の既定（進行中・品目「型」・科目「新作」・受注日）だけで作る。radio の初期表示は intent ではない ----
+    const dirty = diffTopFormFields(pristineNewFormLeaves(), L);
+    const rec = { productNo: orderNo, orderNo: orderNo, customer: customer, category: '型', subject: '新作', orderDate: L.values.orderDate || '' };
+    Object.keys(dirty).forEach(k=>{ topformSetLeaf(rec, k, topformLeafValue(L.values, k)); });
+    rec.productNo = orderNo;
+    // ---- ひな形から作成する場合だけ、日程を展開できるかを先に確認する ----
+    // ひな形は「受注日を0日目とした標準工程パターン」として展開するため、
+    // 元ひな形の受注日と新しい案件の受注日が両方そろっていないと展開できない。
+    // 揃っていない場合はここで中止し、案件そのものも作らない（元ひな形・既存データは変更しない）。
+    if(templateSourceRef && !canExpandTemplate(templateSourceRef, rec.orderDate)){
+      alert(TEMPLATE_ORDER_DATE_MISSING_MSG);
+      return null;
+    }
+    // ---- ひな形側のレイアウトが引き継げる状態かを、案件を作る前に確かめる ----
+    // 段数とレーン配置の片方しか無い場合は fail-closed。
+    // 親案件を作らず、共有へも出さない（片方だけの状態を新しい案件へ持ち込まない）。
+    let tplLayout = null;
+    if(templateSourceRef){
+      tplLayout = readTemplateLayout(templateSourceRef);
+      if(!tplLayout.ok){
+        alert(TEMPLATE_LAYOUT_BROKEN_MSG + tplLayout.reason);
+        return null;
+      }
+    }
+    rec.id = uid();
+    rec.status = 'inprogress';
+    records.unshift(rec);
+    if(templateSourceRef){
+      copyBuhinPartsFromTemplate(templateSourceRef, rec, tplLayout);
     }
     templateSourceRef = null;
     saveRecords();

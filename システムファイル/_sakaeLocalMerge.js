@@ -53,6 +53,7 @@
     for(let i=0;i<segs.length;i++){
       const s = segs[i];
       if(cur == null) return undefined;
+      if(i === 0 && s.key !== undefined && Array.isArray(cur)) continue;   // 根が配列（案件一覧 records[]）のとき、先頭のラベル「records」は読み飛ばす（TOPFORM-01・BUG-3）
       if(s.key !== undefined) cur = cur[s.key];
       else cur = Array.isArray(cur) ? cur.find(x=> x && String(x.id) === String(s.id)) : undefined;
     }
@@ -63,6 +64,7 @@
     const segs = segsOf(path);
     for(let i=0;i<segs.length;i++){
       const s = segs[i], last = (i === segs.length - 1);
+      if(i === 0 && s.key !== undefined && Array.isArray(cur) && !last) continue;   // 同上（BUG-3）
       if(s.key !== undefined){
         if(last){ if(value === undefined) delete cur[s.key]; else cur[s.key] = clone(value); return true; }
         if(cur[s.key] == null) return false;
@@ -723,6 +725,7 @@
       opts.setMem(mem);
       g.base = (function(){ const b = clone(g.base); setPath(b, path, e.incoming === undefined ? undefined : e.incoming); return b; })();
       try{ opts.save(); }catch(err){}                              // 利用者の明示操作としての保存
+      if(typeof opts.onResolve === 'function'){ try{ opts.onResolve({ path: path, chosen: 'mine', value: e.mine }); }catch(err){} }   // 解決結果を画面側の派生データへ（TOPFORM-01・任意）
       opts.render(); renderNotice();
     };
     g.resolveTheirs = function(path){
@@ -736,7 +739,17 @@
       g.entries = g.entries.filter(x=> x !== e);
       persistEntries();
       opts.setMem(mem);
+      if(typeof opts.onResolve === 'function'){ try{ opts.onResolve({ path: path, chosen: 'theirs', value: cur }); }catch(err){} }   // 解決結果を画面側の派生データへ（TOPFORM-01・任意）
       opts.render(); renderNotice();
+    };
+    // ---- 画面側で見つけた「同じ欄の重なり」を控えへ登録する（SAKAE-TOPFORM-01・追加 API。既存の併合・検出・解決の意味は変えない）----
+    //   list：[{ path, base, mine, incoming }]。登録後はメモリに自分の値を保ち、保存時は prepareSave が保存先の現在値で書く（既存の fail-closed と同じ扱い）
+    g.noteConflicts = function(list){
+      if(!Array.isArray(list) || !list.length) return;
+      upsertEntries(list);
+      try{ const mem = getMem(); if(mem) applyMineToMem(mem); }catch(e){}
+      persistEntries();
+      renderNotice(true);
     };
 
     g.revertInfo = function(path){
