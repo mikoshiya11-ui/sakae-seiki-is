@@ -153,7 +153,8 @@ window.ProcGantt = (function(){
     // 該当データがまだ無ければ今日から1ヶ月を初期表示にする。
     // 工程日は「開始」ではなく「終了（納期）」を表すため、実際にバーが始まる位置は工程日から日数（コマ数）ぶん手前になる。
     // 万一の日付入力ミス等で表示期間が異常に広くならないよう、最大でも1年分（MAX_RANGE_DAYS）に収める。 ----
-    const TODAY_DATE = new Date();
+    // ★今日は 0:00 に正規化（SAKAE-SCHEDULE-FIX-01）。時刻付きのまま todayIdx（Math.round）へ渡すと 12:00 以降に今日列が +1 日ずれる。TODAY_MID・daysUntil は従来どおり。
+    const TODAY_DATE = (function(){ const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); })();
     function parseDateStr(s){
       if(!s) return null;
       const p = String(s).split('-').map(Number);

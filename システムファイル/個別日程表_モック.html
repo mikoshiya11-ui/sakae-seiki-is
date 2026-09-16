@@ -459,7 +459,7 @@
       元データ：個別日程表（例１）.xlsx「81970PMC №6」シート／実際のセル位置から工程日を再現し、準備／加工／仕上げの3行に集約<br>
       作業票の「個別日程表を作る」から開いた場合、作業票と工程データを直接共有しています（品番ごと）。バーの中央を動かすと日付が、両端をつまんで伸縮すると日数（作業期間）が、その場で作業票側に反映されます（開いている場合はリアルタイムに）。バーの新規作成・削除は作業票側の工程一覧にもそのまま反映されます。進捗チェックはこのページだけの保存です。<br>
       「＋ 部品を追加」でこの画面から新しい部品を追加できます（作業票に戻らなくてよい）。追加した部品名は行の名前部分をクリックすればいつでも変更できます。工程の追加は、部品の行の空いている段を右クリック→「バーの設置」から行えます（作業票側にもそのまま追加されます）。左側の部品名などが並ぶ欄を右クリックすると、部品名・材質など全項目＋工程をまるごと複製した行をすぐ下に追加できます。<br>
-      ※進捗チェック欄の担当者名は、この案件ごとに入力・修正できます（名前をクリックで変更、✕で削除、「＋担当者を追加」で追加）。初めて開いた案件は、これまでの4名（テンチョー・コーダ・カツグくん・ケイリー）が初期値として表示されます。
+      ※進捗チェック欄の担当者名は、この案件ごとに入力・修正できます（名前をクリックで変更、✕で削除、「＋担当者を追加」で追加）。初めて開いた案件は、4名（塩野・鶴山・足立・生管）が初期値として表示されます。
     </div>
 
   </div>
@@ -697,7 +697,10 @@
     if(!minDate) minDate = parseDateStr(buhinState.order && buhinState.order.orderDate) || new Date();
     RANGE_START = new Date(minDate);
     RANGE_START.setDate(RANGE_START.getDate()-3);
-    TODAY_DATE = new Date();
+    // ★今日は 0:00 に正規化してから idxForDate へ渡す（SAKAE-SCHEDULE-FIX-01）。
+    //   時刻付きのまま渡すと 12:00 以降は (date−RANGE_START)/86400000 の小数部が .5 以上になり Math.round が翌日の列を指す（今日列が +1 日ずれていた）。
+    //   toISOString（UTC 化）は使わない。RANGE_START・工程日・表示期間の計算は変えない。
+    TODAY_DATE = (function(){ const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); })();
   }else{
     RANGE_START = new Date(2026,6,1); // 2026/7/1
     TODAY_DATE = new Date(2026,6,15);
@@ -1288,7 +1291,12 @@
   // 案件が特定できないとき（社内No.も recordId も無い）は、どこにも書かない。
   // 以前は社内No.が無いと末尾なしの共有キーへ書いていて、別の案件に混ざる原因になっていた。
   const CHECK_NAMES_REF = function(){ return { productNo: urlProductNo, recordId: caseCtx.recordId }; };
-  const DEFAULT_CHECK_NAMES = ['テンチョー','コーダ','カツグくん','ケイリー'];
+  const DEFAULT_CHECK_NAMES = ['塩野','鶴山','足立','生管'];
+  // ---- 旧名称 → 新名称（SAKAE-SCHEDULE-FIX-01・2026-09-16 正式改名）----
+  // 名前は表示ラベルであると同時に、進捗チェックの保存キー（名前_日idx）でもある。
+  // そのため単純な文字列置換ではなく、読み込んだときに名前一覧とチェックのキーの両方を一度だけ新名称へ付け替える（履歴を失わない）。
+  const LEGACY_CHECK_NAME_MAP = { 'テンチョー':'塩野', 'コーダ':'鶴山', 'カツグくん':'足立', 'ケイリー':'生管' };
+  function canonicalCheckName(name){ return Object.prototype.hasOwnProperty.call(LEGACY_CHECK_NAME_MAP, name) ? LEGACY_CHECK_NAME_MAP[name] : name; }
   function loadCheckNames(){
     try{
       const got = SK.readProductData('kobetsuCheckNames', CHECK_NAMES_REF());
@@ -1327,6 +1335,34 @@
     SK.writeProductData('kobetsuChecks', CHECKS_REF(), JSON.stringify(checksData));
   }
   let checksData = loadChecks();
+  // ---- 読込時の正規化：旧名称が残っていれば名前一覧とチェックキーを新名称へ移す。共有から旧名称が後で流れ込んでも、次に開いたときに同じ処理で吸収する ----
+  //   ・名前一覧：旧→新へ置換し、重複は 1 つにまとめる（順序は元の並びを保つ＝旧 4 名なら 塩野・鶴山・足立・生管 の順になる）
+  //   ・チェック：旧名_日idx → 新名_日idx。新名側に同じ日のチェックが既にあれば OR で併合（どちらかが ✓ なら ✓）
+  //   ・変換が起きたときだけ保存する（無変更の読込では書かない）
+  function migrateLegacyCheckNames(){
+    let namesChanged = false, checksChanged = false;
+    const seen = new Set(); const names = [];
+    checkNames.forEach(function(n){
+      const c = canonicalCheckName(n);
+      if(c !== n) namesChanged = true;
+      if(seen.has(c)){ namesChanged = true; return; }
+      seen.add(c); names.push(c);
+    });
+    checkNames = names;
+    Object.keys(checksData).forEach(function(k){
+      const p = k.lastIndexOf('_');
+      if(p <= 0) return;
+      const oldName = k.slice(0, p), c = canonicalCheckName(oldName);
+      if(c === oldName) return;
+      const nk = c + k.slice(p);
+      checksData[nk] = !!checksData[nk] || !!checksData[k];
+      delete checksData[k];
+      checksChanged = true;
+    });
+    if(namesChanged) saveCheckNames();
+    if(checksChanged) saveChecks();
+  }
+  migrateLegacyCheckNames();
   const checkInner = document.getElementById('checkInner');
 
   function buildCheckGrid(){

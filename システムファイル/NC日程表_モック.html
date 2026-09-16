@@ -427,7 +427,8 @@
 
   // ---- 連続カレンダー方式（実物のNC日程表.xlsx「マ81」シートの2週間表示 7/9～に合わせて7/6始まりにしてある。タブ名は表示上は「ミ81」等に変更済み） ----
   const RANGE_START = new Date(2026,6,6); // 2026/7/6
-  const TODAY_DATE = new Date();
+  // ★今日は 0:00 に正規化（SAKAE-SCHEDULE-FIX-01）。時刻付きのまま idxForDate（Math.round）へ渡すと 12:00 以降に今日列が +1 日ずれる。
+  const TODAY_DATE = (function(){ const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); })();
   function idxForDate(date){ return Math.round((date - RANGE_START)/86400000) + 1; }
   function dateForIdx(idx){ const d = new Date(RANGE_START); d.setDate(RANGE_START.getDate() + (idx-1)); return d; }
   const TODAY_IDX = idxForDate(TODAY_DATE);
