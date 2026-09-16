@@ -1388,6 +1388,78 @@
     }catch(e){ return ''; }
   }
 
+  // 端末にも共有にも対象データが無い競合記録を、監査を残して閉じる。本体データ（sakaeIS_）は書かない・消さない。
+  //   reason='TOMBSTONE'：削除の正式根拠（墓標）がある。'DISCARD'：人が「競合記録のみ破棄」を選んだ。
+  function closeStaleConflict(syncKey, c, entry, recordId, who, reason){
+    const audit = {
+      version: 1,
+      resolutionId: newResolutionId(),
+      syncKey: syncKey,
+      dataType: c.dataType || conflictDataTypeOf(syncKey),
+      recordId: recordId,
+      productNo: productNoOfRecordId(recordId) || (entry && entry.productNo) || '',
+      base: entry ? entry.base : c.base, local: entry ? entry.local : c.local, remote: entry ? entry.remote : c.remote,
+      '採用': 'NONE',
+      '採用値': null,
+      '判断者': who,
+      '判断者ID': '',
+      'remote照合': '対象なし',
+      '結果': (reason === 'TOMBSTONE') ? 'CLOSED_TOMBSTONE' : 'DISCARDED',
+      at: new Date().toISOString()
+    };
+    if(!writeResolutionAudit(audit)){
+      return resolverStop(syncKey, '監査', '解決の記録を残せませんでした。競合は消していません。');
+    }
+    const rest = (c.conflicts || []).filter(function(e){ return e.recordId !== recordId; });
+    if(syncKey === RECORDS_KEY && rest.length){ c.conflicts = rest; writeConflict(c); }
+    else clearConflict(syncKey);
+    return { ok:true, resolved:true, closed:true, syncKey: syncKey, recordId: recordId,
+             resolutionId: audit.resolutionId, '採用': 'NONE', '残りの競合': rest.length,
+             message: (reason === 'TOMBSTONE') ? '削除済みの案件に残っていた競合記録を閉じました。' : '競合記録のみ破棄しました（データは変えていません）。' };
+  }
+  // 「競合記録のみ破棄」：端末にも共有にも対象データが無いときだけ。判断者必須・確認は画面側・本体データ変更 0・監査必須。
+  async function discardConflict(syncKey, options){
+    if(resolvingNow) return resolverStop(syncKey, '実行中', 'ほかの解消処理が動いています。終わってからもう一度お試しください。');
+    resolvingNow = true;
+    let r;
+    try{
+      const opt = options || {};
+      const who = String(opt['判断者'] || '').trim();
+      if(!who) r = resolverStop(syncKey, '判断者', '判断した人の名前が入っていません。');
+      else{
+        const c = readConflict(syncKey);
+        if(!c) r = resolverStop(syncKey, '競合', 'この競合は記録にありません。');
+        else{
+          const isRecords = (syncKey === RECORDS_KEY);
+          let recordId = String(opt.recordId || '');
+          let entry = null;
+          if(isRecords){
+            entry = (c.conflicts || []).filter(function(e){ return e.recordId === recordId; })[0] || null;
+            if(!entry) r = resolverStop(syncKey, '対象', 'その案件はこの競合に含まれていません。');
+          }else{
+            recordId = (window.sakaeKeys && window.sakaeKeys.recordIdOfKey(syncKey)) || recordId;
+            entry = (c.conflicts || [])[0] || { base: c.base, local: c.local, remote: c.remote };
+          }
+          if(!r){
+            const got = await readRemoteKeyExact([syncKey]);
+            if(!got.ok) r = resolverStop(syncKey, '共有読込', '共有を読めませんでした（' + got.error + '）。');
+            else{
+              const remoteNow = got.values[syncKey];
+              const nowRemote = isRecords ? recordEntryText(remoteNow, recordId) : remoteNow;
+              const localNow  = isRecords ? recordEntryText(localStorage.getItem(RECORDS_KEY), recordId) : localStorage.getItem(syncKey);
+              const noLocal = (localNow === null || localNow === undefined), noRemote = (nowRemote === null || nowRemote === undefined);
+              if(!(noLocal && noRemote)) r = resolverStop(syncKey, '対象あり', '対象データがこの端末か共有側に残っています。破棄ではなく、どちらを採用するかを選んでください。');
+              else r = closeStaleConflict(syncKey, c, entry, recordId, who, 'DISCARD');
+            }
+          }
+        }
+      }
+    }catch(e){ r = resolverStop(syncKey, '例外', String((e && e.message) || e)); }
+    finally{ resolvingNow = false; }
+    refreshConflictNotice();
+    return r;
+  }
+
   // 解消の入口。二重に走らせない。成立したときだけ再同期する。
   async function resolveConflict(syncKey, adopt, options){
     if(resolvingNow) return resolverStop(syncKey, '実行中', 'ほかの解消処理が動いています。終わってからもう一度お試しください。');
@@ -1444,9 +1516,29 @@
       : (isRecords ? entry.remote : c.remote);
     const nowRemote   = isRecords ? recordEntryText(remoteNow, recordId) : remoteNow;
     if(!sameText(shownRemote, nowRemote)){
+      // ★勝手にどちらも採用しない（fail-closed）。ただし止めた理由は必ず利用者へ見せる（CONFLICTCLEAR-01）。
+      //   記録の remote を今の共有に合わせ直すので、画面は最新の共有側を出し直す。
       refreshConflictFromRemote(c, remoteNow);
+      if(nowRemote === null || nowRemote === undefined){
+        return resolverStop(syncKey, '再確認',
+          '共有側のデータは現在ありません。この端末の内容を共有へ登録する場合は、内容を確認して再度採用してください。');
+      }
       return resolverStop(syncKey, '再確認',
-        '確認している間に共有側がさらに変わりました。もう一度内容を見てから選び直してください。');
+        '共有側の内容が変更されました。最新内容を表示しました。もう一度内容を見てから採用してください。');
+    }
+
+    // ---- 端末にも共有にも対象データが無い競合（案件が削除されたあとに残った記録など）----
+    // ★無条件では消さない。正式な削除根拠（墓標）がある時だけ、監査を残して閉じる。無ければ止めて理由を出す（CONFLICTCLEAR-01）。
+    {
+      const localNowText = isRecords ? recordEntryText(localStorage.getItem(RECORDS_KEY), recordId) : localStorage.getItem(syncKey);
+      const noLocal  = (localNowText === null || localNowText === undefined);
+      const noRemote = (nowRemote === null || nowRemote === undefined);
+      if(noLocal && noRemote){
+        if(recordId && activeTombRecordIds().has(recordId)){
+          return closeStaleConflict(syncKey, c, entry, recordId, who, 'TOMBSTONE');
+        }
+        return resolverStop(syncKey, '対象なし', 'この端末にも共有側にも対象データがありません。');
+      }
     }
 
     let adoptedWhole = null;    // 共有・端末で「合意した」全体の値
@@ -1555,6 +1647,10 @@
   // ============================================================
   const RESOLVER_UI_ID = 'sakaeSyncResolverUI';
   let resolverSelection = null;   // { syncKey, recordId }
+  // 画面は競合記録が変わるたびに作り直す（refreshConflictNotice → renderResolverUI）。
+  // 作り直しで消えては困るもの＝止めた理由・判断者名 は要素ではなく状態に持ち、描画のたびに出し直す（CONFLICTCLEAR-01）。
+  let resolverNotice = null;      // { syncKey, recordId, text, color }
+  let resolverJudgeName = '';
 
   function allConflictEntries(){
     const out = [];
@@ -1685,6 +1781,7 @@
           + (on ? 'background:#173a68;color:#fff;border-color:#173a68;' : 'background:#f4f4f4;color:#222;');
         b.addEventListener('click', function(){
           resolverSelection = { syncKey: e.syncKey, recordId: e.recordId };
+          resolverNotice = null;
           renderResolverUI();
         });
         ul.appendChild(b);
@@ -1730,13 +1827,33 @@
       who.id = 'sakaeResolverJudge';
       who.placeholder = 'お名前を入力してください';
       who.style.cssText = 'padding:4px 8px;font-size:13px;border:1px solid #999;border-radius:4px;width:220px;';
+      who.value = resolverJudgeName;
+      who.addEventListener('input', function(){ resolverJudgeName = String(who.value || ''); });
       whoWrap.appendChild(whoLabel); whoWrap.appendChild(who);
       box.appendChild(whoWrap);
 
       const msg = document.createElement('div');
       msg.setAttribute('data-sakae', 'resolverMessage');
       msg.style.cssText = 'margin-top:10px;color:#c0392b;min-height:1.6em;';
+      if(resolverNotice && resolverNotice.syncKey === sel.syncKey && resolverNotice.recordId === sel.recordId){
+        msg.textContent = resolverNotice.text;
+        if(resolverNotice.color) msg.style.color = resolverNotice.color;
+      }
       box.appendChild(msg);
+      const setNotice = function(text, color){
+        resolverNotice = { syncKey: sel.syncKey, recordId: sel.recordId, text: text, color: color || '#c0392b' };
+        const root2 = document.getElementById(RESOLVER_UI_ID);
+        const m2 = root2 ? root2.querySelector('[data-sakae="resolverMessage"]') : null;   // 作り直された後の要素へ書く
+        if(m2){ m2.textContent = text; m2.style.color = color || '#c0392b'; }
+      };
+      const bothMissing = (sel.local === null || sel.local === undefined) && (sel.remote === null || sel.remote === undefined);
+      if(bothMissing){
+        const note = document.createElement('div');
+        note.setAttribute('data-sakae', 'resolverBothMissing');
+        note.style.cssText = 'margin-top:6px;color:#8a4b00;';
+        note.textContent = 'この端末にも共有側にも対象データがありません。案件が削除済みなら「この端末の内容を採用」で記録を閉じられます。それ以外は「競合記録のみ破棄」で記録だけを消せます（データは変えません）。';
+        box.appendChild(note);
+      }
 
       const btns = document.createElement('div');
       btns.style.cssText = 'margin-top:10px;display:flex;gap:10px;';
@@ -1747,26 +1864,29 @@
           + 'color:#fff;background:' + color + ';';
         b.addEventListener('click', async function(){
           const name = String(who.value || '').trim();
-          if(!name){ msg.textContent = '判断した人の名前を入れてください。'; return; }
+          if(!name){ setNotice('判断した人の名前を入れてください。'); return; }
           // ★1クリックでは実行しない
           if(!window.confirm(confirmText)) return;
           b.disabled = true;
           try{
-            const r = await resolveConflict(sel.syncKey, adopt,
-              { recordId: sel.recordId, '判断者': name, seenRemote: sel.remote });
+            const r = (adopt === 'DISCARD')
+              ? await discardConflict(sel.syncKey, { recordId: sel.recordId, '判断者': name })
+              : await resolveConflict(sel.syncKey, adopt, { recordId: sel.recordId, '判断者': name, seenRemote: sel.remote });
             if(r && r.ok){
               resolverSelection = null;
+              resolverNotice = null;
               refreshConflictNotice();
               const stillOpen = document.getElementById(RESOLVER_UI_ID);
               if(stillOpen){
                 renderResolverUI();
                 const m2 = stillOpen.querySelector('[data-sakae="resolverMessage"]');
-                if(m2){ m2.style.color = '#1e7d32'; m2.textContent = '解消しました（記録ID ' + r.resolutionId + '）。'; }
+                if(m2){ m2.style.color = '#1e7d32'; m2.textContent = (r.closed ? r.message : '解消しました') + '（記録ID ' + r.resolutionId + '）。'; }
               }
             }else{
-              msg.textContent = (r && r.message) || '競合はまだ解消されていません。';
+              // ★失敗の理由は必ず画面に残す。resolveConflict の中で記録が更新され画面が作り直されていても、状態から出し直す。
+              setNotice((r && r.message) || '競合はまだ解消されていません。');
             }
-          }finally{ b.disabled = false; }
+          }finally{ try{ b.disabled = false; }catch(e){} }
         });
         return b;
       };
@@ -1774,6 +1894,10 @@
         'この端末の内容を共有へ反映します。\n共有側の現在値は置き換わります。\nよろしいですか？', '#173a68'));
       btns.appendChild(mk('sakaeResolverTakeRemote', '共有側の内容を採用', 'REMOTE',
         '共有側の内容をこの端末へ反映します。\nこの端末の現在値は置き換わります。\nよろしいですか？', '#c0392b'));
+      if(bothMissing){
+        btns.appendChild(mk('sakaeResolverDiscard', '競合記録のみ破棄', 'DISCARD',
+          '競合の記録だけを消します。\nこの端末・共有側のデータは変えません（監査記録は残ります）。\nよろしいですか？', '#6b6b6b'));
+      }
       box.appendChild(btns);
     }
 
@@ -2101,6 +2225,7 @@
     },
     resolveWithLocal:  function(syncKey, options){ return resolveConflict(syncKey, 'LOCAL',  options); },
     resolveWithRemote: function(syncKey, options){ return resolveConflict(syncKey, 'REMOTE', options); },
+    discardConflict:   function(syncKey, options){ return discardConflict(syncKey, options); },
     listResolutions: listResolutions,
     openResolver: openResolverUI,
     closeResolver: closeResolverUI
@@ -2612,6 +2737,8 @@
         pushKey(key, localStorage.getItem(key));
         return;
       }
+      // ★未解決の競合があるキーは送らない（flushPendingMutations と同じ規則）。人が解消するまで、共有側をこの経路で動かさない（CONFLICTCLEAR-01）。
+      if(localStorage.getItem(conflictKey(key))) return;
       const productNo = productNoOfKey(key);
       if(productNo && !livingProductNos.has(productNo)){
         // この社内No.を使っている案件が、共有側にもこの端末にも1件も無い。
