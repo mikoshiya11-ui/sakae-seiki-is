@@ -51,7 +51,7 @@
   }
 
   .toolRow{ display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
-  .procToggle{ display:flex; gap:4px; background:#fff; border-radius:10px; padding:4px; box-shadow:0 2px 8px rgba(20,35,70,.06); }
+  .procToggle{ display:flex; flex-wrap:wrap; gap:4px; background:#fff; border-radius:10px; padding:4px; box-shadow:0 2px 8px rgba(20,35,70,.06); } /* flex-wrap：正式分類 16＋手配 3＋全体 が並んでも横にはみ出さず折り返す（SAKAE-ZANPIN-02A） */
   .procToggle button{
     border:none; background:transparent; color:#5b6b84; font-size:13.5px; font-weight:700; padding:8px 16px;
     border-radius:7px; cursor:pointer; font-family:inherit;
@@ -123,7 +123,7 @@
   .printTitle{ display:none; }
 
   .checkCol{ width:34px; text-align:center; }
-  .checkCol input{ width:16px; height:16px; cursor:pointer; }
+  .checkCol input{ width:16px; height:16px; cursor:default; }
 
   .emptyState{ padding:60px 20px; text-align:center; color:#a4adbc; font-size:13px; line-height:1.8; }
 
@@ -236,16 +236,20 @@
 (function(){
   const params = new URLSearchParams(location.search);
   const urlProductNo = (params.get('productNo') || '').trim();
-  // ---- このページは全受注を横断して見るため、チェック欄の保存キーは品番に紐づけない単一のキーにする ----
-  const CHECK_KEY = 'sakaeIS_zanpinMock_checks_v1';
+  // ---- LEGACY / IGNORED（SAKAE-ZANPIN-DONE 2026-09-17）：かつて左端✓を手動で保存していた共有キー。
+  //   左端✓は「実績入力の工程完了状態」を表示する読取専用チェックになったため、このキーは読まない・書かない。
+  //   既存の値も削除・移行・共有への掃除書込みはしない（不用意な同期 write を出さないため）。定数は監査用に名前だけ残す。
+  const CHECK_KEY_LEGACY_IGNORED = 'sakaeIS_zanpinMock_checks_v1';
   // 案件に紐づく保存キーの作り方は、全画面共通の窓口（_sakaeSync.js 冒頭の sakaeKeys）に集約してある。
   const BUHIN_PREFIX = window.sakaeKeys.productKeyPrefix('buhinhyo');
   const LOG_KEY = 'sakaeIS_jissekiLog_v1';
   const RECORDS_KEY = 'sakaeIS_records_v1';
   // タブは工程完了期限が近い順に、最大でこの件数まで表示する（数が多すぎてタブが埋まらないように上限を設ける）。
   // 上限を超えた分は消してしまうと抜け漏れの原因になるので、まとめて「その他」タブに拾われるようにする。
-  // groupOf()で表示対象を13グループに絞ったので、実質すべてのグループがそのままタブに出る想定
-  const MAX_TABS = 13;
+  // ★SAKAE-ZANPIN-02A（2026-09-17 ジョーシ再裁定）：groupOf() の正式分類は 16 種（NC／3D・NCM／GS・GC／FIN・ASS・DAS・SA／PN／LA／MI／EW／DR／WEL／EM／JG／GG／DG／ST／外注）。
+  //   正式分類は同時に全部 active でも専用タブを失わないこと（期限順で「その他」へ畳まない）が契約。上限は 16＋「その他」を完全収容する 20。
+  //   「その他」は正式分類の overflow 箱としては使わない（正式分類が 20 を超えない限り出ない）。groupOf() 対象外の工程は従来どおりどのタブにも出さない。
+  const MAX_TABS = 20;
   const OTHER_KEY = '__OTHER__';
   // ---- 「全体」タブ（一番左）。残品表に正式表示するグループを横断してまとめて見るためのもの。
   // 中身は各グループの行をそのまま足し合わせたもので、groupOf() が対象外にしている工程（SU・DE など）を
@@ -281,6 +285,8 @@
   // 残品表に出さない（groupOfがnullを返すとbuildData()側で除外される）。
   // カッコで指定された組は同じタブにまとめる：(3D,NCM)／(FIN,ASS,DAS,SA)／(GS,GC)。NC1〜NC5・NCは
   // 従来通り「NC」1本にまとめる（NCMは上のNC正規表現より先に判定して別グループに振り分ける）。
+  // ★SAKAE-ZANPIN-02A（2026-09-17）：HET は独立分類をやめ「熱処理手配」だけに出す（HIH も同じ）。EM・JG・GG・DG・ST を工程分類に追加。
+  //   OST の特別扱い（独立タブ）は廃止＝先頭 O の外注工程として「外注手配 ＋ ST」に出す（下の externalBaseCode）。正本の工程コードは一切書き換えない。
   function groupOf(code){
     if(!code) return null;
     if(code==='3D' || code==='NCM') return '3D・NCM';
@@ -288,8 +294,22 @@
     if(code==='GS' || code==='GC') return 'GS・GC';
     if(code==='FIN' || code==='ASS' || code==='DAS' || code==='SA') return 'FIN・ASS・DAS・SA';
     if(code==='PN' || code==='LA' || code==='MI' || code==='EW' || code==='DR' || code==='WEL'
-       || code==='OST' || code==='HET' || code==='外注') return code;
+       || code==='EM' || code==='JG' || code==='GG' || code==='DG' || code==='ST' || code==='外注') return code;
     return null;
+  }
+  // ---- 外注工程（O-prefix）：工程コードの先頭が「O」＋英数字なら外注工程。正本は 1 工程のまま、残品表では「外注手配」と「O を外した基本工程」の 2 分類から同じ工程を参照する。
+  //   例：OLA → 外注手配 ＋ LA／OMI → 外注手配 ＋ MI／OST → 外注手配 ＋ ST。例外は設けない（テンチョー業務裁定 2026-09-17）。
+  //   工程を 2 件に複製しない・完了ログも 1 件（同じ proc.id を両方の分類が見る）。
+  function externalBaseCode(code){
+    const m = /^O([A-Z0-9].*)$/.exec(String(code||'').trim());
+    return m ? m[1] : null;
+  }
+  // 表示上の工程分類：通常コードは groupOf、外注工程は O を外した基本工程の分類（無ければ null＝基本工程タブには出さない。外注手配には出る）
+  function displayGroupOf(code){
+    const g = groupOf(code);
+    if(g) return g;
+    const base = externalBaseCode(code);
+    return base ? groupOf(base) : null;
   }
   // ---- 手配忘れ防止のための注意項目（3種類）----
   // これは作業票の正式な工程ではない。作業票・工程マスタ・バーコード・実績入力には一切追加せず、
@@ -300,10 +320,17 @@
   //   外注手配     コードに「外注」を含む（ラクド（外注）5・メッキ（外注）5・塗装（外注）2・DG(外注-材料直送)2）
   // ※「外注」は完全一致では実データに0件しか無く、現場は業者名＋（外注）の形で書いているため部分一致にしている。
   //   一方 DG / ODG / パーカー のように「外注」と書かれていないものは拾わない（推測で広げない）。
+  // ★SAKAE-ZANPIN-02A（2026-09-17）正式化：
+  //   熱処理手配   正式コード HET／HIH の完全一致。「熱処理」は既存データの読取互換（legacy alias）としてだけ拾う（新規の正式コードにはしない・独立の熱処理工程も作らない）
+  //   カナック手配 6 名称（カナック／ニューカナック／カナックOX／EVOLK-D／AST／EVOLK-D+AST）と、trim＋Unicode NFKC 正規化後に完全一致。部分一致はしない
+  //                （半角の ﾆｭｰｶﾅｯｸ は NFKC で ニューカナック になり一致する。「カナック追加工」「AST追加」のようなものは拾わない）
+  //   外注手配     コードに「外注」を含む（従来）または 先頭 O の外注工程（externalBaseCode）
+  function normCode(s){ try{ return String(s||'').trim().normalize('NFKC'); }catch(e){ return String(s||'').trim(); } }
+  const KANACK_NAMES = ['カナック','ニューカナック','カナックOX','EVOLK-D','AST','EVOLK-D+AST'].map(normCode);
   const ARRANGE_TYPES = [
-    { key:'HET',    label:'熱処理手配',   match:function(c){ return c==='HET' || c==='熱処理'; } },
-    { key:'KANACK', label:'カナック手配', match:function(c){ return c.indexOf('ｶﾅｯｸ')>=0 || c.indexOf('カナック')>=0; } },
-    { key:'GAICHU', label:'外注手配',     match:function(c){ return c.indexOf('外注')>=0; } }
+    { key:'HET',    label:'熱処理手配',   match:function(c){ const n = normCode(c); return n==='HET' || n==='HIH' || n==='熱処理'; } },
+    { key:'KANACK', label:'カナック手配', match:function(c){ return KANACK_NAMES.indexOf(normCode(c)) >= 0; } },
+    { key:'GAICHU', label:'外注手配',     match:function(c){ return c.indexOf('外注')>=0 || !!externalBaseCode(c); } }
   ];
   const ARRANGE_LABELS = ARRANGE_TYPES.map(function(t){ return t.label; });
   function arrangeTypeOf(code){
@@ -351,7 +378,10 @@
     'EM':true,'DR':true,'WEL':true,'3D':true,'FIN':true,'PN':true,'熱処理':true,'ｶﾅｯｸ':true,'ﾆｭｰｶﾅｯｸ':true
   };
   function isPhysicalCode(code){
-    return !!code && (/^NC/.test(code) || !!PHYSICAL_PROC_CODES[code]);
+    if(!code) return false;
+    if(/^NC/.test(code) || !!PHYSICAL_PROC_CODES[code]) return true;
+    const base = externalBaseCode(code);                       // 外注工程は O を外した基本工程で判定（SAKAE-ZANPIN-02A）
+    return !!base && (/^NC/.test(base) || !!PHYSICAL_PROC_CODES[base]);
   }
 
   // ---- 完了済みの工程id一覧。完了の付き方は2通りあり、どちらでも「完了」として扱う。
@@ -449,7 +479,7 @@
             reason = '全工程が実績入力で完了記録済み';
           }else{
             const cur = sorted[idx];
-            const group = groupOf(cur.code);
+            const group = displayGroupOf(cur.code);
             if(!group){
               reason = '「'+cur.code+'」は対象外の工程コード';
             }else{
@@ -572,7 +602,7 @@
         (part.processes||[]).forEach(proc=>{
           const t = arrangeTypeOf(proc.code);
           if(!t) return;
-          if(doneIds.has(proc.id)) return;   // その工程自体が完了済みなら手配も済んでいる
+          const arrDone = doneIds.has(proc.id);   // ★M1：完了した手配対象工程も行を残し ✓ で見せる（消えるのは納品完了のみ）
           const prevList = proc.date ? prevSlotProcesses(part.processes, proc) : [];
           const dl = arrangeDeadline(prevList);
           if(!data[t.label]) data[t.label] = [];
@@ -586,23 +616,33 @@
             // 前工程は1件に決め打ちせず、同じスロットに居るものを全部並べる（期限はどれでも同じ）
             prevProc: prevList.length ? prevList.map(function(x){ return (x.code||'') + (x.ident||''); }).join(' / ') : 'なし',
             nextProc: '-',
-            isArrange: true, arrangeLabel: t.label,
+            isArrange: true, arrangeLabel: t.label, isDone: arrDone,
             arrangeDue: dl ? dl.date : '', arrangeAmpm: dl ? dl.ampm : '',
             // 既存のチェック（品番_部品id_工程id）と衝突しない形。手配は工程IDを持たないため種別を挟む
             _rowKey: (order.productNo||'') + '_' + part.id + '_arr:' + t.key + ':' + proc.id
           });
         });
 
+        // ★SAKAE-ZANPIN-DONE（2026-09-17 テンチョー業務裁定・行モデル M1）：
+        //   残品表は「今どこにあるか」だけの表ではなく「納品前案件の、終わった工程 ✓ ＋ 今やっている工程 ☐ を工程別に追える表」。
+        //   ・完了済み工程（表示分類を持つもの）＝行を残して ✓（全工程完了後も、TOP で納品完了にするまで残す）
+        //   ・現在工程（未完了のうち今日に最も近い 1 件＝従来の currentProcIndex）＝☐
+        //   ・未来の未完了工程＝まだ出さない
+        //   案件ごと消えるのは records[].status==='done'（納品完了）だけ＝buildData 入口の isDoneEntry（既存）。
+        //   同じ proc.id は同じ表示分類に 1 行だけ（_rowKey＝品番_部品id_工程id）。正本 processes・完了ログは一切書かない。
         const idx = currentProcIndex(sorted, doneIds, todayStr);
-        if(idx === -1) return; // 全工程が完了済み＝残品ではない
-        const cur = sorted[idx];
-        const group = groupOf(cur.code);
-        if(!group) return;
-        const prev = idx>0 ? sorted[idx-1] : null;
-        const next = idx<sorted.length-1 ? sorted[idx+1] : null;
         const orderLabel = partOrderNo(order, part);
-        if(!data[group]) data[group] = [];
-        data[group].push({
+        sorted.forEach((proc, j)=>{
+          const isCur = (j === idx);
+          const isDoneProc = doneIds.has(proc.id);
+          if(!isCur && !isDoneProc) return;          // 未来（未完了で現在でない）工程は出さない
+          const group = displayGroupOf(proc.code);   // 外注工程（O-prefix）は O を外した基本工程の分類へ（正本は proc のまま・複製しない）
+          if(!group) return;
+          const prev = j>0 ? sorted[j-1] : null;
+          const next = j<sorted.length-1 ? sorted[j+1] : null;
+          const cur = proc;
+          if(!data[group]) data[group] = [];
+          data[group].push({
           orderNo: orderLabel, customer: order.customer||'', model: order.model||'',
           due: order.dueDate||'', name: part.name||'', qty: (part.qty!=null && part.qty!=='') ? part.qty : '',
           // 同じ工程記号が複数ある部品でも見分けられるよう、識別BOXを併記する（タブの分類は工程記号のまま）
@@ -611,7 +651,10 @@
           procDue: cur.date||'', procAmpm: cur.ampm==='PM' ? 'PM' : 'AM',
           prevProc: prev ? ((prev.code||'')+(prev.ident||'')) : '-', nextProc: next ? ((next.code||'')+(next.ident||'')) : '-',
           isArrange: false, arrangeDue: '', arrangeAmpm: '',
+          isExternal: !!externalBaseCode(cur.code),          // 外注工程を基本工程タブに出す時の印（同じ工程が外注手配にも出る）
+          isDone: isDoneProc,                                 // 左端✓（読取専用）＝実績入力の工程完了状態
           _rowKey: (order.productNo||'') + '_' + part.id + '_' + cur.id
+          });
         });
       });
     }
@@ -743,15 +786,7 @@
   let sortAsc = true;
   let searchTerm = '';
 
-  function loadChecks(){
-    try{
-      const raw = localStorage.getItem(CHECK_KEY);
-      if(raw) return JSON.parse(raw);
-    }catch(e){}
-    return {};
-  }
-  function saveChecks(){ localStorage.setItem(CHECK_KEY, JSON.stringify(checks)); }
-  let checks = loadChecks();
+  // 手動✓の保存（loadChecks／saveChecks）は廃止（SAKAE-ZANPIN-DONE）。左端✓は行の isDone（工程完了状態）だけから描く。
 
   const TODAY = new Date(); TODAY.setHours(0,0,0,0);
   function parseDate(s){
@@ -850,7 +885,7 @@
     let html = '';
     rows.forEach(row=>{
       const key = rowKey(row);
-      const done = !!checks[key];
+      const done = !!row.isDone;   // 実績入力の工程完了状態（読取専用）
       const dLeft = daysUntil(row.procDue);
       let dueCls = '', badge = '';
       if(dLeft !== null){
@@ -858,7 +893,7 @@
         else if(dLeft <= 2){ dueCls = 'soon'; badge = '<span class="badge soon">あと'+dLeft+'日</span>'; }
       }
       html += '<tr class="'+(done?'checked':'')+'" data-key="'+esc(key)+'">';
-      html += '<td class="checkCol"><input type="checkbox" '+(done?'checked':'')+'></td>';
+      html += '<td class="checkCol"><input type="checkbox" disabled title="実績入力の工程完了状態（この画面では変更できません）" '+(done?'checked':'')+'></td>';
       html += '<td>'+esc(row.orderNo)+'</td>';
       html += '<td>'+esc(row.customer)+'</td>';
       html += '<td class="modelCell">'+esc(row.model)+'</td>';
@@ -866,7 +901,7 @@
       html += '<td class="nameCell">'+esc(row.name)+'</td>';
       html += '<td>'+esc(row.qty)+'</td>';
       html += '<td><span class="procTag'+(row.isArrange?' arrange':'')+'">'+esc(row.process)+'</span>'
-        + (row.isArrange ? '<span class="arrangeTag">手配</span>' : '') + '</td>';
+        + (row.isArrange ? '<span class="arrangeTag">手配</span>' : (row.isExternal ? '<span class="arrangeTag">外注</span>' : '')) + '</td>';
       html += '<td>'+(row.hours || row.hours===0 ? row.hours+'H' : '-')+'</td>';
       const ampmText = row.procDue ? '<span class="dueAmpm">'+(row.procAmpm==='PM'?'午後':'午前')+'</span>' : '';
       html += '<td class="dueCell '+dueCls+'">'+fmtDate(row.procDue)+ampmText+badge+'</td>';
@@ -942,15 +977,7 @@
     render();
   });
 
-  tableBody.addEventListener('change', (e)=>{
-    const cb = e.target.closest('input[type=checkbox]');
-    if(!cb) return;
-    const tr = cb.closest('tr');
-    const key = tr.dataset.key;
-    checks[key] = cb.checked;
-    saveChecks();
-    tr.classList.toggle('checked', cb.checked);
-  });
+  // 左端✓の手動 toggle は廃止（SAKAE-ZANPIN-DONE）。完了／取消は必ず実績入力から行い、storage 監視で描き直す。
 
   // ---- 他ページ（個別日程表など）からのリンクで、工程タブ・検索語を指定して開けるようにする ----
   // 例：残品表_モック.html?proc=NC&productNo=44541
