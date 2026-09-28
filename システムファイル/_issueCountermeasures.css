@@ -1,0 +1,133 @@
+/* SAKAE 問題点対策表（SAKAE-ISSUE-01）。既存 SAKAE 画面と同じ配色・白背景＋ネイビー。
+   このファイルはこの画面専用。既存画面の CSS は共有していないので他画面に影響しない。 */
+*{ box-sizing:border-box; }
+body{
+  margin:0; background:#f4f6fa; color:#2a3446;
+  font-family:"Hiragino Sans","Yu Gothic",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:13.5px; line-height:1.7;
+}
+.topbar{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  background:#173a68; color:#fff; padding:10px 16px;
+}
+.topbar .backLink{ color:#cfe0f5; text-decoration:none; font-weight:700; }
+.topbar .backLink:hover{ color:#fff; }
+.topbar .who{ margin-left:auto; font-size:12px; color:#cfe0f5; }
+
+/* ---- 画面の名前（最上部・画面内で最大の文字）。開いた瞬間に何の表かが分かるようにする ---- */
+.pageHead{ padding:18px 16px 10px; text-align:center; }
+.pageTitle{ margin:0; font-size:34px; line-height:1.25; font-weight:800; color:#173a68; letter-spacing:.04em; }
+.pageSub{ margin:4px 0 0; font-size:13px; font-weight:700; color:#5b6b84; letter-spacing:.12em; }
+.devBanner{ background:#fff3e0; color:#8a5a1a; border-bottom:1px solid #f3dcb8; padding:6px 16px; font-weight:700; font-size:12.5px; }
+
+.wrap{ max-width:1280px; margin:0 auto; padding:16px; }
+
+/* ---- 状態サマリー（クリックで絞り込み） ---- */
+.summary{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.summary button{
+  border:1px solid #dfe4ec; background:#fff; border-radius:10px; padding:8px 14px; cursor:pointer;
+  font:inherit; color:#5b6b84; font-weight:700; box-shadow:0 2px 8px rgba(20,35,70,.06);
+}
+.summary button .n{ display:block; font-size:18px; color:#173a68; }
+.summary button.active{ background:#173a68; color:#fff; }
+.summary button.active .n{ color:#fff; }
+
+/* ---- 絞り込み ---- */
+.filters{ background:#fff; border:1px solid #dfe4ec; border-radius:10px; padding:10px 12px; margin-bottom:12px; }
+.filters .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.filters label{ font-size:12px; color:#5b6b84; font-weight:700; }
+.filters input, .filters select{
+  font:inherit; padding:6px 8px; border:1px solid #dfe4ec; border-radius:7px; background:#fff; color:#2a3446; min-width:110px;
+}
+.filters .grow{ flex:1 1 220px; min-width:180px; }
+.btn{
+  font:inherit; font-weight:700; padding:8px 14px; border-radius:8px; cursor:pointer;
+  border:1px solid #173a68; background:#173a68; color:#fff;
+}
+.btn.sub{ background:#fff; color:#173a68; }
+.btn:disabled{ opacity:.45; cursor:default; }
+.btn.danger{ border-color:#c0392b; background:#fff; color:#c0392b; }
+.toolRow{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+.toolRow .spacer{ flex:1 1 auto; }
+
+/* ---- 一覧 ---- */
+.tableCard{ background:#fff; border:1px solid #dfe4ec; border-radius:10px; overflow:hidden; }
+table{ width:100%; border-collapse:collapse; }
+thead th{
+  background:#f7f9fc; color:#5b6b84; font-size:12px; text-align:left; padding:8px 10px;
+  border-bottom:1px solid #dfe4ec; white-space:nowrap;
+}
+tbody td{ padding:9px 10px; border-bottom:1px solid #eef1f6; vertical-align:top; }
+tbody tr{ cursor:pointer; }
+tbody tr:hover{ background:#f7f9fc; }
+.no{ font-weight:800; color:#173a68; white-space:nowrap; }
+.desc{ max-width:430px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.badge{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:11.5px; font-weight:700; white-space:nowrap; }
+.pri-高{ background:#fdeceb; color:#c0392b; border:1px solid #f3c2bd; }
+.pri-中{ background:#fff3e0; color:#8a5a1a; border:1px solid #f3dcb8; }
+.pri-低{ background:#f2f4f8; color:#5b6b84; border:1px solid #dfe4ec; }
+.st-未対応{ background:#fdeceb; color:#c0392b; }
+.st-調査中{ background:#fff3e0; color:#8a5a1a; }
+.st-対策中{ background:#e9f1fb; color:#173a68; }
+.st-確認待ち{ background:#e7f4ea; color:#1f7a3d; }
+.st-完了{ background:#eef1f6; color:#5b6b84; }
+.st-取消{ background:#f2f4f8; color:#9aa5b6; text-decoration:line-through; }
+.over{ color:#c0392b; font-weight:700; }
+.result-OK{ color:#1f7a3d; font-weight:700; }
+.result-NG,.result-再対策{ color:#c0392b; font-weight:700; }
+.empty{ padding:28px 12px; text-align:center; color:#5b6b84; }
+/* PC では No. 欄の優先度・状態バッジは列と重複するので隠す（スマホのカードでは見せる） */
+@media (min-width:769px){ .cardHead .badge{ display:none; } }
+
+/* ---- ページング ---- */
+.pager{ display:flex; align-items:center; gap:10px; padding:10px 12px; background:#f7f9fc; border-top:1px solid #dfe4ec; }
+.pager .info{ color:#5b6b84; font-size:12.5px; }
+.pager .spacer{ flex:1 1 auto; }
+
+/* ---- 詳細・フォーム（オーバーレイ） ---- */
+.overlay{ position:fixed; inset:0; background:rgba(23,35,60,.45); display:flex; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; z-index:50; }
+.panel{ background:#fff; border-radius:12px; width:100%; max-width:920px; box-shadow:0 18px 50px rgba(20,35,70,.25); }
+.panelHead{ display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid #dfe4ec; position:sticky; top:0; background:#fff; border-radius:12px 12px 0 0; }
+.panelHead h2{ margin:0; font-size:16px; color:#173a68; }
+.panelBody{ padding:14px 16px; }
+.panelFoot{ display:flex; gap:8px; padding:12px 16px; border-top:1px solid #dfe4ec; }
+.drow{ display:flex; gap:10px; padding:6px 0; border-bottom:1px dashed #eef1f6; }
+.dk{ width:120px; flex:0 0 120px; color:#5b6b84; font-size:12px; font-weight:700; }
+.dv{ flex:1 1 auto; white-space:pre-wrap; word-break:break-word; }
+.formGrid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 14px; }
+.formGrid .full{ grid-column:1 / -1; }
+.fld label{ display:block; font-size:12px; color:#5b6b84; font-weight:700; margin-bottom:3px; }
+.fld input, .fld select, .fld textarea{ width:100%; font:inherit; padding:7px 9px; border:1px solid #dfe4ec; border-radius:7px; background:#fff; color:#2a3446; }
+.fld textarea{ min-height:76px; resize:vertical; }
+.fld .req{ color:#c0392b; }
+.notice{ padding:9px 12px; border-radius:8px; margin-bottom:10px; font-weight:700; }
+.notice.warn{ background:#fff3e0; color:#8a5a1a; border:1px solid #f3dcb8; }
+.notice.err{ background:#fdeceb; color:#c0392b; border:1px solid #f3c2bd; }
+.notice.info{ background:#e9f1fb; color:#173a68; border:1px solid #cfe0f5; }
+.histRow{ display:flex; gap:10px; padding:6px 0; border-bottom:1px dashed #eef1f6; font-size:12.5px; }
+.histRow .when{ width:130px; flex:0 0 130px; color:#5b6b84; }
+.histRow .act{ width:110px; flex:0 0 110px; font-weight:700; color:#173a68; }
+
+/* ---- 権限エラー・接続エラーの全面表示（0 件と混同しない） ---- */
+.blocker{ background:#fff; border:1px solid #f3c2bd; border-radius:12px; padding:26px; text-align:center; }
+.blocker h2{ color:#c0392b; margin:0 0 8px; font-size:17px; }
+.blocker p{ color:#5b6b84; margin:4px 0; }
+
+/* ---- スマホ：表を圧縮せずカード表示 ---- */
+@media (max-width:768px){
+  .wrap{ padding:10px; }
+  .pageTitle{ font-size:26px; }
+  .pageHead{ padding:14px 12px 8px; }
+  .tableCard table, .tableCard thead, .tableCard tbody, .tableCard th, .tableCard td, .tableCard tr{ display:block; }
+  .tableCard thead{ display:none; }
+  .tableCard tbody tr{ border:1px solid #dfe4ec; border-radius:10px; margin:10px; padding:8px 10px; }
+  .tableCard tbody td{ border:none; padding:2px 0; }
+  .tableCard tbody td::before{ content:attr(data-th) "："; color:#5b6b84; font-size:11.5px; font-weight:700; margin-right:6px; }
+  .tableCard tbody td.cardHead::before{ content:none; }
+  .cardHead{ display:flex !important; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:4px; }
+  .tableCard tbody td.pcOnly{ display:none; }   /* 優先度・状態はカード見出しのバッジで見せる（重複させない） */
+  .desc{ max-width:none; white-space:normal; }
+  .dk{ width:96px; flex-basis:96px; }
+  .formGrid{ grid-template-columns:1fr; }
+  .panel{ max-width:none; }
+}

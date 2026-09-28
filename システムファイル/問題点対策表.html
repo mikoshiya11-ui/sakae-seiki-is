@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>問題点対策表｜SAKAE SEIKI-OS</title>
+<!-- SAKAE-ISSUE-01 問題点対策表（本番）。
+     ★接続先は _issueTarget.js で固定（本番表のみ）。実行時の切替は持たない（DEV 表へは到達しない）。
+     ★_sakaeSync.js は読み込まない（kv_store／localStorage の業務データに触れないため）。 -->
+<link rel="stylesheet" href="_issueCountermeasures.css">
+</head>
+<body>
+  <div class="topbar">
+    <a class="backLink" href="../SAKAE SEIKI-iS.html" title="トップへ戻る">← トップへ</a>
+    <span class="who" id="whoAmI"></span>
+  </div>
+  <!-- ★画面を開いた瞬間に「問題点対策表」と分かることを最優先（2026-09-28 UI 是正）。表記は SAKAE SEIKI-OS に統一 -->
+  <header class="pageHead">
+    <h1 class="pageTitle">問題点対策表</h1>
+    <p class="pageSub">SAKAE SEIKI-OS</p>
+  </header>
+
+  <div class="wrap">
+    <div id="summaryArea" class="summary"></div>
+
+    <div id="toolArea">
+      <div class="filters">
+        <div class="row">
+          <label>状態</label>
+          <select id="fStatus"><option value="">すべて</option><option>未対応</option><option>調査中</option><option>対策中</option><option>確認待ち</option><option>完了</option><option>取消</option></select>
+          <label>優先度</label>
+          <select id="fPriority"><option value="">すべて</option><option>高</option><option>中</option><option>低</option></select>
+          <label>登録者</label><input type="text" id="fReportedBy" placeholder="部分一致">
+          <label>担当者</label><input type="text" id="fOwner" placeholder="部分一致">
+          <label>発生場所</label><input type="text" id="fLocation" list="placeList" placeholder="部分一致">
+          <label>登録日</label><input type="date" id="fFrom"><span>〜</span><input type="date" id="fTo">
+          <input type="text" id="fQ" class="grow" placeholder="キーワード（No./問題内容/原因/恒久対策/備考）">
+          <button class="btn" id="applyBtn">絞り込む</button>
+          <button class="btn sub" id="clearBtn">解除</button>
+        </div>
+      </div>
+      <div class="toolRow">
+        <button class="btn" id="newBtn">＋ 新しい問題を登録</button>
+        <span class="spacer"></span>
+        <button class="btn sub" id="csvBtn">CSV出力</button>
+      </div>
+    </div>
+
+    <div id="listNotice"></div>
+
+    <div id="mainArea">
+      <div class="tableCard">
+        <table>
+          <thead>
+            <tr>
+              <th>No.</th><th>登録日</th><th>優先度</th><th>発生場所</th><th>問題内容</th>
+              <th>担当者</th><th>状態</th><th>対策期限</th><th>確認結果</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="empty" id="emptyState" style="display:none">該当する問題はありません。</div>
+        <div class="pager">
+          <button class="btn sub" id="prevBtn">← 前へ</button>
+          <button class="btn sub" id="nextBtn">次へ →</button>
+          <span class="info" id="pagerInfo"></span>
+          <span class="spacer"></span>
+          <span class="info over" id="pagerWarn"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 詳細・編集 -->
+  <div class="overlay" id="detailOverlay" style="display:none">
+    <div class="panel">
+      <div class="panelHead">
+        <h2 id="detailTitle">詳細</h2>
+        <span style="flex:1 1 auto"></span>
+        <button class="btn sub" id="editBtn">編集</button>
+        <button class="btn" id="saveBtn" style="display:none">保存</button>
+        <button class="btn sub" id="cancelEditBtn" style="display:none">編集をやめる</button>
+        <button class="btn sub" id="detailCloseBtn">閉じる</button>
+      </div>
+      <div class="panelBody">
+        <div id="detailNotice"></div>
+        <div id="detailBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新規登録 -->
+  <div class="overlay" id="createOverlay" style="display:none">
+    <div class="panel" style="max-width:720px">
+      <div class="panelHead">
+        <h2>新しい問題を登録</h2>
+        <span style="flex:1 1 auto"></span>
+        <button class="btn" id="createSaveBtn">登録する</button>
+        <button class="btn sub" id="createCloseBtn">閉じる</button>
+      </div>
+      <div class="panelBody">
+        <div id="createNotice"></div>
+        <div id="createBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <datalist id="placeList"></datalist>
+
+  <script src="_sakaeSupabaseConfig.js"></script>
+  <script src="_issueTarget.js"></script>
+  <script src="_issueCountermeasures.js"></script>
+</body>
+</html>
