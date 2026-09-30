@@ -19,7 +19,26 @@
   const PREF_KEY = 'sakaeIssue_filters_v1';   // 画面の絞り込み条件のみ（業務データではない）
   const STATUSES = ['未対応','調査中','対策中','確認待ち','完了','取消'];
   const PRIORITIES = ['高','中','低'];
-  const RESULTS = ['OK','NG','再対策'];
+  const RESULTS = ['OK','NG'];
+
+  // ---- 2026-10-01 仕様変更：「完了」は榮製機側の確認でのみ確定する ----
+  // 対策担当者は MIKOSHIYA 側（実装した側）、確認者は榮製機側（使う側）。
+  // 開発側の自己確認では「完了」にしない。MIKOSHIYA 側が進められるのは「確認待ち」まで。
+  //
+  // ★具体的な人名はここに持たない。誰が確認できるかは環境ごとの設定（_issueTarget*.js の reviewers）で決める。
+  //   この共通 JS は「許可された確認者か」だけを判定する。人が入れ替わっても共通 JS は変えない。
+  const clientReviewers = ()=> (T && Array.isArray(T.reviewers)) ? T.reviewers : [];
+  const reviewerHint = ()=> clientReviewers().join('・');
+  const isClientReviewer = (v)=>{
+    const t = String(v==null ? '' : v).trim();
+    if(!t) return false;
+    const list = clientReviewers();
+    // 設定が無い環境では誰も確認者として認めない（fail-closed）
+    if(!list.length) return false;
+    return list.some(n=> t.indexOf(String(n)) >= 0);
+  };
+  // 「確認待ち」は榮製機の確認待ちだと分かるように出す（保存する値は 確認待ち のまま）
+  const statusLabel = (s)=> s === '確認待ち' ? '榮製機確認待ち' : s;
   const PLACES = ['TOP／案件一覧','作業票','個別日程表','工程別残品表','実績入力','同期／共有','印刷','その他'];
 
   let sb = null;                 // Supabase クライアント（このページ専用）
@@ -214,15 +233,15 @@
       return '<tr data-id="'+r.id+'">'
         + '<td class="cardHead"><span class="no">'+esc(r.issue_no)+'</span>'
           + '<span class="badge pri-'+esc(r.priority)+'">'+esc(r.priority)+'</span>'
-          + '<span class="badge st-'+esc(r.status)+'">'+esc(r.status)+'</span></td>'
+          + '<span class="badge st-'+esc(r.status)+'">'+esc(statusLabel(r.status))+'</span></td>'
         + '<td data-th="登録日">'+fmtDate(r.report_date)+'</td>'
         + '<td data-th="優先度" class="pcOnly"><span class="badge pri-'+esc(r.priority)+'">'+esc(r.priority)+'</span></td>'
         + '<td data-th="発生場所">'+esc(r.location)+'</td>'
         + '<td data-th="問題内容" class="desc">'+esc(r.description)+'</td>'
         + '<td data-th="担当者">'+esc(r.owner||'—')+'</td>'
-        + '<td data-th="状態" class="pcOnly"><span class="badge st-'+esc(r.status)+'">'+esc(r.status)+'</span></td>'
+        + '<td data-th="状態" class="pcOnly"><span class="badge st-'+esc(r.status)+'">'+esc(statusLabel(r.status))+'</span></td>'
         + '<td data-th="対策期限" class="'+(over?'over':'')+'">'+fmtDate(r.due_date)+(over?' ⚠':'')+'</td>'
-        + '<td data-th="確認結果" class="'+(r.review_result?('result-'+esc(r.review_result)):'')+'">'+esc(r.review_result||'—')+'</td>'
+        + '<td data-th="確認結果" class="'+(r.review_result?('result-'+esc(r.review_result)):'')+'">'+esc(r.review_result||'未確認')+'</td>'
         + '</tr>';
     }).join('');
     tb.querySelectorAll('tr').forEach(tr=> tr.addEventListener('click', ()=> openDetail(Number(tr.dataset.id))));
@@ -244,7 +263,7 @@
     ['description','問題内容','area'], ['priority','優先度','priority'], ['status','状態','status'],
     ['cause','原因','area'], ['temporary_action','暫定処置','area'], ['countermeasure','恒久対策','area'],
     ['owner','対策担当者','text'], ['due_date','対策期限','date'], ['action_date','対策日','date'],
-    ['reviewer','確認者','text'], ['review_date','確認日','date'], ['review_result','確認結果','result'],
+    ['reviewer','確認者（榮製機）','text'], ['review_date','確認日','date'], ['review_result','確認結果','result'],
     ['is_recurrence','再発','recur'], ['parent_issue_id','元問題No.','parent'],
     ['evidence','証拠','area'], ['notes','備考','area']
   ];
@@ -272,12 +291,17 @@
     $('cancelEditBtn').style.display = 'none';
     const rows = FIELDS.map(([k,label])=>{
       let v = r[k];
+      if(k==='status') v = statusLabel(v);
       if(k==='is_recurrence') v = r.is_recurrence ? '再発' : '初回';
       if(k==='parent_issue_id') v = r.parent_issue_id ? ('PT-'+String(r.parent_issue_id).padStart(4,'0')) : '—';
       if(/_date$/.test(k)) v = fmtDate(v);
       return '<div class="drow"><div class="dk">'+esc(label)+'</div><div class="dv">'+esc(v==null||v===''?'—':v)+'</div></div>';
     }).join('');
-    $('detailBody').innerHTML = rows
+    // 榮製機の確認待ちであることを、詳細を開いた人にそのまま伝える
+    const waitBand = r.status === '確認待ち'
+      ? '<div class="notice info">榮製機の確認待ちです。榮製機側（'+esc(reviewerHint())+'）が確認し、確認者（榮製機）・確認日・確認結果＝OK を入れると「完了」にできます。</div>'
+      : '';
+    $('detailBody').innerHTML = waitBand + rows
       + '<div class="drow"><div class="dk">作成</div><div class="dv">'+fmtDateTime(r.created_at)+'</div></div>'
       + '<div class="drow"><div class="dk">更新</div><div class="dv">'+fmtDateTime(r.updated_at)+'</div></div>'
       + '<h3 style="font-size:13px;color:#173a68;margin:16px 0 6px">変更履歴</h3><div id="histBox">読み込んでいます…</div>';
@@ -315,7 +339,7 @@
     else if(type==='date') input = '<input type="date" id="e_'+k+'" value="'+esc(v?String(v).slice(0,10):'')+'">';
     else if(type==='priority') input = '<select id="e_'+k+'">'+PRIORITIES.map(p=>'<option'+(v===p?' selected':'')+'>'+p+'</option>').join('')+'</select>';
     else if(type==='status') input = '<select id="e_'+k+'">'+STATUSES.map(s=>'<option'+(v===s?' selected':'')+'>'+s+'</option>').join('')+'</select>';
-    else if(type==='result') input = '<select id="e_'+k+'"><option value=""'+(!v?' selected':'')+'>—</option>'+RESULTS.map(s=>'<option'+(v===s?' selected':'')+'>'+s+'</option>').join('')+'</select>';
+    else if(type==='result') input = '<select id="e_'+k+'"><option value=""'+(!v?' selected':'')+'>未確認</option>'+RESULTS.map(s=>'<option'+(v===s?' selected':'')+'>'+s+'</option>').join('')+'</select>';
     else if(type==='recur') input = '<select id="e_'+k+'"><option value="false"'+(!v?' selected':'')+'>初回</option><option value="true"'+(v?' selected':'')+'>再発</option></select>';
     else if(type==='parent') input = '<input type="text" id="e_'+k+'" placeholder="PT-0012 または 12" value="'+esc(v?('PT-'+String(v).padStart(4,'0')):'')+'">';
     else if(type==='place') input = '<input type="text" id="e_'+k+'" list="placeList" value="'+esc(v||'')+'">';
@@ -332,7 +356,7 @@
     $('cancelEditBtn').style.display = '';
     $('detailBody').innerHTML = '<div id="editNotice"></div><div class="formGrid">'
       + FIELDS.map(([k,l,t])=> fieldHtml(k,l,t, r[k])).join('') + '</div>'
-      + '<p style="color:#5b6b84;font-size:12px">＊ は必須。完了にするには 恒久対策・対策日・確認者・確認日・確認結果＝OK が必要です。</p>';
+      + '<p style="color:#5b6b84;font-size:12px">＊ は必須。「完了」は榮製機側の確認でのみ確定します（恒久対策・対策日・対策担当者・確認者（榮製機）・確認日・確認結果＝OK。確認者は '+esc(reviewerHint())+' のいずれか）。MIKOSHIYA 側は「確認待ち」までです。</p>';
     ['change','input'].forEach(ev=> $('detailBody').addEventListener(ev, ()=>{ state.dirty = true; }, { once:false }));
   }
   function collect(){
@@ -353,9 +377,12 @@
     if(o.status === '完了'){
       if(!trim(o.countermeasure)) miss.push('恒久対策');
       if(!o.action_date) miss.push('対策日');
-      if(!trim(o.reviewer)) miss.push('確認者');
+      if(!trim(o.owner)) miss.push('対策担当者');
+      if(!trim(o.reviewer)) miss.push('確認者（榮製機）');
       if(!o.review_date) miss.push('確認日');
       if(o.review_result !== 'OK') miss.push('確認結果（OK が必要）');
+      // 開発側（MIKOSHIYA）の自己確認では完了にしない。確認者は榮製機側であること。
+      if(trim(o.reviewer) && !isClientReviewer(o.reviewer)) miss.push('確認者は榮製機側（'+reviewerHint()+'）であること');
     }
     if(o.parent_issue_id && !o.is_recurrence) miss.push('再発＝再発（元問題を入れる場合）');
     return miss;
@@ -455,7 +482,7 @@
     try{
       const cols = [['issue_no','No.'],['report_date','登録日'],['reported_by','登録者'],['location','発生場所'],
         ['description','問題内容'],['priority','優先度'],['status','状態'],['cause','原因'],['countermeasure','恒久対策'],
-        ['owner','担当者'],['due_date','対策期限'],['action_date','対策日'],['reviewer','確認者'],['review_date','確認日'],
+        ['owner','担当者'],['due_date','対策期限'],['action_date','対策日'],['reviewer','確認者（榮製機）'],['review_date','確認日'],
         ['review_result','確認結果'],['is_recurrence','再発'],['parent_issue_id','元問題No.']];
       let all = [], from = 0;
       for(;;){

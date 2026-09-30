@@ -9,5 +9,10 @@ window.SAKAE_ISSUE_TARGET = Object.freeze({
   historyTable: 'issue_countermeasure_history',
   authFn: 'sakae_is_authorized',       // 本番 allowlist（private.sakae_authorized_users）を見る
   channel: 'issue_countermeasures_changes',
-  banner: ''                            // 本番では帯を出さない
+  banner: '',                           // 本番では帯を出さない
+  // ---- 「完了」にできる確認者（榮製機側）。2026-10-01 仕様変更 ----
+  // 「完了」は榮製機側の確認 OK でのみ確定する。対策担当者（MIKOSHIYA 側）の自己確認では完了にしない。
+  // ここは SAKAE 本番固有の設定なので、共通 JS（_issueCountermeasures.js）は人名を持たず、
+  // 「許可された確認者か」だけを判定する。人の入れ替えはこのファイルだけで済む。
+  reviewers: Object.freeze(['塩野','松井','菰田'])
 });
