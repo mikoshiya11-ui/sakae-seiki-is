@@ -160,7 +160,52 @@
   .debugPanel td{ padding:4px 8px; border-bottom:1px solid #1c2938; white-space:nowrap; }
   .debugPanel td.procList{ white-space:normal; color:#9fb3cc; max-width:420px; }
   .debugPanel td.chosen{ color:#7ee787; font-weight:700; }
+  /* ---- PT-0001：外注手配の「手配完了」（人間が記録する。左端の工程完了✓とは別物） ---- */
+  .arrCell{ white-space:nowrap; }
+  .arrBtn{ font:inherit; font-size:11.5px; padding:3px 9px; border:1px solid #c3cddd; border-radius:999px;
+           background:#fff; color:#173a68; cursor:pointer; }
+  .arrBtn:hover{ border-color:#173a68; }
+  .arrDoneMark{ display:inline-block; font-size:11.5px; font-weight:700; color:#8a5a1a;
+                background:#fff3e0; border:1px solid #f3dcb8; border-radius:999px; padding:2px 9px; }
+  .arrMeta{ font-size:11px; color:#5b6b84; line-height:1.5; margin-top:2px; }
+  .arrUndo{ font:inherit; font-size:11px; padding:1px 7px; margin-top:3px; border:1px solid #e3c9c6;
+            border-radius:999px; background:#fff; color:#c0392b; cursor:pointer; }
+  .arrOverlay{ position:fixed; inset:0; background:rgba(16,24,37,.45); display:flex;
+               align-items:center; justify-content:center; z-index:60; padding:16px; }
+  .arrBox{ background:#fff; border-radius:12px; padding:18px 20px; width:min(460px,100%);
+           box-shadow:0 18px 50px rgba(16,24,37,.3); }
+  .arrBox h3{ margin:0 0 4px; font-size:15px; color:#173a68; }
+  .arrWhat{ margin:0 0 12px; font-size:12px; color:#5b6b84; }
+  .arrBox label{ display:block; font-size:12px; color:#5b6b84; margin-bottom:9px; }
+  .arrBox input{ display:block; width:100%; font:inherit; font-size:13px; margin-top:3px;
+                 padding:6px 8px; border:1px solid #c3cddd; border-radius:6px; }
+  .arrBox .req{ color:#c0392b; }
+  .arrNotice{ font-size:12px; color:#c0392b; font-weight:700; min-height:16px; margin-bottom:8px; }
+  .arrBtns{ display:flex; gap:8px; justify-content:flex-end; }
+  .arrBtns button{ font:inherit; font-size:13px; padding:7px 16px; border-radius:8px; cursor:pointer; }
+  #arrOk{ background:#173a68; color:#fff; border:1px solid #173a68; }
+  #arrClose{ background:#fff; color:#173a68; border:1px solid #c3cddd; }
+  @media print{ .arrBtn,.arrUndo,.arrOverlay{ display:none !important; } }
 </style>
+<!-- PT-0001：手配完了／取消の入力画面。押したときだけ開き、確定したときだけ保存する -->
+<div id="arrModal" class="arrOverlay" style="display:none">
+  <div class="arrBox">
+    <h3 id="arrTitle">手配完了の記録</h3>
+    <p class="arrWhat" id="arrWhat"></p>
+    <div id="arrForm">
+      <label>手配者 <span class="req">*</span><input type="text" id="arrBy" placeholder="手配した人"></label>
+      <label>手配日 <span class="req">*</span><input type="date" id="arrDate"></label>
+      <label>外注先<input type="text" id="arrVendor" placeholder="（任意）〇〇工業"></label>
+      <label>備考<input type="text" id="arrNote" placeholder="（任意）"></label>
+    </div>
+    <div id="arrCancelForm" style="display:none">
+      <label>取消した人 <span class="req">*</span><input type="text" id="arrCancelBy"></label>
+      <label>取消理由 <span class="req">*</span><input type="text" id="arrReason" placeholder="例：手配先を間違えた"></label>
+    </div>
+    <div class="arrNotice" id="arrNotice"></div>
+    <div class="arrBtns"><button type="button" id="arrOk">確定</button><button type="button" id="arrClose">やめる</button></div>
+  </div>
+</div>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
 </head>
@@ -215,6 +260,7 @@
               <th data-key="hours">工数</th>
               <th data-key="procDue" class="sorted asc">工程完了期限</th>
               <th data-key="arrangeDue" class="dueCell">手配期限</th>
+              <th class="arrCell">手配</th>
               <th data-key="prevProc">前工程</th>
               <th data-key="nextProc">次工程</th>
             </tr>
@@ -619,7 +665,13 @@
             isArrange: true, arrangeLabel: t.label, isDone: arrDone,
             arrangeDue: dl ? dl.date : '', arrangeAmpm: dl ? dl.ampm : '',
             // 既存のチェック（品番_部品id_工程id）と衝突しない形。手配は工程IDを持たないため種別を挟む
-            _rowKey: (order.productNo||'') + '_' + part.id + '_arr:' + t.key + ':' + proc.id
+            _rowKey: (order.productNo||'') + '_' + part.id + '_arr:' + t.key + ':' + proc.id,
+            // ---- PT-0001：外注手配の「手配完了」を人間が記録するために要る情報 ----
+            // 保存し直すときに「どの案件の（storeKey）どの部品の（partId）どの工程か（procId）」を
+            // 取り違えないよう、そのまま持っておく。工程記号では特定しない（同じ記号が複数あるため）。
+            storeKey: key, recordId: entries[i].recordId || '', partId: part.id, procId: proc.id,
+            // arrange が無い＝未手配。ここでは読むだけで、実データには作らない（表示用の既定値）。
+            arrange: proc.arrange || null
           });
         });
 
@@ -651,6 +703,7 @@
           procDue: cur.date||'', procAmpm: cur.ampm==='PM' ? 'PM' : 'AM',
           prevProc: prev ? ((prev.code||'')+(prev.ident||'')) : '-', nextProc: next ? ((next.code||'')+(next.ident||'')) : '-',
           isArrange: false, arrangeDue: '', arrangeAmpm: '',
+          storeKey: '', recordId: '', partId: '', procId: cur.id, arrange: null,   // 手配欄は手配行にだけ出す
           isExternal: !!externalBaseCode(cur.code),          // 外注工程を基本工程タブに出す時の印（同じ工程が外注手配にも出る）
           isDone: isDoneProc,                                 // 左端✓（読取専用）＝実績入力の工程完了状態
           _rowKey: (order.productNo||'') + '_' + part.id + '_' + cur.id
@@ -808,6 +861,142 @@
 
   function rowKey(row){ return row._rowKey || (row.orderNo + '_' + row.name); }
 
+  // ============================================================
+  // PT-0001：外注手配の「手配完了」を人間が明示記録する
+  //
+  // ★工程完了（実績入力）とはまったく別の事実として扱う。
+  //   工程が終わった  … 左端の ✓（実績入力の記録から導出・この画面では変えられない）
+  //   外注先へ手配した … この「手配」欄（人がボタンを押して確定したときだけ記録する）
+  //   どちらかがもう一方を自動で ON/OFF することは無い。
+  //
+  // ★正本は案件ごとの作業票データ（sakaeIS_buhinhyoMock_rid_…）の processes[].arrange。
+  //   新しい共有キーは作らない（origin 単位の集約キーは同一 origin の複数タブで取りこぼす既知の問題があるため）。
+  //
+  // ★arrange は「人が手配完了を確定したとき」に初めて作る。
+  //   画面を開いただけ・工程が完了しただけ・日付が来ただけでは作らない。
+  //   arrange が無い工程＝未手配として読むだけ（読むときの既定値は保存しない）。
+  // ============================================================
+  function arrangeOf(row){ return (row && row.arrange) ? row.arrange : null; }   // 無ければ null＝未手配
+  function arrangeIsDone(row){ const a = arrangeOf(row); return !!(a && a.done); }
+  function arrNowISO(){ return new Date().toISOString(); }
+
+  // 手配日は年まで出す。工程の日付（表の M/D）と違い、去年の手配なのか今年なのかが分からないと困るため。
+  function arrFmtDate(s){
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s||'').trim());
+    return m ? (m[1]+'/'+m[2]+'/'+m[3]) : '—';
+  }
+  function arrangeCellHtml(row){
+    if(!row.isArrange) return '<td class="arrCell">-</td>';       // 手配行以外には出さない
+    const a = arrangeOf(row);
+    if(!a || !a.done){
+      return '<td class="arrCell"><button type="button" class="arrBtn" data-role="arrDo" data-key="'+esc(rowKey(row))+'">□ 手配完了</button></td>';
+    }
+    let meta = '手配者：' + esc(a.by || '—') + '<br>手配日：' + arrFmtDate(a.date);
+    if(a.vendor) meta += '<br>外注先：' + esc(a.vendor);
+    if(a.note)   meta += '<br>備考：' + esc(a.note);
+    return '<td class="arrCell"><span class="arrDoneMark">☑ 手配完了</span>'
+      + '<div class="arrMeta">' + meta + '</div>'
+      + '<button type="button" class="arrUndo" data-role="arrCancel" data-key="'+esc(rowKey(row))+'">取消</button></td>';
+  }
+
+  // 画面に出ている行から、その行の元になった情報（案件キー・部品id・工程id）を引き当てる
+  function arrRowByKey(key){
+    // いま画面に出ている行そのものから引く（タブ・検索・並び替えの状態に左右されない）
+    const list = getRows();
+    for(let i=0;i<list.length;i++){ if(rowKey(list[i]) === key) return list[i]; }
+    return null;
+  }
+
+  // ---- 保存。必ず「保存直前に最新の localStorage を読み直し、その 1 工程の arrange だけ」を書き換える。
+  //      画面が持っている古い写しで processes[] 全体を上書きしない（他の人の入力を巻き戻さないため）。----
+  function arrApply(row, mutate){
+    if(!row || !row.storeKey || !row.procId) return { ok:false, why:'対象の工程を特定できませんでした。画面を開き直してください。' };
+    let store = null;
+    try{ store = JSON.parse(localStorage.getItem(row.storeKey)); }catch(e){ store = null; }
+    if(!store || !Array.isArray(store.parts)) return { ok:false, why:'案件のデータを読み直せませんでした。画面を開き直してください。' };
+    // 工程の特定は工程 id で行う。同じ工程記号が複数あっても取り違えない。
+    let target = null;
+    for(let i=0;i<store.parts.length && !target;i++){
+      const p = store.parts[i];
+      if(row.partId && p.id !== row.partId) continue;
+      const list = p.processes || [];
+      for(let j=0;j<list.length;j++){ if(list[j].id === row.procId){ target = list[j]; break; } }
+    }
+    if(!target){   // 部品が見つからないときだけ、案件全体を工程 id で探す
+      for(let i=0;i<store.parts.length && !target;i++){
+        const list = store.parts[i].processes || [];
+        for(let j=0;j<list.length;j++){ if(list[j].id === row.procId){ target = list[j]; break; } }
+      }
+    }
+    if(!target) return { ok:false, why:'この工程が見つかりませんでした。別の端末で消された可能性があります。' };
+    const next = mutate(target.arrange || null);
+    if(!next) return { ok:false, why:'記録する内容がありません。' };
+    target.arrange = next;                      // ★変えるのはこの 1 工程の arrange だけ
+    try{ localStorage.setItem(row.storeKey, JSON.stringify(store)); }
+    catch(e){ return { ok:false, why:'保存できませんでした（'+(e && e.message ? e.message : e)+'）' }; }
+    return { ok:true };
+  }
+
+  // ---- 入力画面（手配完了／取消）----
+  const $arr = (id)=> document.getElementById(id);
+  let arrTarget = null, arrMode = null;
+  function arrOpen(mode, row){
+    arrMode = mode; arrTarget = row;
+    const a = arrangeOf(row) || {};
+    $arr('arrTitle').textContent = mode === 'cancel' ? '手配完了の取消' : '手配完了の記録';
+    $arr('arrWhat').textContent = row.orderNo + '　' + row.name + '　' + row.process + '（' + (row.arrangeLabel||'手配') + '）';
+    $arr('arrForm').style.display = mode === 'cancel' ? 'none' : '';
+    $arr('arrCancelForm').style.display = mode === 'cancel' ? '' : 'none';
+    $arr('arrNotice').textContent = '';
+    if(mode === 'cancel'){
+      $arr('arrCancelBy').value = ''; $arr('arrReason').value = '';
+    }else{
+      $arr('arrBy').value = a.by || '';
+      $arr('arrDate').value = a.date || todayISO();
+      $arr('arrVendor').value = a.vendor || '';
+      $arr('arrNote').value = a.note || '';
+    }
+    $arr('arrModal').style.display = 'flex';
+    const first = mode === 'cancel' ? $arr('arrCancelBy') : $arr('arrBy');
+    if(first) first.focus();
+  }
+  function arrClose(){ $arr('arrModal').style.display = 'none'; arrTarget = null; arrMode = null; }
+
+  function arrConfirm(){
+    if(!arrTarget) return;
+    const notice = $arr('arrNotice');
+    notice.textContent = '';
+    if(arrMode === 'cancel'){
+      const by = ($arr('arrCancelBy').value||'').trim();
+      const reason = ($arr('arrReason').value||'').trim();
+      // 取消は理由が要る。理由の無い取消はできない。
+      if(!by || !reason){ notice.textContent = '取消した人と取消理由を入れてください。'; return; }
+      const res = arrApply(arrTarget, function(cur){
+        if(!cur) return null;                  // 手配完了になっていないものは取り消せない
+        const hist = Array.isArray(cur.history) ? cur.history.slice() : [];
+        hist.push({ at: arrNowISO(), by: by, action: '取消', reason: reason });
+        // ★記録は消さない。done を false へ戻すだけで、これまでの履歴はすべて残す。
+        return { done:false, by: cur.by||'', date: cur.date||'', vendor: cur.vendor||'', note: cur.note||'', history: hist };
+      });
+      if(!res.ok){ notice.textContent = res.why; return; }
+    }else{
+      const by = ($arr('arrBy').value||'').trim();
+      const date = ($arr('arrDate').value||'').trim();
+      const vendor = ($arr('arrVendor').value||'').trim();
+      const note = ($arr('arrNote').value||'').trim();
+      if(!by || !date){ notice.textContent = '手配者と手配日を入れてください。'; return; }
+      const res = arrApply(arrTarget, function(cur){
+        const hist = (cur && Array.isArray(cur.history)) ? cur.history.slice() : [];
+        hist.push({ at: arrNowISO(), by: by, action: '手配完了', reason: '', arrangedBy: by, date: date, vendor: vendor, note: note });
+        return { done:true, by: by, date: date, vendor: vendor, note: note, history: hist };
+      });
+      if(!res.ok){ notice.textContent = res.why; return; }
+    }
+    arrClose();
+    render();
+  }
+
+
   const tableBody = document.getElementById('tableBody');
   const emptyState = document.getElementById('emptyState');
   const summaryRow = document.getElementById('summaryRow');
@@ -920,6 +1109,8 @@
         html += '<td class="dueCell '+aCls+'">'+fmtDate(row.arrangeDue)
           + '<span class="dueAmpm">'+(row.arrangeAmpm==='PM'?'午後':'午前')+'</span>'+aBadge+'</td>';
       }
+      // ---- PT-0001：手配欄。手配行にだけ出す。左端の工程完了✓とは別物なので見た目も分ける ----
+      html += arrangeCellHtml(row);
       html += '<td>'+esc(row.prevProc||'-')+'</td>';
       html += '<td>'+esc(row.nextProc||'-')+'</td>';
       html += '</tr>';
@@ -994,6 +1185,18 @@
     searchTerm = initProductNo;
     document.getElementById('searchBox').value = initProductNo;
   }
+
+  // ---- PT-0001：手配欄の操作。押したときだけ入力画面を出し、確定したときだけ保存する ----
+  tableBody.addEventListener('click', (e)=>{
+    const b = e.target.closest('[data-role="arrDo"],[data-role="arrCancel"]');
+    if(!b) return;
+    const row = arrRowByKey(b.dataset.key);
+    if(!row) return;
+    arrOpen(b.dataset.role === 'arrCancel' ? 'cancel' : 'done', row);
+  });
+  document.getElementById('arrOk').addEventListener('click', arrConfirm);
+  document.getElementById('arrClose').addEventListener('click', arrClose);
+  document.getElementById('arrModal').addEventListener('click', (e)=>{ if(e.target && e.target.id === 'arrModal') arrClose(); });
 
   // ---- 他タブでの作業票の更新・実績入力の登録をリアルタイムに反映する ----
   window.addEventListener('storage', (e)=>{
