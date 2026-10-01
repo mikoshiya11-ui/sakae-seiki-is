@@ -94,7 +94,10 @@
   table.partsTable col.colSubNo{ width:56px; }
   table.partsTable col.colCode{ width:64px; }
   table.partsTable col.colName{ width:270px; }
-  table.partsTable col.colMaterial{ width:60px; }
+  /* PT-0005：SKD61 と SKD61H を見分けられるよう、材質は半角 6 文字まで見えるようにする。
+     実測で col 60px は文字領域 44px＝半角 4 文字までだった。SKD61H が切れない最小は 72px なので余裕を見て 76px。
+     ほかの列（仕上寸法・熱処理・表面処理）は今回の対象ではないので 60px のまま。 */
+  table.partsTable col.colMaterial{ width:76px; }
   table.partsTable col.colFinishedSize{ width:60px; }
   table.partsTable col.colHeatTreat{ width:60px; }
   table.partsTable col.colSurfaceTreat{ width:60px; }
@@ -187,6 +190,12 @@
     width:100%; border:1.5px solid #dfe4ec; border-radius:6px; padding:5px 7px; font-size:12px; font-family:inherit;
     color:#3a4a63; background:#fff; min-width:0;
   }
+  /* PT-0009：仮表示文字（placeholder）を、実際に入力した文字とはっきり見分けられる薄さにする。
+     入力済みの文字は #3a4a63。仮表示はこの画面でほかに「未設定」を表すのに使っている薄い色に揃える。
+     ※ 消さずに薄くする。何を入れる欄なのかの手がかりは残したいため。 */
+  .pmTable input::placeholder{ color:#c7cfdc; opacity:1; }
+  .pmTable input::-webkit-input-placeholder{ color:#c7cfdc; opacity:1; }
+  .pmTable input:-ms-input-placeholder{ color:#c7cfdc; opacity:1; }
   .pmTable input:focus, .pmTable select:focus{ outline:none; border-color:#173a68; }
   .pmTable input:disabled, .pmTable select:disabled{ background:#f4f6fa; color:#8592a6; }
   .pmTable .pmCodeWrap{ display:flex; align-items:center; }
@@ -1522,7 +1531,11 @@
     if(!part) return;
     part.processes = part.processes || [];
     // 個別日程表・各工程の日程表と共有する形をそろえる（独自形式は作らない）
-    const added = { id: uid(), code:'', ident:'', machine:'', date:'', note:'', ampm:'AM', hours:'', days:3 };
+    // PT-0010：現場の基本は午後なので、新しく追加する工程の初期値を午後にする。
+    //   変えるのはここ（これから作る工程の初期値）だけ。
+    //   すでに保存されている工程の 午前/午後 は書き換えない。
+    //   古いデータで未設定のものを午前として読む扱い（migrateState）も変えない。
+    const added = { id: uid(), code:'', ident:'', machine:'', date:'', note:'', ampm:'PM', hours:'', days:3 };
     part.processes.push(added);
     save();
     buildPpList(part);
