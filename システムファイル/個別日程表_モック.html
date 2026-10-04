@@ -131,8 +131,10 @@
   .ganttCard{
     background:#fff; border-radius:14px; box-shadow:0 2px 10px rgba(20,35,70,.06); margin-bottom:16px;
   }
+  /* ★PT-0007A（2026-10-04）：上に貼り付いた日付欄でも左右に動かせるよう、横スクロールバーをここにも出す。
+     下端（.ganttScroll）の既存バーは残す。印刷では @media print の overflow:visible でバーは出ない。 */
   .ganttHeaderScroll{
-    overflow:hidden; position:sticky; top:0; z-index:6; background:#fff; border-radius:14px 14px 0 0;
+    overflow-x:auto; overflow-y:hidden; position:sticky; top:0; z-index:6; background:#fff; border-radius:14px 14px 0 0;
   }
   .ganttHeaderInner{ min-width:max-content; }
   .ganttScroll{ overflow-x:auto; overflow-y:hidden; border-radius:0 0 14px 14px; }
@@ -1496,6 +1498,24 @@
   const ganttInner = document.getElementById('ganttInner');
   const ganttHeaderInner = document.getElementById('ganttHeaderInner');
   const ganttHeaderScrollEl = document.getElementById('ganttHeaderScroll');
+  // ★PT-0007A：日付欄（上）のバーを動かしたら、本体と進捗チェック欄も同じ位置へ動かす（本体→日付欄は上の ganttScroll 側で同期済み）。
+  //   日付欄からの伝播は「利用者が日付欄そのものを操作している間」だけ行う（ホイール・バーのドラッグ・タッチ）。
+  //   本体側の同期や render() がプログラムで日付欄へ書いた値は、遅れて scroll イベントで返ってきても伝えない
+  //   （本体を短い間に 111→41→0 と動かした時、遅れて届いた 41 が本体を古い位置へ戻してしまうのを防ぐ）。
+  let headerUserUntil = 0, headerPointerDown = false;
+  const markHeaderUser = ()=>{ headerUserUntil = performance.now() + 800; };
+  ganttHeaderScrollEl.addEventListener('wheel', markHeaderUser, { passive:true });
+  ganttHeaderScrollEl.addEventListener('touchstart', markHeaderUser, { passive:true });
+  ganttHeaderScrollEl.addEventListener('pointerdown', ()=>{ headerPointerDown = true; markHeaderUser(); });
+  window.addEventListener('pointerup', ()=>{ if(headerPointerDown){ headerPointerDown = false; markHeaderUser(); } }, true);
+  window.addEventListener('pointercancel', ()=>{ if(headerPointerDown){ headerPointerDown = false; markHeaderUser(); } }, true);
+  const endHeaderUser = ()=>{ headerUserUntil = 0; headerPointerDown = false; };   // 本体・進捗欄を操作し始めたら、動かし元はそちらへ移る
+  [ganttScrollEl, checkScrollEl].forEach((el)=> ['wheel', 'pointerdown', 'touchstart'].forEach((t)=> el.addEventListener(t, endHeaderUser, { passive:true })));
+  ganttHeaderScrollEl.addEventListener('scroll', ()=>{
+    if(!headerPointerDown && performance.now() > headerUserUntil) return;   // プログラムが書いた値のこだま＝伝えない
+    mirrorScroll(ganttHeaderScrollEl, ganttScrollEl);
+    mirrorScroll(ganttHeaderScrollEl, checkScrollEl);
+  });
 
   document.documentElement.style.setProperty('--day-w', DAY_W+'px');
 

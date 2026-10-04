@@ -81,6 +81,18 @@
   .partsScroll::-webkit-scrollbar-track{ background:#f0f2f7; border-radius:6px; }
   .partsScroll::-webkit-scrollbar-thumb{ background:#c3cbdb; border-radius:6px; }
   .partsScroll::-webkit-scrollbar-thumb:hover{ background:#8592a6; }
+  /* ★PT-0007A（2026-10-04）：部品一覧の上部にも横スクロールバーを出す（下端の既存バーは残す）。
+     ページを下へ送っても画面の上に貼り付いてついてくる。横にはみ出していない時は hidden で出さない。 */
+  .partsTopScroll{
+    position:sticky; top:0; z-index:4; overflow-x:auto; overflow-y:hidden; background:#fff;
+    scrollbar-width:thin; scrollbar-color:#c3cbdb #f0f2f7;
+  }
+  .partsTopScroll::-webkit-scrollbar{ height:11px; }
+  .partsTopScroll::-webkit-scrollbar-track{ background:#f0f2f7; border-radius:6px; }
+  .partsTopScroll::-webkit-scrollbar-thumb{ background:#c3cbdb; border-radius:6px; }
+  .partsTopScroll::-webkit-scrollbar-thumb:hover{ background:#8592a6; }
+  .partsTopScrollInner{ height:1px; }
+  @media print{ .partsTopScroll{ display:none !important; } }
   table.partsTable{ border-collapse:collapse; width:100%; min-width:1180px; table-layout:fixed; }
   table.partsTable th{
     font-size:10.5px; font-weight:700; color:#8592a6; text-align:left; padding:6px 8px;
@@ -277,6 +289,7 @@
           <button type="button" class="addPartBtn" id="memoVerticalToggleBtn" style="background:#8592a6;">📐 注記を畳む</button>
         </div>
       </div>
+      <div class="partsTopScroll" id="partsTopScroll" hidden><div class="partsTopScrollInner" id="partsTopScrollInner"></div></div>
       <div class="partsScroll" id="partsScroll">
         <table class="partsTable" id="partsTable">
           <colgroup>
@@ -1163,6 +1176,51 @@
     e.preventDefault();
     partsScrollEl.scrollLeft += (e.deltaX !== 0 ? e.deltaX : e.deltaY);
   }, { passive:false });
+
+  // ---- ★PT-0007A：部品一覧の上部の横スクロールバー（表示だけ。保存値には一切触れない） ----
+  //   上のバーの中身の幅を一覧の scrollWidth に合わせ、上下どちらを動かしても同じ横位置にする。
+  //   上のバー→一覧の伝播は「利用者が上のバーそのものを操作している間」だけ行う（ホイール・バーのドラッグ・タッチ）。
+  //   一覧→上のバーで書いた値が遅れて scroll イベントで返ってきても一覧へは戻さない
+  //   （一覧を短い間に 150→100→50 と動かした時、遅れて届いた 100 が一覧を古い位置へ戻してしまうのを防ぐ）。
+  //   上のバーを操作している間は一覧→上のバーの書き戻しをしない（上のバーが動かし元のため）。
+  //   画面幅の変更は ResizeObserver、再描画（行の作り直し）と注記の畳み/表示（表の class）は MutationObserver で拾って幅を測り直す
+  //   （工程チップは列からはみ出して scrollWidth を変えるが、表そのものの大きさは変わらないことがあるため両方で見る）。
+  const partsTopScrollEl = document.getElementById('partsTopScroll');
+  const partsTopScrollInnerEl = document.getElementById('partsTopScrollInner');
+  function syncPartsTopScrollWidth(){
+    const overflow = partsScrollEl.scrollWidth > partsScrollEl.clientWidth + 1;
+    partsTopScrollEl.hidden = !overflow;
+    if(!overflow) return;
+    partsTopScrollInnerEl.style.width = partsScrollEl.scrollWidth + 'px';
+    partsTopScrollEl.scrollLeft = partsScrollEl.scrollLeft;
+  }
+  let partsTopUserUntil = 0, partsTopPointerDown = false;
+  const markPartsTopUser = ()=>{ partsTopUserUntil = performance.now() + 800; };
+  const partsTopUserActive = ()=> partsTopPointerDown || performance.now() <= partsTopUserUntil;
+  partsTopScrollEl.addEventListener('wheel', markPartsTopUser, { passive:true });
+  partsTopScrollEl.addEventListener('touchstart', markPartsTopUser, { passive:true });
+  partsTopScrollEl.addEventListener('pointerdown', ()=>{ partsTopPointerDown = true; markPartsTopUser(); });
+  window.addEventListener('pointerup', ()=>{ if(partsTopPointerDown){ partsTopPointerDown = false; markPartsTopUser(); } }, true);
+  window.addEventListener('pointercancel', ()=>{ if(partsTopPointerDown){ partsTopPointerDown = false; markPartsTopUser(); } }, true);
+  const endPartsTopUser = ()=>{ partsTopUserUntil = 0; partsTopPointerDown = false; };   // 一覧側を操作し始めたら、動かし元は一覧へ移る
+  ['wheel', 'pointerdown', 'touchstart'].forEach((t)=> partsScrollEl.addEventListener(t, endPartsTopUser, { passive:true }));
+  partsTopScrollEl.addEventListener('scroll', ()=>{
+    if(!partsTopUserActive()) return;   // 一覧側から書いた値のこだま＝伝えない
+    if(Math.abs(partsScrollEl.scrollLeft - partsTopScrollEl.scrollLeft) >= 1) partsScrollEl.scrollLeft = partsTopScrollEl.scrollLeft;
+  });
+  partsScrollEl.addEventListener('scroll', ()=>{
+    if(partsTopUserActive()) return;    // 上のバーが動かし元の間は書き戻さない
+    if(Math.abs(partsTopScrollEl.scrollLeft - partsScrollEl.scrollLeft) >= 1) partsTopScrollEl.scrollLeft = partsScrollEl.scrollLeft;
+  });
+  if(window.ResizeObserver){
+    const partsTopScrollRO = new ResizeObserver(syncPartsTopScrollWidth);
+    partsTopScrollRO.observe(partsScrollEl);
+    partsTopScrollRO.observe(partsTableEl);
+  } else {
+    window.addEventListener('resize', syncPartsTopScrollWidth);
+  }
+  new MutationObserver(syncPartsTopScrollWidth).observe(partsTableEl, { childList:true, subtree:true, attributes:true, attributeFilter:['class'] });
+  syncPartsTopScrollWidth();
 
   // 新しい部品を追加する時、社内Noは既存の最大値+1を000始まりの3桁で自動的に入れる（手入力での付け忘れ・重複を防ぐ。後から手で直すことも可能）
   document.getElementById('addPartBtn').addEventListener('click', ()=>{
