@@ -281,12 +281,41 @@
     g.causal = !!opts.causal;
     g.R = [];                      // 見た書込み {mid, parent, product(生の内容・_sync 無し), at, src:'init'|'own'|'event', legacy}
     g.lastWriteId = null;          // lastWrite の identity
-    g.degraded = false;            // この key の因果記録が復元できない／永続できない（UNKNOWN は全差分を選ばせる）
+    g.degraded = false;            // この key の因果記録が信用できない（UNKNOWN は全差分を選ばせる）＝ degradedReasons が空でない
+    g.degradedReasons = [];        // ★CAUSALRING-01：DEGRADED の理由（固定順）。解除は理由ごとの証拠がそろった時だけ（設計 v1.3.1 §9・§21.6・§22）
     g.warnings = [];               // 画面に出す診断（因果同期が使えない・記録を保存できない）
     g.stats.invalid = { version: 0, mid: 0, parent: 0, shape: 0, parse: 0, persisted: 0 };
     g.stats.skip = 0; g.stats.known = 0; g.stats.unknown = 0; g.stats.persistFail = 0;
+    g.stats.ringRetry = 0; g.stats.ringContention = 0; g.stats.heal = 0; g.stats.healCapHit = 0; g.stats.sameIdMismatch = 0;
+    g.stats.qHeal = 0; g.stats.qHealCapHit = 0; g.stats.qRetry = 0; g.stats.quarantineOverflow = 0; g.stats.quarantineBroken = 0;
+    // ★共有隔離（設計 v1.3 §21・v1.3.1 §22）：隔離はタブ間で共有する専用キーに置く。メモリは写し（qItems）と、そこから決まる有効な mid（quarantine）
+    g.qItems = new Map();          // mid → { mid, detectedAt, reason, payloadHashes[] }（業務データ本文は持たない）
+    g.quarantine = [];             // いま有効な隔離 mid（qItems から TTL で決まる）。リング・メモリ R・rAdd で使わない
+    g.qBrokenSince = null;         // 隔離キーの破損を最初に検出した時刻（min・24h で失効）
+    g.qBrokenEver = false;         // このページで隔離キーの破損を見たか（broken の解除条件を強くする）
+    g.lastSeenInRingAt = {};       // 隔離 mid をリング上で最後に見かけた時刻（他タブからの再投入の観測）
+    g.qKnown = new Set();          // このページが既に受け止めた隔離 mid（新しく知った時だけ mismatch を設定する＝§21.5）
+    g.mismatchLog = [];            // 診断（mid 先頭 8 桁・経路・中身の canon の SHA-256 先頭 16 桁・時刻。業務データそのものは残さない）
+    g.healLog = [];                // 診断（自己修復の時刻と結果）
+    g.healTimes = []; g.qHealTimes = [];
+    // ★v1.4.1 latest-own（§23.2・§24）：このページが正式に保存した最後の own。メモリと sessionStorage marker（タブごと）だけ
+    g.lastOwnMid = null; g.lastOwnAt = 0;
+    g.markerBroken = false;        // 起動時に marker が壊れていた（次の正式保存＋read-back まで missing を外さない）
+    g.capRecoveryTimer = null; g.capRecoveryUsed = false;   // 上限到達後の bounded recovery（contention の 1 エピソードにつき 1 回）
+    g.stats.capRecovery = 0; g.stats.healSkipSemantic = 0; g.stats.ringWriteSkipped = 0; g.stats.freshReadRetry = 0;
+    // ★v1.4.3 pending incoming（§26）：受け手は取込み時にリングを書かない。届いた版の mid を、書き手の own がリングに見えるまで（上限 G）ページ内メモリで待つ
+    g.pendingRing = new Map();     // mid → { receivedAt, deadline }（業務データ本文は持たない）
+    g.pendingTimer = null;         // 常に 1 本（最も早い deadline）
+    g.pendingOverflowActive = false;
+    g.ownParentKeep = null;        // 自分の保存（rPersist(true)）の間だけ：その保存の parent は pending でも含める（§26.7）
+    g.pendingLog = [];             // 診断（時刻・結果・件数。mid は先頭 8 桁）
+    ['pendingAdded', 'pendingResolvedAtAdd', 'pendingResolvedOwn', 'pendingResolvedEvent', 'pendingEarly', 'pendingFallback', 'pendingDropped', 'pendingOverflow',
+     'pendingHideResolved', 'pendingHideUnresolved', 'pendingOwnParent', 'pendingTimerArmed'].forEach(n=>{ g.stats[n] = 0; });
     const R_MEM_MAX = 16, R_PERSIST_MAX = 6, R_TTL_MS = 24 * 3600 * 1000, R_INDEX_MAX_KEYS = 20, R_PERSIST_BYTES = 512 * 1024;
-    const SEEN_PREFIX = 'sakaeLocal_seen_v1_', SEEN_INDEX = 'sakaeLocal_seenIndex_v1';   // sakaeLocal_ ＝ 同期対象外・控え対象外
+    const OWN_RESERVE = 3, HEAL_WINDOW_MS = 10000, HEAL_MAX = 3;   // 自 write は最大 3 件を優先／自己修復は 10 秒に 3 回まで（安全弁）
+    const Q_MAX = 64, Q_HASH_MAX = 4, Q_REASON = 'SAME_ID_PAYLOAD_MISMATCH', QUIET_MS = 10000;   // 隔離：正常保持の上限 64（超過は overflow・捨てない）／静穏観測 10 秒
+    const REASON_ORDER = ['persist', 'broken', 'mismatch', 'overflow', 'marker', 'contention', 'missing', 'index'];
+    const SEEN_PREFIX = 'sakaeLocal_seen_v1_', SEEN_INDEX = 'sakaeLocal_seenIndex_v1', QUAR_PREFIX = 'sakaeLocal_quarantine_v1_';   // sakaeLocal_ ＝ 同期対象外・控え対象外
     const causalLib = ()=> window.sakaeCausal || null;
     const stripSync = (o)=>{ if(o && typeof o === 'object' && !Array.isArray(o) && o._sync !== undefined) delete o._sync; return o; };
     // 画面のメモリ（state）は読み込み時の _sync を持ち得る。guard の比較は業務内容だけで行う
@@ -294,78 +323,586 @@
     const rawContentOf = (raw)=>{ const C = causalLib(); try{ return C ? C.contentOf(JSON.parse(raw)) : JSON.parse(raw); }catch(e){ return null; } };
     const productOfEntry = (e)=> parse(JSON.stringify(e.product));   // 環の写し（生）→ 画面の形（migrate 済み・_sync 無し）
     function rFind(mid){ return mid ? g.R.find(e=> e.mid === mid) : null; }
-    // 環への登録：契約 C-03 の検証（v／mid 再計算／parent 形式／内容の形）に通ったものだけ。INVALID は登録しない
+
+    // ---- CAUSALRING-01 の部品 ----
+    //   ・TTL は実時間基準：1 回の処理の始めに referenceNow を 1 回だけ取り、referenceNow − at ≥ 24h を期限切れとする（比較はこの 1 か所）
+    //   ・並び順は at 降順・同じ at は mid 昇順（mid は一意＝全順序）。referenceNow は並び順に使わない
+    const expired = (at, referenceNow)=> (referenceNow - (at || 0)) >= R_TTL_MS;
+    const byNewest = (a, b)=> ((b.at || 0) - (a.at || 0)) || (a.mid < b.mid ? -1 : (a.mid > b.mid ? 1 : 0));
+    const byOldest = (a, b)=> ((a.at || 0) - (b.at || 0)) || (a.mid < b.mid ? -1 : (a.mid > b.mid ? 1 : 0));
+    const strAsc = (a, b)=> (a < b ? -1 : (a > b ? 1 : 0));
+    const payloadOf = (C, parent, product)=> (parent == null ? '' : String(parent)) + '\n' + C.canon(product);   // 本来変わらない部分（parent と内容）
+    const reasonsOfText = (t)=> String(t || '').split(',').map(x=> x.trim()).filter(x=> REASON_ORDER.indexOf(x) >= 0);
+    const orderReasons = (arr)=> REASON_ORDER.filter(r=> arr.indexOf(r) >= 0);
+    const isQuarantined = (mid)=> g.quarantine.indexOf(mid) >= 0;
+    const PENDING_GRACE_MS = 250, PENDING_MAX = 16, PENDING_BATCH_MS = 50;   // §26.4：G は coalescing window（正しさの根拠にしない）／§26.6：通常上限・期限が 50 ms 以内に並ぶ版は 1 回にまとめる
+    // リングへ書く時のメモリ側：pending 中の mid は入れない（書き手の own が見える前に event で書かない）。自分の保存の parent だけは含める
+    const ringMem = (ownWrite)=>{
+      if(!g.pendingRing.size) return g.R;
+      const keep = ownWrite ? g.ownParentKeep : null;
+      return g.R.filter(e=> !g.pendingRing.has(e.mid) || e.mid === keep);
+    };
+    // メモリ R の上限（R_MEM_MAX）：古い順に捨てる。ただし確認待ち（pending）の版は件数都合で捨てない（§26.6・裁定 3）。
+    //   いま足した版（keepMid：届いた最新版・自分の保存）も捨てない。pending が多い間だけ R は上限を一時的に超えうる（pending 自体は PENDING_OVERFLOW と期限で有限）
+    function trimR(keepMid){
+      if(g.R.length <= R_MEM_MAX) return;
+      g.R.sort(byOldest);
+      let over = g.R.length - R_MEM_MAX;
+      g.R = g.R.filter(e=>{ if(over > 0 && !g.pendingRing.has(e.mid) && e.mid !== keepMid){ over--; return false; } return true; });
+    }
+    function pushPendingLog(x){ g.pendingLog.push(x); if(g.pendingLog.length > 20) g.pendingLog.splice(0, g.pendingLog.length - 20); }
+    // ---- v1.4.1 latest-own marker（sessionStorage・§24.1）----
+    const LASTOWN_PREFIX = 'sakaeLocal_lastOwn_v1_';
+    const markerKey = ()=> LASTOWN_PREFIX + key() + '_' + String(opts.page || '');
+    function writeMarker(mid, at){ try{ sessionStorage.setItem(markerKey(), JSON.stringify({ v: 1, mid: mid, at: at })); }catch(e){} }   // 書けない環境ではメモリだけ（§24.2-5）
+    function readMarker(){
+      let raw = null; try{ raw = sessionStorage.getItem(markerKey()); }catch(e){ return { none: true }; }
+      if(raw == null) return { none: true };
+      let o; try{ o = JSON.parse(raw); }catch(e){ return { broken: true }; }
+      if(!o || typeof o !== 'object' || o.v !== 1 || typeof o.mid !== 'string' || !/^[0-9a-f]{64}$/.test(o.mid) || !Number.isFinite(o.at)) return { broken: true };
+      return { mid: o.mid, at: o.at };
+    }
+    // V8（latest-own invariant）：このページの最新の自 write がリングに own で残っている。
+    //   リングに無い時は「正規形の規則で正規に押し出された」ことを示せた場合だけ成立：
+    //   メモリに自分の entry があれば、それをリングに足して正規形を作り直し、それでも選ばれないこと（より新しい own が優先枠を占めた等）。
+    //   メモリに無い（再読込直後など）時は、より新しい own が優先枠（OWN_RESERVE＝3）を占めていること。示せなければ不成立（安全側）
+    function latestOwnOk(entries, referenceNow, C){
+      if(!g.lastOwnMid || expired(g.lastOwnAt, referenceNow)) return true;
+      const list = entries || [];
+      const e = list.find(x=> x.mid === g.lastOwnMid);
+      if(e) return e.src === 'own';
+      if(isQuarantined(g.lastOwnMid)) return true;   // 隔離された版（mismatch で DEGRADED 済み）は正規形に入らない
+      const mine = g.R.find(x=> x.mid === g.lastOwnMid && x.src === 'own');
+      if(mine && C){
+        const u = unionEntries(C, [{ src: 'persisted', entries: list }, { src: 'memory', entries: [mine] }]);
+        return !canonical(C, u.entries, referenceNow).entries.some(x=> x.mid === g.lastOwnMid);
+      }
+      const newerOwn = list.filter(x=> x.src === 'own' && x.mid !== g.lastOwnMid && (x.at || 0) > g.lastOwnAt).length;
+      return newerOwn >= OWN_RESERVE;
+    }
+    // 意味キー（§23.5・§24.5）：正規形の並びのまま (mid, parent, src, legacy)。残った entry の at の値・updatedAt・直列化差は比べない。
+    //   TTL と並びは正規形の計算（at を使う）で決めたうえで、その結果を比べる
+    const semKey = (list)=> JSON.stringify((list || []).map(e=> [e.mid, e.parent == null ? null : e.parent, e.src === 'own' ? 'own' : 'event', !!e.legacy]));
+    function setReason(reason){
+      if(g.degradedReasons.indexOf(reason) < 0) g.degradedReasons = orderReasons(g.degradedReasons.concat([reason]));
+      g.degraded = g.degradedReasons.length > 0;
+    }
+    // 永続 entry の検証（契約 C-03・現行の rLoad と同じ規則）。通らなければ null
+    function validStoredEntry(C, e){
+      if(!e || typeof e !== 'object' || !e.product || (e.parent !== null && !C.isHex64(e.parent))) return null;
+      const info = C.identityOf(e.parent === null ? e.product : Object.assign({}, e.product, { _sync: { v: C.VERSION, parent: e.parent, mid: e.mid } }));
+      if(info.state === 'INVALID' || info.identity !== e.mid) return null;
+      return { mid: e.mid, parent: e.parent, product: info.content, at: Number(e.at) || 0, src: e.src === 'own' ? 'own' : 'event', legacy: !!e.legacy };
+    }
+    // 永続リングを読む：{ raw, broken（JSON として読めない）, entries（検証済み・保存順）, invalid（検証に落ちた数） }
+    function readRing(C, k){
+      let raw = null; try{ raw = localStorage.getItem(SEEN_PREFIX + k); }catch(e){ raw = null; }
+      if(raw == null) return { raw: null, broken: false, entries: [], invalid: 0 };
+      let o; try{ o = JSON.parse(raw); }catch(e){ return { raw: raw, broken: true, entries: [], invalid: 0 }; }
+      if(!o || o.v !== 1 || !Array.isArray(o.entries)) return { raw: raw, broken: false, entries: [], invalid: 0 };
+      const entries = []; let invalid = 0;
+      o.entries.forEach(e=>{ let v = null; try{ v = validStoredEntry(C, e); }catch(x){ v = null; } if(v) entries.push(v); else invalid++; });
+      return { raw: raw, broken: false, entries: entries, invalid: invalid };
+    }
+    // リング上に隔離 mid がいたら「見かけた時刻」を記録（他タブからの再投入の観測・§21.6-2）
+    function noteSeenInRing(entries, referenceNow){ (entries || []).forEach(e=>{ if(isQuarantined(e.mid)) g.lastSeenInRingAt[e.mid] = referenceNow; }); }
+    // 併合（§7.1）：mid ごとに「中身の種類」を集める。1 種類なら own は OR・at は max・legacy は OR。
+    //   2 種類以上（同じ mid で parent／内容が違う）＝ SAME_ID_PAYLOAD_MISMATCH：経路に依らず、どちらも使わない。
+    //   有効な隔離 mid は最初から使わない（§21.4-3）。判定は mid ごとの集合なので A→B／B→A で同一
+    function unionEntries(C, lists){
+      const byMid = new Map();
+      lists.forEach(L=> (L.entries || []).forEach(e=>{
+        if(!e || !e.mid) return;
+        let slot = byMid.get(e.mid);
+        if(!slot){ slot = { payloads: [], sources: [], own: false, at: 0, legacy: false, parent: e.parent, product: e.product }; byMid.set(e.mid, slot); }
+        const p = payloadOf(C, e.parent, e.product);
+        if(slot.payloads.indexOf(p) < 0) slot.payloads.push(p);
+        if(slot.sources.indexOf(L.src) < 0) slot.sources.push(L.src);
+        if(e.src === 'own') slot.own = true;
+        if((e.at || 0) > slot.at) slot.at = e.at || 0;
+        if(e.legacy) slot.legacy = true;
+      }));
+      const entries = [], mismatched = [];
+      byMid.forEach((slot, mid)=>{
+        if(isQuarantined(mid)){ mismatched.push({ mid: mid, sources: slot.sources, payloads: slot.payloads, known: true }); return; }
+        if(slot.payloads.length > 1){ mismatched.push({ mid: mid, sources: slot.sources, payloads: slot.payloads, known: false }); return; }
+        entries.push({ mid: mid, parent: slot.parent, product: slot.product, at: slot.at, src: slot.own ? 'own' : 'event', legacy: slot.legacy });
+      });
+      return { entries: entries, mismatched: mismatched };
+    }
+    function shortHash(C, s){ try{ return C.sha256hex(String(s)).slice(0, 16); }catch(e){ return ''; } }
+    // 不一致の扱い（§21.5）：新しい不一致は隔離（メモリ）へ足し、呼び出し側が隔離キーをリングより先に書く。
+    //   隔離済みの mid が現れた時は「再投入を見かけた」として記録し、mismatch を（解除されていれば）設定し直す
+    function handleMismatches(C, list, referenceNow){
+      (list || []).forEach(m=>{
+        g.roundMismatch = true;   // この処理で不一致（または隔離 mid）を見た → 同じ回では mismatch を解除しない
+        g.R = g.R.filter(e=> e.mid !== m.mid);
+        if(m.known){
+          g.lastSeenInRingAt[m.mid] = referenceNow;
+          if(g.degradedReasons.indexOf('mismatch') < 0) markDegraded('mismatch', null);
+          return;
+        }
+        const hashes = (m.payloads || []).map(p=> shortHash(C, p)).filter(h=> /^[0-9a-f]{16}$/.test(h));
+        mergeQItem({ mid: m.mid, detectedAt: referenceNow, reason: Q_REASON, payloadHashes: hashes });
+        g.qKnown.add(m.mid);
+        g.qDirty = true;
+        g.stats.sameIdMismatch++;
+        g.mismatchLog.push({ mid: String(m.mid).slice(0, 8), sources: (m.sources || []).slice(0, 6), payloadHashes: hashes.slice().sort(strAsc).slice(0, Q_HASH_MAX), at: referenceNow });
+        if(g.mismatchLog.length > 10) g.mismatchLog.splice(0, g.mismatchLog.length - 10);
+        try{ console.warn('[sakaeLocalMerge] SAME_ID_PAYLOAD_MISMATCH（同じ記録 ID で中身が違うため、どちらも使いません）:', key(), String(m.mid).slice(0, 8), (m.sources || []).join(',')); }catch(x){}
+        markDegraded('mismatch', null);
+      });
+      refreshQuarantine(referenceNow);
+    }
+
+    // ---- 共有隔離キー（§21・§22）----
+    const isHex16 = (s)=> typeof s === 'string' && /^[0-9a-f]{16}$/.test(s);
+    // 決定的な結合（§22.2）：detectedAt＝min・hash は和集合・reason は和集合（並べた先頭）
+    function mergeQItem(it){
+      const ex = g.qItems.get(it.mid);
+      if(!ex){ g.qItems.set(it.mid, { mid: it.mid, detectedAt: it.detectedAt, reasons: [it.reason], payloadHashes: (it.payloadHashes || []).slice() }); return; }
+      ex.detectedAt = Math.min(ex.detectedAt, it.detectedAt);
+      if(ex.reasons.indexOf(it.reason) < 0) ex.reasons.push(it.reason);
+      (it.payloadHashes || []).forEach(h=>{ if(ex.payloadHashes.indexOf(h) < 0) ex.payloadHashes.push(h); });
+    }
+    // 有効な隔離 mid を決める（TTL は実時間：referenceNow − detectedAt ≥ 24h で期限切れ。detectedAt は延長しない）
+    function refreshQuarantine(referenceNow){
+      const live = [];
+      g.qItems.forEach((it, mid)=>{ if(expired(it.detectedAt, referenceNow)){ g.qItems.delete(mid); g.qKnown.delete(mid); } else live.push(mid); });
+      g.quarantine = live.sort(strAsc);
+      if(g.qBrokenSince != null && expired(g.qBrokenSince, referenceNow)) g.qBrokenSince = null;
+      g.R = g.R.filter(e=> !isQuarantined(e.mid));
+    }
+    // 正規形（§22.2）：有効な Item を mid 昇順・各 Item は固定の項目順。件数では落とさない（64 超は overflow＝§22.1）
+    function qCanonItems(){
+      return g.quarantine.map(mid=>{
+        const it = g.qItems.get(mid);
+        return { mid: mid, detectedAt: it.detectedAt, reason: it.reasons.slice().sort(strAsc)[0], payloadHashes: it.payloadHashes.filter(isHex16).slice().sort(strAsc).slice(0, Q_HASH_MAX) };
+      });
+    }
+    const qItemText = (it)=> '{"mid":' + JSON.stringify(it.mid) + ',"detectedAt":' + JSON.stringify(it.detectedAt) + ',"reason":' + JSON.stringify(it.reason) + ',"payloadHashes":' + JSON.stringify(it.payloadHashes) + '}';
+    const qCoreText = (items, brokenSince)=> '"items":[' + items.map(qItemText).join(',') + '],"brokenSince":' + JSON.stringify(brokenSince == null ? null : brokenSince);
+    // 隔離キーを読む：{ raw, broken, items（検証済み・保存順）, brokenSince }。形が少しでも壊れていたら broken（空集合扱いしない＝§22.3）
+    function qRead(k){
+      let raw = null; try{ raw = localStorage.getItem(QUAR_PREFIX + k); }catch(e){ raw = null; }
+      if(raw == null) return { raw: null, broken: false, items: [], brokenSince: null };
+      let o; try{ o = JSON.parse(raw); }catch(e){ return { raw: raw, broken: true, items: [], brokenSince: null }; }
+      if(!o || typeof o !== 'object' || o.v !== 1 || !Array.isArray(o.items)) return { raw: raw, broken: true, items: [], brokenSince: null };
+      const items = [];
+      for(const it of o.items){
+        if(!it || typeof it !== 'object' || typeof it.mid !== 'string' || !/^[0-9a-f]{64}$/.test(it.mid) || !Number.isFinite(it.detectedAt) || typeof it.reason !== 'string' || !Array.isArray(it.payloadHashes) || !it.payloadHashes.every(isHex16)) return { raw: raw, broken: true, items: [], brokenSince: null };
+        items.push({ mid: it.mid, detectedAt: it.detectedAt, reason: it.reason, payloadHashes: it.payloadHashes.slice() });
+      }
+      const bs = (o.brokenSince == null) ? null : (Number.isFinite(o.brokenSince) ? o.brokenSince : NaN);
+      if(Number.isNaN(bs)) return { raw: raw, broken: true, items: [], brokenSince: null };
+      return { raw: raw, broken: false, items: items, brokenSince: bs };
+    }
+    // 隔離キーとメモリを併合し、違えば書く（§21.3）。read-back（QV1・QV2）・最大 2 回のやり直し。heal＝他タブの書込みを受けた自己修復（上限あり）
+    //   戻り値 { ok, wrote, persistFailed, capped }
+    function qSync(C, k, referenceNow, heal){
+      let wrote = false;
+      for(let attempt = 0; attempt < 3; attempt++){
+        const st = qRead(k);
+        if(st.broken){
+          // 読めない＝隔離が失われたかもしれない：空集合扱いせず broken（fail-closed）。破損を最初に見た時刻を brokenSince に（min）
+          g.qBrokenSince = (g.qBrokenSince == null) ? referenceNow : Math.min(g.qBrokenSince, referenceNow);
+          g.qBrokenEver = true;
+          if(attempt === 0) g.stats.quarantineBroken++;
+        }
+        st.items.forEach(mergeQItem);
+        if(st.brokenSince != null) g.qBrokenSince = (g.qBrokenSince == null) ? st.brokenSince : Math.min(g.qBrokenSince, st.brokenSince);
+        refreshQuarantine(referenceNow);
+        if(g.qBrokenSince != null){ g.qBrokenEver = true; if(g.degradedReasons.indexOf('broken') < 0) markDegraded('broken', null); }
+        if(g.quarantine.length > Q_MAX){
+          if(g.degradedReasons.indexOf('overflow') < 0){ g.stats.quarantineOverflow++; try{ console.warn('[sakaeLocalMerge] 隔離が上限（' + Q_MAX + ' 件）を超えました。捨てずに保持し、保護を続けます:', k, g.quarantine.length); }catch(x){} markDegraded('overflow', null); }
+        }
+        const fresh = g.quarantine.filter(m=> !g.qKnown.has(m));   // 他タブの隔離を新しく知った → 受信タブも mismatch（保守側・§21.5）
+        if(fresh.length){ fresh.forEach(m=> g.qKnown.add(m)); markDegraded('mismatch', null); }
+        const items = qCanonItems();
+        const want = qCoreText(items, g.qBrokenSince);
+        const have = st.broken ? null : qCoreText(st.items, st.brokenSince);
+        const empty = !items.length && g.qBrokenSince == null;
+        if(want === have || (st.raw == null && empty)){ g.qDirty = false; return { ok: true, wrote: wrote, persistFailed: false, capped: false }; }
+        if(heal){
+          g.qHealTimes = g.qHealTimes.filter(t=> referenceNow - t < HEAL_WINDOW_MS);
+          if(g.qHealTimes.length >= HEAL_MAX){
+            g.stats.qHealCapHit++;
+            pushHealLog({ at: referenceNow, result: 'q-cap' });
+            const missingMine = items.some(it=> !st.items.some(x=> x.mid === it.mid));
+            if(missingMine) markDegraded('contention', null);   // 上限到達は正常扱いにしない
+            return { ok: false, wrote: wrote, persistFailed: false, capped: true };
+          }
+          g.qHealTimes.push(referenceNow); g.stats.qHeal++; pushHealLog({ at: referenceNow, result: 'q-heal' });
+          heal = false;   // この呼出しで数えるのは 1 回だけ
+        }
+        try{ localStorage.setItem(QUAR_PREFIX + k, '{"v":1,' + want + ',"updatedAt":' + JSON.stringify(referenceNow) + '}'); wrote = true; }
+        catch(e){ g.stats.persistFail++; markDegraded('persist', e); return { ok: false, wrote: wrote, persistFailed: true, capped: false }; }   // 古い隔離を削って成功扱いにはしない
+        const back = qRead(k);
+        const qv1 = !back.broken && items.every(it=> back.items.some(x=> x.mid === it.mid && x.detectedAt <= it.detectedAt));
+        if(qv1){
+          back.items.forEach(mergeQItem); if(back.brokenSince != null) g.qBrokenSince = (g.qBrokenSince == null) ? back.brokenSince : Math.min(g.qBrokenSince, back.brokenSince);
+          refreshQuarantine(referenceNow);
+          if(qCoreText(qCanonItems(), g.qBrokenSince) === qCoreText(back.items, back.brokenSince)){ g.qDirty = false; return { ok: true, wrote: true, persistFailed: false, capped: false }; }   // QV2
+        }
+        g.stats.qRetry++;
+      }
+      return { ok: false, wrote: wrote, persistFailed: false, capped: false };
+    }
+
+    // 直列化（正規形）：固定の項目順・内容は sakaeCausal.canon。同じ集合 → 同じ文字列
+    function serializeEntry(C, e){
+      return '{"mid":' + JSON.stringify(e.mid) + ',"parent":' + JSON.stringify(e.parent == null ? null : e.parent) + ',"product":' + C.canon(e.product)
+        + ',"at":' + JSON.stringify(e.at || 0) + ',"src":' + JSON.stringify(e.src === 'own' ? 'own' : 'event') + ',"legacy":' + (e.legacy ? 'true' : 'false') + '}';
+    }
+    function serializeEntries(C, list){ return '[' + list.map(e=> serializeEntry(C, e)).join(',') + ']'; }
+    const ringBody = (entriesText, referenceNow)=> '{"v":1,"entries":' + entriesText + ',"updatedAt":' + JSON.stringify(referenceNow) + '}';
+    const overBytes = (entriesText)=> ('{"v":1,"entries":' + entriesText + ',"updatedAt":0000000000000}').length > R_PERSIST_BYTES;
+    // 正規形（§7.2）：(U, referenceNow) の関数。最大 6 件＝自 write 最大 3 件 → 最新自 write の親 → 残りを新しい順。512K 文字超は 3 件
+    function canonical(C, U, referenceNow){
+      const live = U.filter(e=> !expired(e.at, referenceNow) && !isQuarantined(e.mid)).sort(byNewest);
+      const own = live.filter(e=> e.src === 'own').slice(0, OWN_RESERVE);
+      const parentOfNewestOwn = own.length ? (live.find(x=> x.mid === own[0].parent) || null) : null;
+      const picked = own.slice();
+      const has = (list, m)=> list.some(x=> x.mid === m);
+      if(parentOfNewestOwn && !has(picked, parentOfNewestOwn.mid)) picked.push(parentOfNewestOwn);
+      for(let i = 0; i < live.length && picked.length < R_PERSIST_MAX; i++){ if(!has(picked, live[i].mid)) picked.push(live[i]); }
+      let sel = picked.slice().sort(byNewest);
+      let text = serializeEntries(C, sel);
+      if(overBytes(text)){
+        const small = [];
+        if(own[0]) small.push(own[0]);
+        if(parentOfNewestOwn && !has(small, parentOfNewestOwn.mid)) small.push(parentOfNewestOwn);
+        const rest = live.find(e=> !has(small, e.mid));
+        if(rest) small.push(rest);
+        sel = small.sort(byNewest); text = serializeEntries(C, sel);
+      }
+      return { entries: sel, entriesText: text, live: live };
+    }
+    // 併合結果をメモリ R にも取り込む（own は格下げしない・at は max・legacy は OR）。上限 R_MEM_MAX は現行どおり古い順に捨てる
+    function absorb(list){
+      list.forEach(e=>{
+        if(isQuarantined(e.mid)) return;
+        const ex = rFind(e.mid);
+        if(ex){ if(e.src === 'own') ex.src = 'own'; if((e.at || 0) > (ex.at || 0)) ex.at = e.at; if(e.legacy) ex.legacy = true; }
+        else g.R.push({ mid: e.mid, parent: e.parent, product: e.product, at: e.at, src: e.src === 'own' ? 'own' : 'event', legacy: !!e.legacy });
+      });
+      trimR();
+    }
+
+    // 環への登録：契約 C-03 の検証（v／mid 再計算／parent 形式／内容の形）に通ったものだけ。INVALID・隔離中は登録しない
     function rAdd(raw, src){
       const C = causalLib(); if(!C || raw == null) return null;
       let info; try{ info = C.identityOf(raw); }catch(e){ return null; }
       if(info.state === 'INVALID'){ (info.reasons || ['shape']).forEach(rs=>{ if(g.stats.invalid[rs] !== undefined) g.stats.invalid[rs]++; }); return null; }
+      if(isQuarantined(info.identity)){ handleMismatches(C, [{ mid: info.identity, sources: ['incoming'], payloads: [], known: true }], Date.now()); return null; }
       const ex = rFind(info.identity);
-      if(ex){ ex.at = Date.now(); if(src === 'own') ex.src = 'own'; return ex; }
+      if(ex){
+        // 同じ mid で中身が違う＝SAME_ID_PAYLOAD_MISMATCH（どちらも使わない・隔離キーへ）
+        const pOld = payloadOf(C, ex.parent, ex.product), pNew = payloadOf(C, info.parent, info.content);
+        if(pOld !== pNew){
+          const referenceNow = Date.now();
+          handleMismatches(C, [{ mid: info.identity, sources: ['memory', 'incoming'], payloads: [pOld, pNew], known: false }], referenceNow);
+          const k = key(); if(k) qSync(C, k, referenceNow, false);
+          return null;
+        }
+        ex.at = Math.max(ex.at || 0, Date.now()); if(src === 'own') ex.src = 'own'; if(info.state === 'LEGACY') ex.legacy = true;
+        return ex;
+      }
       const e = { mid: info.identity, parent: info.parent, product: info.content, at: Date.now(), src: src, legacy: info.state === 'LEGACY' };
       g.R.push(e);
-      if(g.R.length > R_MEM_MAX){ g.R.sort((a, b)=> a.at - b.at); g.R.splice(0, g.R.length - R_MEM_MAX); }
+      trimR(e.mid);
       return e;
     }
-    // 永続化：直近 R_PERSIST_MAX 件＋index。失敗は黙らない（DEGRADED を記録し、UNKNOWN の保護を広げる）
+    // index：{ <key>: { lastOwnAt, ownCount, degraded, reason } }（形式は現行どおり）
     function rIndexRead(){ try{ const o = JSON.parse(localStorage.getItem(SEEN_INDEX) || 'null'); return (o && typeof o === 'object') ? o : {}; }catch(e){ return {}; } }
-    function rPersist(ownWrite){
-      if(!g.causal) return;
-      const k = key(); if(!k) return;
-      const now = Date.now();
-      const idx = rIndexRead();
-      const mine = idx[k] || { lastOwnAt: 0, ownCount: 0, degraded: false };
-      if(ownWrite){ mine.lastOwnAt = now; mine.ownCount = (mine.ownCount || 0) + 1; }
-      let entries = g.R.slice().sort((a, b)=> b.at - a.at).slice(0, R_PERSIST_MAX);
-      let body = JSON.stringify({ v: 1, entries: entries, updatedAt: now });
-      if(body.length > R_PERSIST_BYTES){ entries = entries.slice(0, 3); body = JSON.stringify({ v: 1, entries: entries, updatedAt: now }); }
+    function indexEntryOf(idx, k){ const e = idx && idx[k]; return (e && typeof e === 'object') ? e : null; }
+    // 決定的な併合：lastOwnAt＝max・ownCount＝max・理由は和（removeReasons＝回復を確かめた理由だけ外す）。キーは lastOwnAt 降順・同値はキー昇順で 20 件
+    function buildIndex(idx0, k, removeReasons){
+      const cur = indexEntryOf(idx0, k) || { lastOwnAt: 0, ownCount: 0, degraded: false, reason: '' };
+      let reasons = orderReasons((cur.degraded ? (reasonsOfText(cur.reason).length ? reasonsOfText(cur.reason) : ['index']) : []).concat(g.degradedReasons));
+      if(removeReasons && removeReasons.length) reasons = reasons.filter(r=> removeReasons.indexOf(r) < 0);
+      const mine = { lastOwnAt: Math.max(cur.lastOwnAt || 0, g.selfLastOwnAt || 0), ownCount: Math.max(cur.ownCount || 0, g.selfOwnCount || 0), degraded: reasons.length > 0, reason: reasons.join(',') };
+      const lo = (x)=> (indexEntryOf(idx0, x) && idx0[x].lastOwnAt) || 0;
+      const keys = Object.keys(idx0).filter(x=> x !== k).sort((a, b)=> (lo(b) - lo(a)) || strAsc(a, b)).slice(0, R_INDEX_MAX_KEYS - 1);
+      const next = {}; keys.forEach(x=>{ next[x] = idx0[x]; });
+      next[k] = mine;
+      return next;
+    }
+    // read-back で確かめる不変条件（§7.3 V1〜V6・§21.4 V7）
+    function verifyReadBack(C, k, idx1, referenceNow, mem){
+      const back = readRing(C, k);
+      noteSeenInRing(back.entries, referenceNow);
+      const V1 = !back.broken && back.invalid === 0;
+      const u = unionEntries(C, [{ src: 'persisted', entries: back.entries }, { src: 'memory', entries: mem || g.R }]);   // ★v1.4.3：pending 中の mid は書かなかったので比べない
+      const can = canonical(C, u.entries, referenceNow);
+      const V2 = semKey(can.entries) === semKey(back.entries);   // 意味で比べる（at の値だけの差は同値）
+      const pageOwn = g.R.some(e=> e.src === 'own' && !expired(e.at, referenceNow));
+      const ownInRing = back.entries.some(e=> e.src === 'own' && !expired(e.at, referenceNow));
+      const V3 = !pageOwn || ownInRing;
+      const V4 = back.entries.length <= R_PERSIST_MAX;
+      const ib = indexEntryOf(rIndexRead(), k), im = idx1[k];
+      const V5 = !!ib && (ib.lastOwnAt || 0) >= (im.lastOwnAt || 0) && (ib.ownCount || 0) >= (im.ownCount || 0);
+      const V6 = u.mismatched.filter(m=> !m.known).length === 0;
+      const V7 = !back.entries.some(e=> isQuarantined(e.mid)) && !g.R.some(e=> isQuarantined(e.mid));
+      const V8 = latestOwnOk(back.entries, referenceNow, C);   // ★v1.4.1：このページの最新の自 write が own で残っている
+      return { ok: V1 && V2 && V3 && V4 && V5 && V6 && V7 && V8, V1: V1, V2: V2, V3: V3, V4: V4, V5: V5, V6: V6, V7: V7, V8: V8, ownInRing: ownInRing, pageOwn: pageOwn };
+    }
+    // 回復（§9.2・§21.6・§22）：理由ごとに、その理由を直した証拠がそろった時だけ外す。別原因の成功・時間の経過だけでは外さない
+    function tryRecover(C, k, v, w){
+      if(!g.degradedReasons.length || !w.q || !w.q.ok) return;   // 隔離キーの read-back（QV1・QV2）が成立した回だけ
+      const referenceNow = w.referenceNow;
+      const quiet = g.quarantine.every(mid=>{ const it = g.qItems.get(mid); const last = Math.max(it ? it.detectedAt : 0, g.lastSeenInRingAt[mid] || 0); return (referenceNow - last) >= QUIET_MS; });
+      const strong = v.ok && v.ownInRing && w.wroteRing && !g.roundMismatch;   // 正規形の保存 → read-back → V1〜V7・自 write 保持・この回の新しい不一致 0
+      const clear = [];
+      g.degradedReasons.forEach(r=>{
+        if(r === 'persist'){ if(w.wroteRing && v.V1 && v.V4 && v.V5) clear.push(r); }                                     // 同じキーの index とリングの setItem が完了＋read-back（隔離キーも QV 成立）
+        else if(r === 'broken'){
+          if(g.qBrokenSince != null) return;                                                                             // 隔離キーの破損から 24h 経つまでは外さない（§22.3）
+          if(g.qBrokenEver){ if(strong) clear.push(r); }                                                                 // 隔離キー由来：24h 経過 AND 全条件
+          else if(w.wroteRing && v.V1) clear.push(r);                                                                    // リング由来：書き直して読める（自 write が無ければ下で missing 相当へ）
+        }
+        else if(r === 'marker'){ if(w.wroteIdx && v.V5) clear.push(r); }                                                 // index を書けて読み直しが一致
+        else if(r === 'mismatch'){ if(strong && quiet) clear.push(r); }                                                  // §21.6：隔離 mid がリング・R に無い（V7）＋静穏 10 秒（AND）＋全条件
+        else if(r === 'overflow'){ if(g.quarantine.length <= Q_MAX && strong) clear.push(r); }                           // §22.1：有効 64 件以下に戻る AND 全条件
+        else if(r === 'missing'){ if(strong && !g.markerBroken) clear.push(r); }                                       // marker 破損由来は次の正式保存まで外さない（§24.2-4）
+        else if(r === 'contention'){ if(strong && !g.pendingOverflowActive) clear.push(r); }                            // ★v1.4.3：PENDING_OVERFLOW が解けるまで外さない
+        else if(r === 'index'){ if(strong) clear.push(r); }
+      });
+      if(!clear.length) return;
+      const toMissing = clear.indexOf('broken') >= 0 && !g.qBrokenEver && !v.ownInRing;
+      g.degradedReasons = g.degradedReasons.filter(r=> clear.indexOf(r) < 0);
+      if(toMissing) g.degradedReasons = orderReasons(g.degradedReasons.concat(['missing']));
+      g.degraded = g.degradedReasons.length > 0;
+      if(clear.indexOf('marker') >= 0){ try{ localStorage.removeItem('sakaeLocal_seenDegraded_v1'); }catch(x){} }
+      if(clear.indexOf('contention') >= 0){ g.capRecoveryUsed = false; if(g.capRecoveryTimer){ clearTimeout(g.capRecoveryTimer); g.capRecoveryTimer = null; } }
       try{
-        // index を先に（この key に own 書込みがあった事実を残す）。古い key は落とす
-        const keys = Object.keys(idx).filter(x=> x !== k).sort((a, b)=> (idx[b].lastOwnAt || 0) - (idx[a].lastOwnAt || 0)).slice(0, R_INDEX_MAX_KEYS - 1);
-        const next = {}; keys.forEach(x=>{ next[x] = idx[x]; });
-        mine.degraded = false; mine.reason = '';
-        next[k] = mine;
-        localStorage.setItem(SEEN_INDEX, JSON.stringify(next));
-        localStorage.setItem(SEEN_PREFIX + k, body);
-        try{ localStorage.removeItem('sakaeLocal_seenDegraded_v1'); }catch(x){}   // index も R も書けた＝全体 DEGRADED の印は下ろす
-        if(g.degraded){ g.degraded = false; g.warnings = g.warnings.filter(w=> w.code !== 'degraded'); renderNotice(); }
-      }catch(e){
-        g.stats.persistFail++;
-        markDegraded('persist', e);
+        const idx0 = rIndexRead();
+        localStorage.setItem(SEEN_INDEX, JSON.stringify(buildIndex(idx0, k, clear.filter(r=> !(toMissing && r === 'missing')))));
+      }catch(e){ setReason('marker'); try{ localStorage.setItem('sakaeLocal_seenDegraded_v1', '1'); }catch(y){} }
+      try{ console.info('[sakaeLocalMerge] causal: 回復を確認した理由を外しました', k, clear.join(','), '残り:', g.degradedReasons.join(',') || 'なし'); }catch(x){}
+      if(!g.degraded){ g.warnings = g.warnings.filter(x=> x.code !== 'degraded'); renderNotice(); }
+    }
+    // 永続化（§7.3・§21.4）：referenceNow → 隔離キー → (P⊔R) から隔離を除く → 新しい不一致は隔離キーへ先に → 正規形のリング → read-back V1〜V7
+    function rPersist(ownWrite){
+      if(!g.causal) return false;
+      const k = key(); if(!k) return false;
+      const C = causalLib(); if(!C) return false;
+      const referenceNow = Date.now();          // ★この処理の中の TTL 判定はすべてこの値
+      g.roundMismatch = false;
+      if(ownWrite){
+        const cur = indexEntryOf(rIndexRead(), k);
+        g.selfLastOwnAt = referenceNow;
+        g.selfOwnCount = Math.max(g.selfOwnCount || 0, ((cur && cur.ownCount) || 0) + 1);
       }
+      let q = qSync(C, k, referenceNow, false);
+      if(q.persistFailed) return false;
+      let lastV = null;
+      for(let attempt = 0; attempt < 3; attempt++){
+        const idx0 = rIndexRead();
+        const stored = readRing(C, k);
+        noteSeenInRing(stored.entries, referenceNow);
+        const mem = ringMem(ownWrite);   // ★v1.4.3：pending 中の mid は入れない（書く直前の fresh read と正規形の併合は毎回作り直す＝own は OR）
+        const u = unionEntries(C, [{ src: 'persisted', entries: stored.entries }, { src: 'memory', entries: mem }]);
+        handleMismatches(C, u.mismatched, referenceNow);
+        if(g.qDirty){ q = qSync(C, k, referenceNow, false); if(q.persistFailed) return false; }   // ★隔離キーをリングより先に
+        const idx1 = buildIndex(idx0, k, null);
+        const can = canonical(C, u.entries, referenceNow);
+        absorb(can.live);
+        const degradedNow = g.degradedReasons.length > 0;   // DEGRADED の回復は「実際に書けて読み直せた」ことでしか証明しない
+        // 自分の保存は at も含めた正規形を書く。受け手（取込み・修復）は因果の意味が変わる時だけ書く（no-op 抑止・§23.6）
+        const changed = ownWrite ? (can.entriesText !== serializeEntries(C, stored.entries)) : (semKey(can.entries) !== semKey(stored.entries));
+        const needRing = degradedNow || stored.broken || stored.invalid > 0 || changed;
+        const needIdx = degradedNow || stable(idx1) !== stable(idx0);
+        let wroteRing = false, wroteIdx = false;
+        if(!needRing && !needIdx && !ownWrite) g.stats.ringWriteSkipped++;
+        if(needRing){
+          // 書く直前の読み直し（fresh read）：読んでから他画面が書いていたら、その内容で併合し直す（窓を縮めるだけで正しさの根拠にはしない）
+          let fresh = null; try{ fresh = localStorage.getItem(SEEN_PREFIX + k); }catch(e){ fresh = null; }
+          if(fresh !== stored.raw){ g.stats.freshReadRetry++; continue; }
+        }
+        if(needRing || needIdx){
+          try{
+            if(needIdx){ localStorage.setItem(SEEN_INDEX, JSON.stringify(idx1)); wroteIdx = true; }       // index を先に（own 書込みの事実を残す）
+            if(needRing){ localStorage.setItem(SEEN_PREFIX + k, ringBody(can.entriesText, referenceNow)); wroteRing = true; }
+          }catch(e){
+            g.stats.persistFail++;
+            markDegraded('persist', e);
+            return false;
+          }
+        }
+        const v = verifyReadBack(C, k, idx1, referenceNow, mem);
+        if(v.ok){ tryRecover(C, k, v, { wroteRing: wroteRing, wroteIdx: wroteIdx, q: q, referenceNow: referenceNow }); return true; }
+        lastV = v;
+        g.stats.ringRetry++;
+      }
+      g.stats.ringContention++;
+      if(lastV && !lastV.V8) markDegraded('contention', null);   // ★v1.4.1：最新の自 write が own で残らない＝正常扱いしない
+      try{ console.info('[sakaeLocalMerge] causal: 読み直しで正規形に収束しないため、自己修復に任せます', k); }catch(x){}
+      return false;
     }
     function markDegraded(reason, e){
       const k = key();
       if(!g.degraded){ try{ console.warn('[sakaeLocalMerge] 同期の因果記録を保存できません（保護を強めます）:', k, reason, e && e.message); }catch(x){} }
-      g.degraded = true;
+      setReason(reason);
       if(!g.warnings.some(w=> w.code === 'degraded')) g.warnings.push({ code: 'degraded', text: '同期の因果記録を保存できません（この画面では、他の画面・端末の変更と重なった欄を自動で決めず、選んでいただきます）' });
-      try{ const idx = rIndexRead(); idx[k] = Object.assign(idx[k] || { lastOwnAt: Date.now(), ownCount: 0 }, { degraded: true, reason: String(reason) }); localStorage.setItem(SEEN_INDEX, JSON.stringify(idx)); }
-      catch(x){ try{ localStorage.setItem('sakaeLocal_seenDegraded_v1', '1'); }catch(y){} }
+      try{ localStorage.setItem(SEEN_INDEX, JSON.stringify(buildIndex(rIndexRead(), k, null))); }
+      catch(x){ setReason('marker'); try{ localStorage.setItem('sakaeLocal_seenDegraded_v1', '1'); }catch(y){} }
       renderNotice();
     }
-    // 起動時の復元：永続 R を全件再検証（mid は product＋parent から再計算して照合）。不合格は捨てる
+    // 起動時の復元：隔離キーを先に読み（§21.4）、永続 R を全件再検証（mid は product＋parent から再計算して照合）。不合格・隔離中は捨てる
     function rLoad(){
       const C = causalLib(); if(!C) return;
       const k = key(); if(!k) return;
-      let stored = null;
-      try{ stored = JSON.parse(localStorage.getItem(SEEN_PREFIX + k) || 'null'); }catch(e){ stored = 'broken'; }
+      const referenceNow = Date.now();
+      g.roundMismatch = false;
+      qSync(C, k, referenceNow, false);
+      const stored = readRing(C, k);
+      g.stats.invalid.persisted += stored.invalid;
+      noteSeenInRing(stored.entries, referenceNow);
+      const u = unionEntries(C, [{ src: 'persisted', entries: stored.entries.filter(e=> !expired(e.at, referenceNow)) }]);
       let ownRestored = 0;
-      if(stored && stored !== 'broken' && stored.v === 1 && Array.isArray(stored.entries)){
-        stored.entries.forEach(e=>{
-          try{
-            if(!e || typeof e !== 'object' || !e.product || (e.parent !== null && !C.isHex64(e.parent))) throw new Error('shape');
-            const info = C.identityOf(e.parent === null ? e.product : Object.assign({}, e.product, { _sync: { v: C.VERSION, parent: e.parent, mid: e.mid } }));
-            if(info.state === 'INVALID' || info.identity !== e.mid) throw new Error('mid');
-            if(Date.now() - (e.at || 0) > R_TTL_MS) return;
-            if(!rFind(e.mid)){ g.R.push({ mid: e.mid, parent: e.parent, product: info.content, at: e.at || Date.now(), src: e.src === 'own' ? 'own' : 'event', legacy: !!e.legacy }); if(e.src === 'own') ownRestored++; }
-          }catch(x){ g.stats.invalid.persisted++; }
-        });
+      u.entries.forEach(e=>{
+        if(rFind(e.mid)) return;
+        g.R.push({ mid: e.mid, parent: e.parent, product: e.product, at: e.at, src: e.src === 'own' ? 'own' : 'event', legacy: !!e.legacy });
+        if(e.src === 'own') ownRestored++;
+      });
+      handleMismatches(C, u.mismatched, referenceNow);
+      if(g.qDirty) qSync(C, k, referenceNow, false);
+      // ★v1.4.1：同じタブの再読込なら sessionStorage marker から最新の自 write を復元して V8 を確かめる（§24.2）
+      const mk = readMarker();
+      if(mk.broken){ g.markerBroken = true; markDegraded('missing', null); }   // 壊れた marker を「無し＝正常」と決めつけない
+      else if(!mk.none && !expired(mk.at, referenceNow)){
+        g.lastOwnMid = mk.mid; g.lastOwnAt = mk.at;
+        if(!latestOwnOk(stored.entries, referenceNow, C)) markDegraded(stored.entries.some(x=> x.mid === mk.mid) ? 'contention' : 'missing', null);
       }
-      const idx = rIndexRead()[k];
-      const recentOwn = !!(idx && (Date.now() - (idx.lastOwnAt || 0)) < R_TTL_MS && (idx.ownCount || 0) > 0);
+      const idx = indexEntryOf(rIndexRead(), k);
+      const recentOwn = !!(idx && (referenceNow - (idx.lastOwnAt || 0)) < R_TTL_MS && (idx.ownCount || 0) > 0);
       const hasPending = !!readPending();
-      if(idx && idx.degraded) markDegraded('index', null);
-      else if(recentOwn && ownRestored === 0 && !hasPending) markDegraded(stored === 'broken' ? 'broken' : 'missing', null);
+      if(idx && idx.degraded){
+        // DEGRADED_CARRIED：引き継いだ元の理由を集合へ戻す（元が分からなければ index）
+        const rs = reasonsOfText(idx.reason).filter(r=> r !== 'index');
+        if(rs.length){ rs.forEach(r=> setReason(r)); markDegraded(rs[0], null); } else markDegraded('index', null);
+      }
+      else if(recentOwn && ownRestored === 0 && !hasPending) markDegraded(stored.broken ? 'broken' : 'missing', null);
       try{ if(localStorage.getItem('sakaeLocal_seenDegraded_v1') === '1') markDegraded('marker', null); }catch(e){}
+    }
+    // 自己修復（§7.4・§21.3）：他の画面が永続リング／隔離キーを書いた時、正規形と違えば書き直す。
+    //   上限 10 秒に 3 回（リングと隔離キーは別に数える）。上限に達したら書かない・正常扱いにしない
+    function scheduleHeal(){ if(g.healScheduled) return; g.healScheduled = true; setTimeout(()=>{ g.healScheduled = false; healRing(); }, 0); }
+    function scheduleQHeal(){ if(g.qHealScheduled) return; g.qHealScheduled = true; setTimeout(()=>{ g.qHealScheduled = false; healQuarantine(); }, 0); }
+    function pushHealLog(x){ g.healLog.push(x); if(g.healLog.length > 10) g.healLog.splice(0, g.healLog.length - 10); }
+    function healQuarantine(){
+      const C = causalLib(); const k = key(); if(!g.causal || !C || !k) return;
+      const referenceNow = Date.now();
+      qSync(C, k, referenceNow, true);   // 受け取った隔離を併合・メモリ R から除く・自分の知る隔離が欠けていれば書き直す（上限あり）
+      const cur = readRing(C, k);
+      if(cur.entries.some(e=> isQuarantined(e.mid))){ noteSeenInRing(cur.entries, referenceNow); scheduleHeal(); }   // リングに隔離 mid が残っていれば除く
+    }
+    // ★v1.4.3 pending incoming（§26）
+    //   addPending：届いた版の mid を待ち行列へ。fresh read で既にリングにあれば待たない（own は OR で併合され、意味が同じなら書かない）
+    function addPending(mid){
+      if(!g.causal || !mid || g.pendingRing.has(mid)) return;
+      const C = causalLib(), k = key(); if(!C || !k) return;
+      if(readRing(C, k).entries.some(x=> x.mid === mid)){ g.stats.pendingResolvedAtAdd++; return; }
+      if(!rFind(mid) || isQuarantined(mid)) return;
+      const now = Date.now();
+      g.pendingRing.set(mid, { receivedAt: now, deadline: now + PENDING_GRACE_MS });
+      g.stats.pendingAdded++;
+      if(g.pendingRing.size > PENDING_MAX) pendingOverflow(now);
+      armPendingTimer();
+    }
+    // 上限超過（§26.6・裁定 3）：件数都合で捨てない。fresh read で解ける分を解き、なお超えていれば PENDING_OVERFLOW＝DEGRADED（contention・自動決定しない）
+    function pendingOverflow(now){
+      evaluatePending('overflow');
+      if(g.pendingRing.size > PENDING_MAX){
+        g.stats.pendingOverflow++;
+        g.pendingOverflowActive = true;
+        pushPendingLog({ at: now, result: 'overflow', size: g.pendingRing.size });
+        try{ console.warn('[sakaeLocalMerge] 受信した版の確認待ちが上限（' + PENDING_MAX + ' 件）を超えました。捨てずに保持し、保護を強めます:', key(), g.pendingRing.size); }catch(x){}
+        markDegraded('contention', null);
+      }
+    }
+    function armPendingTimer(){
+      if(g.pendingTimer){ clearTimeout(g.pendingTimer); g.pendingTimer = null; }
+      if(!g.pendingRing.size) return;
+      // §26.6：最も早い期限から 50 ms 以内に期限が並ぶ版は、その中の最後の期限で 1 回の評価・1 回の書込みにまとめる（各版の待ちは G 以上 G＋50 ms 以下・それ以上は延ばさない）
+      let min = Infinity; g.pendingRing.forEach(p=>{ if(p.deadline < min) min = p.deadline; });
+      let at = min; g.pendingRing.forEach(p=>{ if(p.deadline <= min + PENDING_BATCH_MS && p.deadline > at) at = p.deadline; });
+      g.stats.pendingTimerArmed++;
+      g.pendingTimer = setTimeout(()=>{ g.pendingTimer = null; evaluatePending('deadline'); }, Math.max(0, at - Date.now()) + 1);
+    }
+    // 再評価：必ず fresh read。リングに在る（own／event）→ 待ち終了（書く情報なし）。
+    //   期限到達で無い → fallback（event として記録・書き手側の V8 が own を守る §26.4）。'hide' では書かない（裁定 2）
+    function evaluatePending(reason){
+      if(!g.pendingRing.size) return;
+      const C = causalLib(), k = key(); if(!g.causal || !C || !k) return;
+      const now = Date.now();
+      const cur = readRing(C, k);
+      let resolved = 0, fallback = 0, unresolved = 0;
+      Array.from(g.pendingRing.entries()).forEach(([mid, p])=>{
+        const e = cur.entries.find(x=> x.mid === mid);
+        if(e){
+          g.pendingRing.delete(mid); resolved++;
+          if(e.src === 'own') g.stats.pendingResolvedOwn++; else g.stats.pendingResolvedEvent++;
+          if(reason === 'ring' && now < p.deadline) g.stats.pendingEarly++;
+          if(reason === 'hide') g.stats.pendingHideResolved++;
+          return;
+        }
+        if(!rFind(mid) || isQuarantined(mid)){ g.pendingRing.delete(mid); g.stats.pendingDropped++; return; }   // 記録する対象が無い（隔離・メモリから外れた）
+        if(reason !== 'hide' && now >= p.deadline){ g.pendingRing.delete(mid); fallback++; g.stats.pendingFallback++; return; }
+        unresolved++;
+      });
+      if(reason === 'hide'){ g.stats.pendingHideUnresolved += unresolved; return; }   // 閉じる直前でも stale な event を強制で書かない
+      if(fallback) pushPendingLog({ at: now, result: 'fallback', n: fallback });
+      if(g.pendingOverflowActive && g.pendingRing.size <= PENDING_MAX) g.pendingOverflowActive = false;
+      if(resolved || fallback) rPersist(false);   // fresh read → 正規形（own は OR）→ 意味が違う時だけ書く
+      armPendingTimer();
+    }
+    // 上限到達後の bounded recovery（§23.4・§24.4）：窓が明けたら 1 回だけ。正規形の保存 → read-back → V1〜V8 → 隔離キー が成立した時だけ contention を外す（tryRecover）。
+    //   失敗したら DEGRADED を維持し、contention が外れるまで再び予約しない（無限 retry 禁止）
+    function scheduleCapRecovery(referenceNow){
+      if(g.capRecoveryTimer || g.capRecoveryUsed) return;
+      const oldest = g.healTimes.length ? Math.min.apply(null, g.healTimes) : referenceNow;
+      const wait = Math.max(0, HEAL_WINDOW_MS - (referenceNow - oldest)) + 50;
+      g.capRecoveryTimer = setTimeout(()=>{
+        g.capRecoveryTimer = null; g.capRecoveryUsed = true;
+        const t = Date.now();
+        g.stats.capRecovery++; g.healTimes.push(t); pushHealLog({ at: t, result: 'recovery' });
+        rPersist(false);
+      }, wait);
+    }
+    function healRing(){
+      const C = causalLib(); const k = key(); if(!g.causal || !C || !k) return;
+      const referenceNow = Date.now();
+      g.roundMismatch = false;
+      qSync(C, k, referenceNow, false);
+      const cur = readRing(C, k);
+      noteSeenInRing(cur.entries, referenceNow);
+      const u = unionEntries(C, [{ src: 'persisted', entries: cur.entries }, { src: 'memory', entries: ringMem(false) }]);   // ★v1.4.3：pending 中の mid は修復で書かない
+      handleMismatches(C, u.mismatched, referenceNow);
+      if(g.qDirty) qSync(C, k, referenceNow, false);
+      const can = canonical(C, u.entries, referenceNow);
+      if(!cur.broken && cur.invalid === 0 && semKey(can.entries) === semKey(cur.entries)){   // 因果の意味が同じ＝修復しない（予算を使わない・§23.5）
+        if(can.entriesText !== serializeEntries(C, cur.entries)) g.stats.healSkipSemantic++;
+        if(!latestOwnOk(cur.entries, referenceNow, C)) markDegraded('contention', null);   // 書いても直らない欠落＝正常扱いしない
+        return;
+      }
+      g.healTimes = g.healTimes.filter(t=> referenceNow - t < HEAL_WINDOW_MS);
+      if(g.healTimes.length >= HEAL_MAX){
+        g.stats.healCapHit++;
+        pushHealLog({ at: referenceNow, result: 'cap' });
+        if(!g.healWarnedAt || referenceNow - g.healWarnedAt >= HEAL_WINDOW_MS){ g.healWarnedAt = referenceNow; try{ console.warn('[sakaeLocalMerge] 因果記録の自己修復が上限（10 秒に 3 回）に達しました。修復を止め、保護を続けます:', k); }catch(x){} }
+        // ★v1.4.1：上限到達を正常扱いにしない。読み直したリングで V8（このページの最新の自 write が own）を確かめ、欠けていれば即 contention（§23.3・§24.3）
+        if(!latestOwnOk(cur.entries, referenceNow, C)){
+          markDegraded('contention', null);
+          scheduleCapRecovery(referenceNow);
+        }
+        return;
+      }
+      g.healTimes.push(referenceNow);
+      g.stats.heal++;
+      pushHealLog({ at: referenceNow, result: 'heal' });
+      rPersist(false);
     }
     // 自分が書いた欄（ownPaths）：環の own entry と、その基にした写しとの差分の和 ＋ 控え（pending.base→local）の差分
     // 戻り値 [{ path, value }]：value ＝ その欄に自分（このブラウザ）が書いた値（own entry の内容／控えの local）
@@ -384,7 +921,8 @@
       });
       // 控え（このブラウザの未共有の最新の書込み）を先に＝同じ欄なら控えの値が「自分が書いた値」
       try{ const p = readPending(); if(p && p.base != null && p.local != null){ const loc = parse(p.local); add(diffPaths(parse(p.base), loc), loc); } }catch(x){}
-      g.R.filter(e=> e.src === 'own' && Date.now() - e.at < R_TTL_MS).sort((a, b)=> b.at - a.at).forEach(e=>{
+      const referenceNow = Date.now();   // ★TTL は処理ごとに 1 回取った時刻と同じ比較式（CAUSALRING-01 設計 v1.2）
+      g.R.filter(e=> e.src === 'own' && !expired(e.at, referenceNow)).sort(byNewest).forEach(e=>{
         const pe = rFind(e.parent);
         try{
           const mineObj = productOfEntry(e);
@@ -515,6 +1053,7 @@
       }
       startSlowPoll();
       ['focus', 'pageshow', 'online'].forEach(ev=> window.addEventListener(ev, onResume));
+      window.addEventListener('pagehide', ()=>{ try{ evaluatePending('hide'); }catch(e){} });   // ★v1.4.3：最終 fresh read（補助・安全性の根拠にしない・書かない）
       document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible') onResume(); });
       renderNotice();
     };
@@ -535,7 +1074,22 @@
         savedText = (typeof savedText.text === 'string') ? savedText.text : null;
       }
       const text = (typeof savedText === 'string') ? savedText : (readLS() || '');
-      if(g.causal){ const e = rAdd(text, 'own'); if(e){ g.lastWriteId = e.mid; } rPersist(true); }
+      if(g.causal){
+        const e = rAdd(text, 'own');
+        if(e){
+          g.lastWriteId = e.mid;
+          // ★v1.4.1：その画面自身の正式保存の時だけ latest-own と sessionStorage marker を更新（受信・取込み・修復・リング書換えでは更新しない）
+          g.lastOwnMid = e.mid; g.lastOwnAt = Date.now(); writeMarker(g.lastOwnMid, g.lastOwnAt); g.markerBroken = false;
+        }
+        // ★v1.4.3：pending 中の自分の保存（§26.7）：先に fresh read で解ける分を解き、この保存の parent だけは pending でも含めて書く
+        if(g.pendingRing.size) evaluatePending('own');
+        g.ownParentKeep = (e && e.parent && g.pendingRing.has(e.parent)) ? e.parent : null;
+        try{ rPersist(true); }
+        finally{
+          if(g.ownParentKeep){ g.pendingRing.delete(g.ownParentKeep); g.stats.pendingOwnParent++; armPendingTimer(); }
+          g.ownParentKeep = null;
+        }
+      }
       const p = readPending();
       g.ownWrite = { text: text, at: Date.now(), observed: !!(p && same(parse(p.local), parse(text))) };
       const nowObj = parse(text);
@@ -619,12 +1173,17 @@
         renderNotice(); return;
       }
       if(k.indexOf('sakaeLocal_syncPending_v1_') === 0 || k.indexOf('sakaeLocal_syncOutbound_v1_') === 0){ setTimeout(g.checkSettled, 0); return; }
+      // ★CAUSALRING-01：別の画面がこの案件の永続リングを書いた → 正規形と違えば自己修復（設計 v1.2 §7.4）
+      if(g.causal && k === SEEN_PREFIX + key()){ if(g.pendingRing.size) evaluatePending('ring'); scheduleHeal(); return; }   // ★v1.4.3：matching ring event は期限を待たず即再評価
+      // ★v1.3：別の画面がこの案件の隔離キーを書いた → 併合して隔離を除外（リングにあれば除く）・正規形と違えば自己修復
+      if(g.causal && k === QUAR_PREFIX + key()){ scheduleQHeal(); return; }
       if(!isOwnKey) return;
       if(e.newValue == null) return;
       if(g.causal){
         // 因果同期：届いた書込みを「見た」として環へ（保護中で取り込みを後回しにする時も登録する＝後で parent を引ける）。
         // oldValue に頼る旧 race 修復は使わない。上書きされた側も上書きした側も、相手の parent を base にした同じ併合で 1 回だけ修復する。
-        rAdd(e.newValue, 'event');
+        const inc = rAdd(e.newValue, 'event');
+        if(inc) addPending(inc.mid);   // ★v1.4.3：取込みは即時のまま、リングへの記録だけ書き手の own を待つ
         const run = ()=>{ if(opts.isProtected()){ g.pendingIncoming = true; return; } g.adopt(); };
         if(e.isTrusted === false) setTimeout(run, 0);   // 同期層の受信中（applyingRemoteUpdate）に保存すると共有へ送られないため、受信処理の外で行う
         else run();
@@ -701,7 +1260,7 @@
       g.base = baseNext;
       g.prevLastWrite = g.lastWrite;
       g.lastWrite = clone(incoming);
-      if(g.causal){ g.lastWriteId = mi.identity || g.lastWriteId; rPersist(false); }
+      if(g.causal){ g.lastWriteId = mi.identity || g.lastWriteId; if(mi.identity) addPending(mi.identity); rPersist(false); }   // ★v1.4.3：pending 中の mid はここで書かない
       persistEntries();
       opts.render();
       renderNotice();
@@ -812,6 +1371,11 @@
                pendingIncoming: g.pendingIncoming, entries: clone(g.entries), infos: clone(g.infos), stats: clone(g.stats),
                causal: g.causal, lastWriteId: g.lastWriteId, degraded: g.degraded, warnings: clone(g.warnings), lastMerge: clone(g.lastMerge || null),
                R: g.R.map(e=> ({ mid: e.mid, parent: e.parent, at: e.at, src: e.src, legacy: e.legacy })),
+               degradedReasons: g.degradedReasons.slice(), quarantinedMids: g.quarantine.map(m=> String(m).slice(0, 8)),
+               pendingMids: Array.from(g.pendingRing.keys()).map(m=> String(m).slice(0, 8)), pendingTimer: !!g.pendingTimer, pendingOverflowActive: g.pendingOverflowActive, pendingLog: clone(g.pendingLog),
+               lastOwnMid: g.lastOwnMid ? String(g.lastOwnMid).slice(0, 8) : null, lastOwnAt: g.lastOwnAt, markerBroken: g.markerBroken, capRecoveryUsed: g.capRecoveryUsed,
+               quarantineSize: g.quarantine.length, qBrokenSince: g.qBrokenSince, quarantineItems: g.quarantine.map(m=>{ const it = g.qItems.get(m); return { mid: String(m).slice(0, 8), detectedAt: it ? it.detectedAt : null }; }),
+               mismatchLog: clone(g.mismatchLog), healLog: clone(g.healLog),
                dirty: !!(mem && g.lastWrite && !same(mem, g.lastWrite)), baseSettled: !!(mem && g.base && same(mem, g.base)), fastPolling: !!g.fastTimer };
     };
     return g;
