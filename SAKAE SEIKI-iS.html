@@ -593,7 +593,7 @@
               <div class="pfLine">
                 <span class="pfLabel">品種</span>
                 <div class="pfCheckRow">
-                  <label class="pfCheck"><input type="radio" name="f_hinshu" value="試作" checked><span class="box"></span>試作</label>
+                  <label class="pfCheck"><input type="radio" name="f_hinshu" value="試作"><span class="box"></span>試作</label>
                   <label class="pfCheck"><input type="radio" name="f_hinshu" value="号口"><span class="box"></span>号口</label>
                 </div>
                 <div class="pfField"><span class="pfLabel">ＭＢ仕様</span><input type="text" id="f_mbSpec"></div>
@@ -606,13 +606,13 @@
               <div class="pfLine">
                 <span class="pfLabel">型精度</span>
                 <div class="pfCheckRow">
-                  <label class="pfCheck"><input type="radio" name="f_precision" value="A" checked><span class="box"></span>Ａ</label>
+                  <label class="pfCheck"><input type="radio" name="f_precision" value="A"><span class="box"></span>Ａ</label>
                   <label class="pfCheck"><input type="radio" name="f_precision" value="B"><span class="box"></span>Ｂ</label>
                   <label class="pfCheck"><input type="radio" name="f_precision" value="C"><span class="box"></span>Ｃ</label>
                 </div>
                 <span class="pfLabel" style="margin-left:8px;">見切変化</span>
                 <div class="pfCheckRow">
-                  <label class="pfCheck"><input type="radio" name="f_partingChange" value="無" checked><span class="box"></span>無</label>
+                  <label class="pfCheck"><input type="radio" name="f_partingChange" value="無"><span class="box"></span>無</label>
                   <label class="pfCheck"><input type="radio" name="f_partingChange" value="有"><span class="box"></span>有</label>
                 </div>
                 <div class="pfField"><span class="pfLabel">形状面積</span><input type="text" id="f_shapeArea"></div>
@@ -1704,7 +1704,8 @@
   const TOPFORM_REG_KEYS = Object.keys(TOPFORM_REG_RADIO).concat(Object.keys(TOPFORM_REG_TEXT));
   const TOPFORM_LEAVES = [].concat(TOPFORM_BASIC, TOPFORM_NOTICE_TEXT, Object.keys(TOPFORM_RADIO), TOPFORM_TABLES, TOPFORM_REG_KEYS.map(k=> 'registration.' + k));
   // 新規フォームの「まっさら」な値（radio の既定表示は intent ではない）。orderDate は新規既定（当日）として別扱い
-  const TOPFORM_PRISTINE = { status2:'検討', category:'型', subject:'新作', 'registration.hinshu':'試作', 'registration.precision':'A', 'registration.partingChange':'無' };
+  // ★PT-0011：登録事項の 3 項目（品種・型精度・見切変化）は新規フォームで未選択なので、基準値も未選択（''）＝ここに書かない
+  const TOPFORM_PRISTINE = { status2:'検討', category:'型', subject:'新作' };
   function topformCanon(v){ try{ if(window.sakaeCausal && typeof window.sakaeCausal.canon === 'function') return window.sakaeCausal.canon(v); }catch(e){} return JSON.stringify(v); }
   // 比較前の正規化：null/undefined/'' は同値・前後空白は無視・日付は文字列のまま・数値は文字列化。表は正規化 JSON を 1 値として比べる
   function normalizeTopField(key, v){
@@ -1855,9 +1856,11 @@
     setRadio('f_category', rec ? (rec.category || '型') : '型');
     setRadio('f_subject', rec ? (rec.subject || '新作') : '新作');
     setRadio('f_infoForecast', rec ? (rec.infoForecast || '') : '');
-    setRadio('f_hinshu', reg.hinshu || '試作');
-    setRadio('f_precision', reg.precision || 'A');
-    setRadio('f_partingChange', reg.partingChange || '無');
+    // ★PT-0011（2026-10-05）：登録事項の 3 行（品種・型精度・見切変化）は記録どおりに表示する。記録が無ければ ✓ を付けない
+    //   （以前は記録が無くても 試作／A／無 に ✓ を付けて表示していたため、未選択で登録できないように見えていた。保存の仕様は変えない）
+    setRadio('f_hinshu', reg.hinshu || '');
+    setRadio('f_precision', reg.precision || '');
+    setRadio('f_partingChange', reg.partingChange || '');
     fillDesignTable(rec ? rec.designSchedule : null);
     fillCostTable(rec ? rec.costSummary : null);
     fillPlanMilestones(rec ? rec.designPlan : null);
