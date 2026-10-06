@@ -193,12 +193,13 @@
   .footNote{ font-size:12px; color:#a4adbc; text-align:center; margin-top:20px; line-height:1.7; }
 
   @media print{
-    @page{ size:A3 landscape; margin:8mm; }
+    /* ★PT-0013（2026-10-06）：余白 0 で A3 横（420×297mm）を使い、帳票を紙の上の mm 位置に配置する（下の「PT-0013」の段落） */
+    @page{ size:420mm 297mm; margin:0; }
     *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; color-adjust:exact !important; }
     body{ background:#fff; }
     .topbar, .controlBar, .noteBar, .footNote{ display:none !important; }
     .wrap{ max-width:none; padding:0; margin:0; }
-    .slipSheet{ box-shadow:none; border:1px solid #222; border-radius:0; margin:0; page-break-after:always; }
+    .slipSheet{ box-shadow:none; border:none; border-radius:0; margin:0; page-break-after:always; }
     .slipSheet:last-child{ page-break-after:auto; }
     /* 赤黒2色で刷るため、工程ごとの色チップは紙では黒にする（画面上の色分けは従来どおり残す）。
        工程記号そのものの文字色は変えていない。 */
@@ -207,15 +208,40 @@
     .infoCell .iLabel{ background:#f7f9fc !important; }
     .ticketHeadRow{ background:#f7f9fc !important; }
 
-    /* ---- 4分割の境目を紙の物理中心に合わせる（横方向のみ）----
-       A3横の高さ297mm から上下の余白8mm×2 を引くと、紙の内容領域は281mm。
-       帳票をこの高さぴったりにし、上段をその半分に固定すると、
-       上段と下段の境目が紙の高さ50%の位置に来る。
-       　8mm(余白) + 1px(枠線) + (281mm - 2px)/2 = 148.5mm = 297mm ÷ 2
-       左右は .slipPanel の flex:1 1 0 で既に等分されている（実測50.00%）ので触らない。
-       中身は上端から積むままで、増えた分は切り取り線の手前の余白になる。 */
-    .slipSheet{ height:281mm; }
-    .slipMain{ flex:0 0 50%; }
+    /* ---- ★PT-0013（2026-10-06）印刷のバランス調整：余白をぎりぎりまで詰め、上下左右の中心（4 等分の切り線）を紙の物理中心に合わせる ----
+       目標：テンチョー提供の「作業票印刷_SAKAE_SEIKI-iS_アウトライン2.svg」の赤線。設計：_指示書/PT-0013_作業票印刷バランス_設計_v1。
+       榮製機のプリンター実測（2026-10-06 菰田様）：等倍・横の中心ずれ無し・印刷全体が 2mm 下へずれる・紙の上で印刷できる範囲は 上7／下3／左5／右6mm。
+       紙の上の配置（mm）：切り線 x＝210・y＝148.5。左右の外側余白 6・縦書きの帯 6.0〜12.5・本体 13.0〜204.0（右半分は＋210）・切り線の両側 6。
+       上の区画 7.0〜144.5（工程表＋情報欄）・下の区画 152.5〜293.0（完了チケット／控えカード）。切った 4 枚の余白は 上の 2 枚＝上7・下4／下の 2 枚＝上4・下4／左右 6。
+       列の幅の割合・文字の大きさ・項目・並びは変えない（画面表示も変えない）。 */
+    /* 紙送りのずれの補正（このプリンターは全体が 2mm 下へずれるため、2mm 上へ寄せる）。プリンターを替えて中心がずれない場合は 0mm にする */
+    :root{ --pt-print-offset-y:-2mm; }
+    .slipSheet{ width:420mm; height:297mm; box-sizing:border-box; transform:translateY(var(--pt-print-offset-y)); }
+    /* 左右のパネル：左 0〜208.15（内余白 左6・右4.15）／切り線の目印の点線帯 208.15〜211.85（中心 210）／右 211.85〜420（内余白 左4.15・右6） */
+    .slipSheet > .slipPanel:first-child{ flex:0 0 208.15mm; padding:0 4.15mm 0 6mm; box-sizing:border-box; }
+    .slipSheet > .slipPanel:last-child{ flex:0 0 208.15mm; padding:0 6mm 0 4.15mm; box-sizing:border-box; }
+    .slipSheet > .divider{ flex:0 0 3.7mm; }
+    /* 縦書きの帯：幅 6.5mm（本体との間 0.5mm）。文字は上から 7mm より下（印刷できる範囲の内側）から積む */
+    .slipSideLabel{ flex:0 0 6.5mm; margin-right:0.5mm; padding-top:7mm; box-sizing:border-box; }
+    /* 上の区画：紙の上 7mm から 137.5mm（下端 144.5＝切り線の 4mm 上）。行の高さは罫線（1px）込みで足し合わせて 137.5mm に収める */
+    .slipMain{ flex:0 0 auto; height:137.5mm; padding:0; margin-top:7mm; box-sizing:border-box; display:flex; flex-direction:column; }
+    .slipTopRow{ flex:1 1 auto; }
+    table.procTable tr{ height:8.67mm; }                 /* 工程の行：罫線込みで 8.70mm（上段・下段 4.2mm ×2＋罫線） */
+    table.procTable tr.procHeadRow{ height:9.05mm; }     /* 見出し行（略図・機械名…） */
+    .cellLine{ height:4.2mm; box-sizing:border-box; }
+    .noCodeWrap{ height:8.4mm; box-sizing:border-box; }
+    .slipInfoGrid .infoRow:nth-child(1){ height:5.66mm; } /* 品名の行 */
+    .slipInfoGrid .infoRow:nth-child(2){ height:5.38mm; } /* 型式の行 */
+    .slipInfoGrid .infoRow:nth-child(3){ height:5.66mm; } /* 注記の行 */
+    .issueRow{ height:6.51mm; box-sizing:border-box; display:flex; align-items:center; }
+    /* 注記は 2 行まで（上の区画の高さは固定のまま）。3 行目以降は「…」で省略する。文字を少しだけ小さくして 2 行を 5.66mm に収める */
+    .infoCell .iVal.memoVal{ display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; font-size:8.5px; line-height:1.15; padding:0.2mm 6px; box-sizing:border-box; }
+    /* 下の区画：上の区画との間 8mm（切り線をはさんで 4mm＋4mm）・高さ 140.5mm（下端 293.0＝紙の下端から 4mm） */
+    .ticketSheet{ margin:8mm 0 0 0; height:140.5mm; box-sizing:border-box; }
+    .ticketHeadRow{ height:7.82mm; box-sizing:border-box; align-items:center; padding-top:0; padding-bottom:0; }
+    .ticketRow{ height:10.99mm; box-sizing:border-box; padding-top:0; padding-bottom:0; }   /* 12 行＋見出し＋外枠で 140.5mm に収まる高さ */
+    .tagSheet{ margin-top:8mm; height:140.5mm; padding:0; box-sizing:border-box; grid-template-rows:repeat(4, 32.4mm); row-gap:3.63mm; column-gap:3.4mm; align-content:start; }
+    .tagBox{ box-sizing:border-box; height:32.4mm; display:flex; flex-direction:column; justify-content:center; }
   }
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
