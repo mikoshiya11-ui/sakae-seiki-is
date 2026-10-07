@@ -283,7 +283,7 @@
     g.lastWriteId = null;          // lastWrite の identity
     g.degraded = false;            // この key の因果記録が信用できない（UNKNOWN は全差分を選ばせる）＝ degradedReasons が空でない
     g.degradedReasons = [];        // ★CAUSALRING-01：DEGRADED の理由（固定順）。解除は理由ごとの証拠がそろった時だけ（設計 v1.3.1 §9・§21.6・§22）
-    g.warnings = [];               // 画面に出す診断（因果同期が使えない・記録を保存できない）
+    g.warnings = [];               // 診断（因果同期が使えない・記録を保存できない）。★PT-0003 CS-2：'degraded'（因果記録）は内部の記録だけで画面には出さない（renderNotice）
     g.stats.invalid = { version: 0, mid: 0, parent: 0, shape: 0, parse: 0, persisted: 0 };
     g.stats.skip = 0; g.stats.known = 0; g.stats.unknown = 0; g.stats.persistFail = 0;
     g.stats.ringRetry = 0; g.stats.ringContention = 0; g.stats.heal = 0; g.stats.healCapHit = 0; g.stats.sameIdMismatch = 0;
@@ -1325,7 +1325,11 @@
     // ---- 通知 ----
     function renderNotice(changed){
       let box = document.getElementById('sakaeFieldConflictNotice');
-      if(!g.entries.length && !g.infos.length && !g.warnings.length){ if(box) box.remove(); return; }
+      // ★PT-0003 CS-2（2026-10-07）：因果記録の状態（code 'degraded'＝「同期の因果記録を保存できません」）は利用者の操作が要らない内部の状態なので画面に出さない。
+      //   業務データは保存済みで、判定（degraded・理由・index・UNKNOWN の扱い）・内部記録（g.warnings・snapshot）・console.warn は従来どおり。
+      //   本当に同じ欄が重なった時の選択（g.entries）・他画面の更新の知らせ（g.infos）・保存できない状態（causalUnavailable）は従来どおり表示する
+      const shown = g.warnings.filter(w=> w.code !== 'degraded');
+      if(!g.entries.length && !g.infos.length && !shown.length){ if(box) box.remove(); return; }
       if(!box){
         box = document.createElement('div');
         box.id = 'sakaeFieldConflictNotice';
@@ -1333,7 +1337,7 @@
         document.body.appendChild(box);
       }
       let html = '';
-      g.warnings.forEach(w=>{
+      shown.forEach(w=>{
         html += '<div data-sakae="' + esc(w.code) + '" style="font-weight:700;margin-bottom:4px;color:#8a1f00;">' + esc(w.text) + '</div>';
       });
       if(g.infos.length){
