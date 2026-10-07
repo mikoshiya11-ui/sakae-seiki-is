@@ -296,6 +296,10 @@
   .pfCheck .box::after{ content:''; }
   .pfCheck:has(input:checked) .box::after{ content:'✓'; }
   .pfCheck:has(input:checked){ font-weight:700; color:#173a68; }
+  /* ★登録事項 3 行（品種・型精度・見切変化）の「選択解除」：選んだ ✓ を外して未選択に戻す小さな操作。未選択の行では薄く表示（押しても何も変えない） */
+  .pfRegClear{ border:none; background:none; padding:0 2px; font-size:9.5px; color:#5b6b84; text-decoration:underline; cursor:pointer; white-space:nowrap; font-family:inherit; }
+  .pfRegClear:hover{ color:#173a68; }
+  .pfCheckRow:not(:has(input:checked)) .pfRegClear{ opacity:.35; cursor:default; text-decoration:none; }
 
   .pfTable{ width:100%; border-collapse:collapse; font-size:10.5px; margin-top:4px; }
   .pfTable th{ background:#f2f4f8; border:1px solid #999; padding:3px 4px; font-weight:700; color:#3a4a63; }
@@ -343,6 +347,7 @@
     .pfFooter{ padding:5px 10px; font-size:8.5px; line-height:1.4; }
     /* 空欄のままの入力欄に出る薄いグレーのプレースホルダー例示文字（工程名を入力／任意 など）は印刷では非表示にする */
     #newOverlay input::placeholder, #newOverlay textarea::placeholder{ color:transparent !important; }
+    #newOverlay .pfRegClear{ display:none !important; }
   }
 
   /* ---- 詳細パネル ---- */
@@ -595,6 +600,7 @@
                 <div class="pfCheckRow">
                   <label class="pfCheck"><input type="radio" name="f_hinshu" value="試作"><span class="box"></span>試作</label>
                   <label class="pfCheck"><input type="radio" name="f_hinshu" value="号口"><span class="box"></span>号口</label>
+                  <button type="button" class="pfRegClear" data-clear="f_hinshu" title="品種の ✓ を外して未選択に戻す">選択解除</button>
                 </div>
                 <div class="pfField"><span class="pfLabel">ＭＢ仕様</span><input type="text" id="f_mbSpec"></div>
               </div>
@@ -609,11 +615,13 @@
                   <label class="pfCheck"><input type="radio" name="f_precision" value="A"><span class="box"></span>Ａ</label>
                   <label class="pfCheck"><input type="radio" name="f_precision" value="B"><span class="box"></span>Ｂ</label>
                   <label class="pfCheck"><input type="radio" name="f_precision" value="C"><span class="box"></span>Ｃ</label>
+                  <button type="button" class="pfRegClear" data-clear="f_precision" title="型精度の ✓ を外して未選択に戻す">選択解除</button>
                 </div>
                 <span class="pfLabel" style="margin-left:8px;">見切変化</span>
                 <div class="pfCheckRow">
                   <label class="pfCheck"><input type="radio" name="f_partingChange" value="無"><span class="box"></span>無</label>
                   <label class="pfCheck"><input type="radio" name="f_partingChange" value="有"><span class="box"></span>有</label>
+                  <button type="button" class="pfRegClear" data-clear="f_partingChange" title="見切変化の ✓ を外して未選択に戻す">選択解除</button>
                 </div>
                 <div class="pfField"><span class="pfLabel">形状面積</span><input type="text" id="f_shapeArea"></div>
               </div>
@@ -1141,6 +1149,10 @@
     }
     if(bs.orderNotice){
       NOTICE_FIELD_KEYS.forEach(k=>{ if(bs.orderNotice[k] !== undefined) merged[k] = bs.orderNotice[k]; });
+      // ★REGCLEAR：登録事項（registration）は 9 欄を持つ入れ物なので、写しを丸ごと採らず「写しにある欄だけ」記録へ重ねる。
+      //   写しには保存のたびに変えた欄だけが入る（syncToBuhinState の patch）ため、写しに無い欄は記録の値を表示する（丸ごとだと他の欄が空に見えた）
+      const nr = bs.orderNotice.registration, rr = rec.registration;
+      if(nr && typeof nr === 'object' && rr && typeof rr === 'object') merged.registration = Object.assign({}, rr, nr);
     }
     return merged;
   }
@@ -1700,6 +1712,18 @@
   const TOPFORM_RADIO = { category:'f_category', subject:'f_subject', shikyu:'f_shikyu', infoForecast:'f_infoForecast', status2:'f_status' };
   const TOPFORM_TABLES = ['designSchedule','designPlan','costSummary'];
   const TOPFORM_REG_RADIO = { hinshu:'f_hinshu', precision:'f_precision', partingChange:'f_partingChange' };
+  // ★登録事項 3 行の「選択解除」：✓ を外して未選択（getRadio＝''＝従来の値なし）に戻す。開いただけ・押しただけでは保存しない。
+  //   保存（この内容で更新）のときに、このフォームで解除した欄だけを regClearedKeys で見分ける（下の persistOrderForm）
+  let regClearedKeys = new Set();
+  document.addEventListener('click', (e)=>{
+    const b = e.target && e.target.closest ? e.target.closest('.pfRegClear') : null;
+    if(!b) return;
+    const name = b.getAttribute('data-clear');
+    const key = Object.keys(TOPFORM_REG_RADIO).find(k=> TOPFORM_REG_RADIO[k] === name);
+    if(!key || !document.querySelector('input[name="'+name+'"]:checked')) return;   // 未選択なら何もしない
+    setRadio(name, '');
+    regClearedKeys.add(key);
+  });
   const TOPFORM_REG_TEXT = { mbSpec:'f_mbSpec', slideCount:'f_slideCount', cavityMaterial:'f_cavityMaterial', plateSize:'f_plateSize', shapeArea:'f_shapeArea', expectedProfit:'f_expectedProfit' };
   const TOPFORM_REG_KEYS = Object.keys(TOPFORM_REG_RADIO).concat(Object.keys(TOPFORM_REG_TEXT));
   const TOPFORM_LEAVES = [].concat(TOPFORM_BASIC, TOPFORM_NOTICE_TEXT, Object.keys(TOPFORM_RADIO), TOPFORM_TABLES, TOPFORM_REG_KEYS.map(k=> 'registration.' + k));
@@ -1844,6 +1868,7 @@
     // rec.idが無い（ひな形から作成した場合の仮データなど）は「新規」扱いにする
     const isEdit = !!(rec && rec.id);
     formEditId = isEdit ? rec.id : null;
+    regClearedKeys = new Set();
     // 作業票側で客先・型式・納期などが更新されている場合があるため、開く直前に必ず最新値へマージする
     if(isEdit) rec = mergedRecForForm(rec);
     const reg = (rec && rec.registration) || {};
@@ -2029,9 +2054,21 @@
       }
       // D：同じ欄を両方が別の値に変えた → 自動で選ばず、案件一覧の「同じ欄の重なり」控えへ（利用者が 元に戻す／了解 で決める）
       if(m.conflicts.length && syncGuard && typeof syncGuard.noteConflicts === 'function') syncGuard.noteConflicts(m.conflicts);
+      // ★選択解除（登録事項 3 行）：フォームは写しの値を優先して表示するため、記録が既に空（''）で写しにだけ旧値がある欄は
+      //   3-way では「同じ最終値」となり書かれない → このフォームで解除した欄に限り、記録を '' にそろえ写しからも外す（重なり・保留の欄は触らない）
+      const regClearPatch = {};
+      regClearedKeys.forEach(rk=>{
+        const leaf = 'registration.' + rk;
+        if(m.write[leaf] || m.skipped.indexOf(leaf) >= 0 || m.conflicts.some(c=> c.path === 'records[' + formEditId + '].' + leaf)) return;
+        if(L.leaves[leaf] !== '') return;   // 解除した後に別の選択肢を選び直した
+        const bsReg = remote.bs && remote.bs.orderNotice ? remote.bs.orderNotice.registration : null;
+        if(!bsReg || normalizeTopField(leaf, bsReg[rk]) === '') return;
+        topformSetLeaf(target, leaf, '');
+        regClearPatch[leaf] = true;
+      });
       templateSourceRef = null;
       saveRecords();
-      syncToBuhinState(target, m.write);   // 変えた欄だけを作業票データへ（未変更・重なり・保留の欄は書かない）
+      syncToBuhinState(target, Object.assign({}, m.write, regClearPatch));   // 変えた欄だけを作業票データへ（未変更・重なり・保留の欄は書かない）
       target._wasNew = false;
       return target;
     }
