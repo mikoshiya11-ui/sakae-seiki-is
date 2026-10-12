@@ -962,18 +962,27 @@
         // 日付が未入力の加工／仕上げ工程（ASSなど phase0 以外）は、バーとして描けないためこの画面には出さない。
         // 以前は左のBOXへ落ちていたが、そこは準備工程専用のため混在させない。日付は作業票側で入力する。
       });
-      return { partId: p.id, no: p.subNo || '', name: p.name || '', qty: (p.qty!=null ? String(p.qty) : ''), dateTags, events };
+      // PT-0015：PN は NC 工程がある部品だけに出す。NC 系の判定は既存画面と同じ「先頭が NC かつ NCM でない」。
+      // NC 工程自体の日付の有無は問わない（工程があれば NC あり）。これは表示だけに使う値で、保存はしない。
+      const hasNC = (p.processes||[]).some(proc=>{
+        const c = (proc && proc.code) || '';
+        return c.indexOf('NC') === 0 && c.indexOf('NCM') !== 0;
+      });
+      return { partId: p.id, no: p.subNo || '', name: p.name || '', qty: (p.qty!=null ? String(p.qty) : ''), dateTags, events, hasNC };
     });
   }
   let PARTS = handoff ? convertBuhinParts(buhinState) : DEMO_PARTS;
 
   // ---- dateTags（DE/SU/PNなど）を「コード：日付」のミニ表として組み立てる（現物の作業票印刷にある固定ボックスと同じ見た目） ----
   function buildDateTagsHtml(part){
-    // 元帳票の固定ボックスに合わせ、DE / SU / PN の3行を常に表示する。
+    // 元帳票の固定ボックスに合わせ、DE / SU / PN の3行を表示する（PN は NC 工程がある部品だけ。PT-0015）。
     // 該当の工程がまだ無い部品でも行そのものは出し、空の日付入力欄として使えるようにする（「－」表示はしない）。
     const byCode = {};
     (part.dateTags||[]).forEach(t=>{ if(!byCode[t.code]) byCode[t.code] = t; });
-    return SIDE_BOX_CODES.map(code=>{
+    // PT-0015：NC 工程が無い部品では PN の行を出さない（入力不要と入力漏れを見分けられるようにする）。
+    // 行を出さないだけで、保存済みの PN 工程・日付には触れない。NC 工程が付けば同じ値がそのまま再表示される。
+    const codes = part.hasNC ? SIDE_BOX_CODES : SIDE_BOX_CODES.filter(code=>code!=='PN');
+    return codes.map(code=>{
       const t = byCode[code];
       const titleAttr = (t && t.note) ? ' title="'+esc(t.note)+'"' : '';
       // 工程が既にあるときだけ procid を持たせる。無いときは code だけを持たせ、
