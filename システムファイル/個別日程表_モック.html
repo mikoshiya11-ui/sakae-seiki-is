@@ -376,6 +376,60 @@
     .memoNoteHandle, .memoNoteResize, .memoNoteResizeX, .memoNoteResizeY, .memoTailHandle{ display:none !important; }
     .ganttDatesCell .dateTagInput{ border:none !important; background:transparent !important; color:#1a2233 !important; }
   }
+
+  /* ---- PT-0008：A3 印刷の自動最適化（A3 横・最大 2 枚）----
+     印刷の直前に html へ p8print を付け、印刷が終わったら外す。印刷の見た目を印刷前に実測するため、
+     上の @media print と同じ見た目を p8print が付いている間だけ画面側でも再現する（画面の通常表示は変わらない）。 */
+  html.p8print body{ background:#fff; }
+  html.p8print .topbar, html.p8print .toolRow, html.p8print .footNote, html.p8print .undoToast, html.p8print .legend, html.p8print .confirmRow{ display:none !important; }
+  html.p8print .wrap{ max-width:none !important; padding:0 !important; margin:0 !important; }
+  html.p8print .orderCard, html.p8print .checkCard, html.p8print .ganttCard{ box-shadow:none !important; border:1px solid #dfe4ec; }
+  html.p8print .checkScroll, html.p8print .ganttScroll, html.p8print .ganttHeaderScroll{ overflow:visible !important; }
+  html.p8print .ganttHeaderScroll{ position:static !important; }
+  html.p8print .ganttSideHead, html.p8print .ganttDatesHead, html.p8print .checkSideHead, html.p8print .ganttSideCell, html.p8print .ganttDatesCell{
+    position:static !important; left:auto !important; box-shadow:none !important;
+  }
+  html.p8print .rowCountCtrl{ display:none !important; }
+  html.p8print .track .bar .handle{ display:none !important; }
+  html.p8print .memoNoteHandle, html.p8print .memoNoteResize, html.p8print .memoNoteResizeX, html.p8print .memoNoteResizeY, html.p8print .memoTailHandle{ display:none !important; }
+  html.p8print .ganttDatesCell .dateTagInput{ border:none !important; background:transparent !important; color:#1a2233 !important; }
+  /* 印刷しない操作用のボタン（担当者の削除「×」・「＋担当者を追加」）。画面には今までどおり出る */
+  html.p8print .checkNameDelBtn, html.p8print #addCheckNameBtn{ display:none !important; }
+  /* 部品の途中では改ページしない。2 枚目は見出し（案件の識別・月日・部品欄）から始める */
+  html.p8print .ganttPartGroup{ break-inside:avoid; }
+  /* 表示期間より前から始まるバーは、画面では左の欄の下に隠れている。印刷でも左の欄へはみ出させない（左端だけ切る） */
+  html.p8print .ganttRows{ clip-path:inset(-4px -4000px -4px 0); }
+  html.p8print .p8hdr{ break-before:page; }
+  .p8hdrLine{ display:flex; gap:14px; align-items:baseline; font-size:12px; font-weight:700; color:#173a68; padding:2px 10px; }
+  .p8hdrLine .p8hdrModel{ color:#2a3446; }
+  .p8hdrLine .p8hdrDue{ color:#c9720d; }
+  .p8hdrLine .p8hdrCont{ margin-left:auto; }
+  /* 高密度（HD-B4）：通常の 1 枚・2 枚では 70% 以上にならない案件だけ。印刷の時だけ・業務情報は削らない */
+  html.p8hd .orderCard{ padding:2px 10px !important; gap:4px 12px !important; margin-bottom:3px !important; border-radius:6px !important; }
+  html.p8hd .orderCard > div{ display:flex; align-items:baseline; gap:4px; }
+  html.p8hd .orderCard .oMeta{ font-size:9.5px !important; }
+  html.p8hd .orderCard .oNo{ font-size:15px !important; }
+  html.p8hd .orderCard .oModel{ font-size:12px !important; }
+  html.p8hd .orderCard .shipBadge, html.p8hd .orderCard .dueBadge{ padding:1px 10px !important; font-size:11.5px !important; }
+  html.p8hd .checkCard{ margin-bottom:4px !important; border-radius:6px !important; }
+  html.p8hd .checkCardTitle{ padding:1px 10px 0 !important; }
+  html.p8hd .checkHeaderRow .ganttDayCell{ padding:1px 0 !important; }
+  html.p8hd .checkSideHead{ padding:1px 10px !important; }
+  html.p8hd .checkNameRow{ height:15px !important; }
+  html.p8hd .ganttCard{ border-radius:6px !important; }
+  html.p8hd .monthCell{ padding:1px 0 !important; }
+  html.p8hd .ganttHeaderRow .ganttDayCell{ padding:2px 0 !important; }
+  html.p8hd .ganttSideHead, html.p8hd .ganttDatesHead{ padding:1px 8px !important; }
+  html.p8hd .ganttSideCell{ padding:1px 8px !important; flex-direction:row !important; flex-wrap:wrap !important; align-items:baseline !important; justify-content:flex-start !important; column-gap:6px !important; row-gap:0 !important; }
+  html.p8hd .ganttSideCell .pName, html.p8hd .ganttSideCell .pQty{ margin-top:0 !important; }
+  html.p8hd .ganttDatesCell{ padding:1px 8px !important; flex-direction:row !important; flex-wrap:wrap !important; align-items:center !important; gap:0 6px !important; }
+  html.p8hd .ganttDatesCell .dateTagRow{ gap:2px !important; }
+  html.p8hd .ganttDatesCell .dateTagCode{ flex:0 0 auto !important; }
+  html.p8hd .ganttDatesCell .dateTagInput{ display:none !important; }
+  html.p8hd .p8date{ font-size:11px; color:#1a2233; white-space:nowrap; }
+  html.p8hd .p8date.empty{ color:#a4adbc; }
+  html.p8hd .ganttRow.p8empty{ display:none !important; }
+  html.p8hd .ganttPartGroup{ border-bottom:1px solid #d5dbe5 !important; }
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
@@ -2714,57 +2768,245 @@
   const printBtnEl = document.getElementById('printBtn');
   if(printBtnEl) printBtnEl.addEventListener('click', ()=> window.print());
 
-  // ---- 印刷時、列方向（横幅）・行方向（縦の長さ）の両方を自動で詰めてA3の1枚に収まるように縮小する ----
-  // A3横向き・余白10mmを想定した印刷可能サイズ（96dpi換算）。
-  const PRINT_TARGET_WIDTH = 1910;
-  const PRINT_TARGET_HEIGHT = 1300;
-  let printScaleApplied = false;
-  function applyPrintScale(){
-    const headerInner = document.getElementById('ganttHeaderInner');
-    const inner = document.getElementById('ganttInner');
-    const checkInner = document.getElementById('checkInner');
-    if(!inner) return;
+  // ---- PT-0008：A3 印刷の自動最適化（A3 横・最大 2 枚・内容を削らない）----
+  // 印刷の直前（beforeprint）に、印刷と同じ見た目（html.p8print）で中身の高さを実測し、次の順で印刷方法を選ぶ。
+  //   パターン 1：通常の見た目のまま 1 枚に入れて、文字の倍率が 70% 以上 → A3×1 枚
+  //   パターン 2：1 枚では 70% 未満・部品の切れ目で 2 枚に分ければ 70% 以上 → A3×2 枚（2 枚目に見出しを付ける）
+  //   パターン 3：それでも 70% 未満 → 高密度（HD-B4）で A3×2 枚
+  // 案件名や社内No.では選ばない（中身の量だけで決める）。文字の倍率は最大 100%（小さい案件を拡大しない）。
+  // 日付の列幅は印刷のためだけに計算する（印刷後 2.5mm〜52px）。画面の拡大縮小の設定（14〜52px）には左右されず、保存もしない。
+  // 印刷が終わったら（afterprint）すべて元に戻す。印刷の操作で業務データ・端末の保存値は一切書かない。
+  // ※以前の applyPrintScale は「A3 1 枚＝1910×1300px」を前提にしていたが、実際の A3 横（余白 10mm）は 1512×1047px で、
+  //   部品の多い案件は小さく縮んだうえ 2 枚目へこぼれていた（PT-0008）。
+  const P8_PAGE_W = 1511;           // A3 横・余白 10mm の印刷可能幅（96dpi 換算 1511.8px）
+  const P8_PAGE_H = 1040;           // 同じく高さ 1046.9px から、縮小時の端数（枠線・行の高さ）のための余裕を引いた値
+  const P8_FILL_W = 1500;           // 日付の列幅を決める時の横幅（右端に少し余裕を残す）
+  const P8_DAY_MIN_PRINT = 9.45;    // 日付 1 列の印刷後の最小幅（2.5mm）
+  const P8_DAY_MAX = 52;            // 日付 1 列の最大幅（画面の拡大の上限と同じ）
+  const P8_SCALE_MIN = 0.70;        // 読める大きさの下限（標準＝画面と同じ大きさの 70%）
+  const P8_LABEL_MIN_PT = 5.05;     // 隣の工程記号にかかる記号だけ縮める時の下限（印刷後 5pt。PDF の丸めで 5pt を下回らないよう 5.05pt で計算）
+  let p8Print = null;               // 印刷中の記録（元に戻すため）。印刷中は外部からの描き直しも保留する
 
-    // 倍率をかける前（=等倍）の自然な幅・高さを測る
-    const naturalWidth = inner.scrollWidth || inner.offsetWidth;
-    if(!naturalWidth) return;
-    const naturalHeaderH = headerInner ? (headerInner.scrollHeight || headerInner.offsetHeight) : 0;
-    const naturalBodyH = inner.scrollHeight || inner.offsetHeight;
-    const naturalCheckH = checkInner ? (checkInner.scrollHeight || checkInner.offsetHeight) : 0;
-
-    // ズーム対象外の部分（受注情報カード・進捗チェックの見出し・凡例・カード同士の余白など）が占める高さ
-    const orderCardEl = document.getElementById('orderCard');
-    const legendEl = document.getElementById('legend');
-    const checkTitleEl = document.querySelector('.checkCardTitle');
-    const fixedH =
-      (orderCardEl ? orderCardEl.offsetHeight : 0) +
-      (legendEl ? legendEl.offsetHeight : 0) +
-      (checkTitleEl ? checkTitleEl.offsetHeight : 0) +
-      90; // カード間の余白・ボーダー等の概算バッファ
-
-    // 内容がA3より小さい時は縮小するだけでなく拡大もして、余白を残さず1枚いっぱいに使う（拡大しすぎないよう上限3倍）
-    const MAX_SCALE = 3;
-    const widthScale = Math.min(MAX_SCALE, PRINT_TARGET_WIDTH / naturalWidth);
-    const scalableNaturalH = naturalHeaderH + naturalBodyH + naturalCheckH;
-    const availableForScalable = Math.max(100, PRINT_TARGET_HEIGHT - fixedH);
-    const heightScale = scalableNaturalH > 0 ? Math.min(MAX_SCALE, availableForScalable / scalableNaturalH) : 1;
-
-    const scale = Math.min(widthScale, heightScale);
-    [headerInner, inner, checkInner].forEach(el=>{
-      if(el) el.style.zoom = scale;
-    });
-    printScaleApplied = true;
+  function p8Rect(el){ return el.getBoundingClientRect(); }
+  function p8Groups(){ return Array.prototype.slice.call(ganttInner.querySelectorAll('.ganttPartGroup')); }
+  // 左の部品欄＋DE/SU/PN 欄の幅（等倍）
+  function p8SideWidth(){
+    const sh = ganttHeaderInner.querySelector('.ganttHeaderRow .ganttSideHead');
+    const dh = ganttHeaderInner.querySelector('.ganttHeaderRow .ganttDatesHead');
+    return (sh ? sh.offsetWidth : 280) + (dh ? dh.offsetWidth : 0);
   }
-  function clearPrintScale(){
-    if(!printScaleApplied) return;
-    ['ganttHeaderInner','ganttInner','checkInner'].forEach(id=>{
-      const el = document.getElementById(id);
-      if(el) el.style.zoom = '';
-    });
-    printScaleApplied = false;
+  // 2 枚目の見出し：社内№・型式／図番・納期・「つづき 2/2」＋月・日の見出し＋部品欄の見出し
+  function p8MakeHeader(){
+    const o = (handoff && buhinState && buhinState.order) || {};
+    const due = o.dueDate ? ('納期：' + o.dueDate.slice(5).replace('-','/')) : '納期：未定';
+    const h = document.createElement('div');
+    h.className = 'p8hdr';
+    h.innerHTML = '<div class="p8hdrLine"><span>社内№ ' + esc(o.orderNo || '-') + '</span>'
+      + '<span class="p8hdrModel">型式・図番 ' + esc(o.model || '-') + '</span>'
+      + '<span class="p8hdrDue">' + esc(due) + '</span>'
+      + '<span class="p8hdrCont">（つづき 2/2）</span></div>'
+      + ganttHeaderInner.innerHTML;
+    return h;
   }
-  window.addEventListener('beforeprint', applyPrintScale);
-  window.addEventListener('afterprint', clearPrintScale);
+  // 高さの実測（倍率 1）：部品の前まで（受注カード・進捗チェック欄・見出し）／部品ごと／部品の後ろ／2 枚目の見出し
+  function p8Measure(){
+    const top = p8Rect(document.documentElement).top;
+    const card = document.querySelector('.ganttCard');
+    const groups = p8Groups();
+    const h = p8MakeHeader(); ganttInner.appendChild(h); const F2 = p8Rect(h).height; h.remove();
+    if(!groups.length) return { F1: p8Rect(card).bottom - top, P: [], tail: 0, F2 };
+    return { F1: p8Rect(groups[0]).top - top, P: groups.map(g=>p8Rect(g).height),
+      tail: p8Rect(card).bottom - p8Rect(groups[groups.length-1]).bottom, F2 };
+  }
+  function p8Plan1(m, cap){
+    const tot = m.P.reduce((a,b)=>a+b, 0);
+    return Math.min(cap, P8_PAGE_H / (m.F1 + tot + m.tail));
+  }
+  // 2 枚：入る最大の倍率と、2 枚の高さが最も均等になる部品の境目（部品の途中では分けない）
+  function p8Plan2(m, cap){
+    const pre = [0]; m.P.forEach(p=> pre.push(pre[pre.length-1] + p));
+    const tot = pre[pre.length-1];
+    let best = { s: 0, k: null, diff: Infinity };
+    for(let k=1; k<m.P.length; k++){
+      const h1 = m.F1 + pre[k], h2 = m.F2 + (tot - pre[k]) + m.tail;
+      const s = Math.min(cap, P8_PAGE_H / h1, P8_PAGE_H / h2), diff = Math.abs(h1 - h2);
+      if(s > best.s + 1e-6 || (Math.abs(s - best.s) <= 1e-6 && diff < best.diff)) best = { s, k, diff };
+    }
+    return best;
+  }
+  // 高密度（HD-B4）：DE/SU/PN を横 1 行の文字にし、工程バーの無い段は高さを使わない（部品ごとに最低 1 段）。
+  // 段数・段の割当ての保存値は変えない（描き直すと元に戻る）。見た目の詰めは html.p8hd の CSS
+  function p8HdApply(){
+    document.documentElement.classList.add('p8hd');
+    ganttInner.querySelectorAll('.ganttDatesCell .dateTagRow').forEach(r=>{
+      const inp = r.querySelector('.dateTagInput');
+      const v = inp ? inp.value : '';
+      const s = document.createElement('span');
+      s.className = 'p8date' + (v ? '' : ' empty');
+      s.textContent = v ? (Number(v.slice(5,7)) + '/' + Number(v.slice(8,10))) : '－';
+      r.appendChild(s);
+    });
+    p8Groups().forEach(g=>{
+      const rows = Array.prototype.slice.call(g.querySelectorAll('.ganttRow'));
+      let used = 0;
+      rows.forEach(r=>{ if(r.querySelector('.bar')) used++; else r.classList.add('p8empty'); });
+      if(!used && rows[0]) rows[0].classList.remove('p8empty');
+    });
+  }
+  // 印刷用の日付列幅で描き直す（DAY_W だけを一時的に変える。setZoom と違って保存しない）
+  function p8SetDayW(d){
+    DAY_W = d;
+    document.documentElement.style.setProperty('--day-w', DAY_W+'px');
+    applyWeekendBackground();
+    render();
+  }
+  // 同じ段で次のバーにかかる工程記号だけ、かからない大きさまで縮める（印刷後 5pt 未満にはしない）。
+  // バー同士が日程で重なっている（データの重なり）ものは直さない。倍率 1 の状態で呼ぶこと
+  function p8FitLabels(s){
+    const floor = P8_LABEL_MIN_PT / 0.75 / s;
+    let n = 0;
+    ganttInner.querySelectorAll('.track').forEach(t=>{
+      const bars = Array.prototype.slice.call(t.querySelectorAll('.bar'))
+        .map(b=>({ b, l: parseFloat(b.style.left)||0, w: parseFloat(b.style.width)||0 }))
+        .sort((a,b)=> a.l - b.l);
+      bars.forEach((x, i)=>{
+        const lab = x.b.querySelector('.barLabel');
+        if(!lab) return;
+        // 表示期間より前から始まるバーは、工程記号を期間の左端へ寄せる（左端は印刷で切るため、記号が隠れないように）
+        if(x.l < 0){ lab.style.marginLeft = (-x.l) + 'px'; n++; }
+        const nx = bars[i+1];
+        if(!nx || x.l + x.w > nx.l + 0.5) return;
+        const avail = nx.l - Math.max(0, x.l) - 1, w = p8Rect(lab).width;
+        if(w <= avail) return;
+        const fs = Math.max(floor, 9.5 * avail / w);
+        if(fs >= 9.5) return;
+        lab.style.fontSize = fs + 'px';
+        lab.style.padding = '0 1px';
+        n++;
+      });
+    });
+    return n;
+  }
+  // 付箋：画面で置いた部品・日付と同じ位置に来るよう、印刷の間だけ写しの座標を換算して描く（元の付箋データは変えない）
+  function p8MemosForPrint(oldTops, side, ratio){
+    const groups = p8Groups();
+    const map = (x, y)=>{
+      let gi = 0;
+      for(let i=0; i<oldTops.length; i++){ if(oldTops[i] <= y) gi = i; }
+      const g = groups[gi];
+      const off = y - (oldTops[gi] || 0);
+      const ny = g ? g.offsetTop + Math.max(0, Math.min(off, g.offsetHeight - 4)) : y;
+      const nx = x > side ? side + (x - side) * ratio : x;
+      return [nx, ny];
+    };
+    return memos.map(m=>{
+      const c = Object.assign({}, m);
+      ensureMemoTail(c);
+      const a = map(c.x, c.y), t = map(c.tailX, c.tailY);
+      c.x = a[0]; c.y = a[1]; c.tailX = t[0]; c.tailY = t[1];
+      return c;
+    });
+  }
+  function p8BeforePrint(){
+    if(p8Print) p8AfterPrint();
+    const html = document.documentElement, wrap = document.querySelector('.wrap');
+    const st = p8Print = {
+      dayW: DAY_W, memos: memos, wrapStyle: wrap.getAttribute('style'),
+      scroll: { x: window.scrollX, y: window.scrollY, gantt: ganttScrollEl.scrollLeft, check: checkScrollEl.scrollLeft, header: ganttHeaderScrollEl.scrollLeft },
+      oldTops: p8Groups().map(g=> g.offsetTop)
+    };
+    try{
+      html.classList.add('p8print');
+      wrap.style.zoom = '';
+      wrap.style.width = P8_PAGE_W + 'px';
+      const days = Math.max(1, currentUnitCount());
+      const side = p8SideWidth();
+      const wcap = Math.min(1, (P8_FILL_W - P8_DAY_MIN_PRINT * days) / side);
+      const mN = p8Measure();   // 通常の見た目の高さ（日付の列幅には左右されない）
+      const card = document.querySelector('.ganttCard');
+      // 1 つの方法で並べて、倍率をかけた後の実測で紙に入るかを確かめる（入らなければ 1% ずつ下げて境目を探し直す）
+      const layout = (pattern)=>{
+        html.classList.remove('p8hd');
+        wrap.style.zoom = ''; wrap.style.width = P8_PAGE_W + 'px';
+        let m = mN, s, k = null;
+        if(pattern === 1){ s = p8Plan1(m, wcap); }
+        else if(pattern === 2){ const p = p8Plan2(m, wcap); s = p.s; k = p.k; }
+        else{ p8SetDayW(DAY_W); p8HdApply(); m = p8Measure(); const p = p8Plan2(m, wcap); s = p.s; k = p.k; }
+        s = Math.max(0.1, s);
+        const d = Math.max(P8_DAY_MIN_PRINT / s, Math.min(P8_DAY_MAX, (P8_FILL_W / s - side) / days));
+        p8SetDayW(d);
+        if(pattern === 3) p8HdApply();
+        let fit = null, tries = 0;
+        for(;;){
+          ganttInner.querySelectorAll('.p8hdr, .p8pad').forEach(e=> e.remove());
+          wrap.style.zoom = s;
+          wrap.style.width = (P8_PAGE_W / s) + 'px';
+          const groups = p8Groups();
+          let h = null;
+          if(k != null && groups[k]){
+            h = p8MakeHeader();
+            const pad = document.createElement('div');   // 部品の行の縞模様（偶数行）の並びを崩さないための空要素
+            pad.className = 'p8pad'; pad.hidden = true;
+            groups[k].parentNode.insertBefore(h, groups[k]);
+            groups[k].parentNode.insertBefore(pad, groups[k]);
+          }
+          const top = p8Rect(html).top;
+          const lastDay = ganttHeaderInner.querySelector('.ganttHeaderRow .ganttDayCell:last-child');
+          fit = {
+            page1: (h ? p8Rect(groups[k-1]).bottom : p8Rect(card).bottom) - top,
+            page2: h ? p8Rect(card).bottom - p8Rect(h).top : 0,
+            width: lastDay ? p8Rect(lastDay).right - p8Rect(wrap).left : 0
+          };
+          if((fit.page1 <= P8_PAGE_H && fit.page2 <= P8_PAGE_H && fit.width <= P8_PAGE_W) || tries >= 40 || s <= 0.1) break;
+          s = Math.round((s - 0.01) * 1000) / 1000;
+          if(k != null) k = p8Plan2(m, s).k;
+          tries++;
+        }
+        return { pattern, s, k, d, fit, tries };
+      };
+      // 計算で選んだ方法でも、実測で 70% を下回ったら次の方法（1 → 2 → 3）へ進む
+      const s1 = p8Plan1(mN, wcap);
+      let pattern = (s1 >= P8_SCALE_MIN || mN.P.length < 2) ? 1 : (p8Plan2(mN, wcap).s >= P8_SCALE_MIN ? 2 : 3);
+      let L = layout(pattern);
+      while(L.s < P8_SCALE_MIN && L.pattern < 3 && mN.P.length >= 2){ L = layout(L.pattern + 1); }
+      const s = L.s, k = L.k, d = L.d, fit = L.fit, tries = L.tries;
+      pattern = L.pattern;
+      // 倍率 1 に戻して、工程記号のかかりと付箋の位置を整えてから、もう一度倍率をかける（どちらも高さは変えない）
+      wrap.style.zoom = '';
+      const labels = p8FitLabels(s);
+      memos = p8MemosForPrint(st.oldTops, side, d / st.dayW);
+      renderMemoLayer();
+      wrap.style.zoom = s;
+      st.result = { pattern, pages: k != null ? 2 : 1, scale: s, split: k, dayW: d, fit, labels, tries };
+      window.__sakaeKobetsuPrint = st.result;   // 印刷結果の記録（試験・確認用。保存はしない）
+    }catch(e){
+      console.error('[PT-0008] 印刷の自動調整に失敗したため、通常の印刷に戻します', e);
+      p8AfterPrint();
+    }
+  }
+  function p8AfterPrint(){
+    const st = p8Print;
+    if(!st) return;
+    p8Print = null;
+    const html = document.documentElement, wrap = document.querySelector('.wrap');
+    html.classList.remove('p8print', 'p8hd');
+    // 一時的に付けた倍率・幅を外す。style 属性が元々無かった時は属性ごと消す
+    // （removeAttribute だけだと、後で読んだ時に空の style="" として書き戻されることがあるため、先に中身を空にしてから消す）
+    wrap.style.cssText = st.wrapStyle || '';
+    if(st.wrapStyle == null && wrap.getAttribute('style') === '') wrap.removeAttribute('style');
+    memos = st.memos;
+    DAY_W = st.dayW;
+    html.style.setProperty('--day-w', DAY_W+'px');
+    applyWeekendBackground();
+    render();
+    window.scrollTo(st.scroll.x, st.scroll.y);
+    ganttScrollEl.scrollLeft = st.scroll.gantt;
+    checkScrollEl.scrollLeft = st.scroll.check;
+    ganttHeaderScrollEl.scrollLeft = st.scroll.header;
+    applyPendingRemoteUpdates();   // 印刷中に届いていた外部の変更はここで取り込む
+  }
+  window.addEventListener('beforeprint', p8BeforePrint);
+  window.addEventListener('afterprint', p8AfterPrint);
 
   // ---- 自由配置メモ（吹き出し）：追加ボタン・ドラッグ移動・リサイズ・テキスト編集・右クリック削除（元に戻す対応） ----
   document.getElementById('addMemoBtn').addEventListener('click', ()=>{
@@ -2976,7 +3218,7 @@
   // ---- バーの操作中は、外部から届いた変更で画面を作り直さない ----
   // ドラッグの途中で作り直すと、掴んでいるバーが別の位置へ飛んでしまうため。
   // 届いたものは保留しておき、操作が終わってから取り込むか捨てるかを決める。
-  function isProtectedFromRemoteRedraw(){ return !!drag; }
+  function isProtectedFromRemoteRedraw(){ return !!drag || !!p8Print; }   // ★PT-0008：印刷中（印刷用に描き直している間）も保留する
 
   // ---- ドラッグの終わり。保留していた外部更新の判断もここで行う ----
   function endDrag(){
