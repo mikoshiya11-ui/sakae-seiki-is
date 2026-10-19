@@ -123,10 +123,6 @@
   }
   .rangeToggle .rangeResetBtn:hover{ background:#eef1f6; color:#173a68; }
 
-  .legend{ display:flex; gap:10px; align-items:center; font-size:12px; color:#5b6b84; margin-bottom:10px; flex-wrap:wrap; }
-  .legend .lgItem{ display:flex; align-items:center; gap:4px; }
-  .legend .lgSwatch{ width:14px; height:9px; border-radius:3px; display:inline-block; }
-  .legend .lgHint{ margin-left:auto; color:#a4adbc; }
 
   .ganttCard{
     background:#fff; border-radius:14px; box-shadow:0 2px 10px rgba(20,35,70,.06); margin-bottom:16px;
@@ -500,8 +496,6 @@
       <span style="font-size:12.5px; color:#a4adbc;">土日はグレー表示／バーの右端の位置が作業票の工程日付（終了・納期）になります（ドラッグで移動、右クリックで新規設置・編集・削除）／各日の中央の縦線が午前・午後の区切りです／付箋メモは自由な位置・サイズで配置できます（ハンドルをドラッグで移動、右下でリサイズ、クリックで編集、右クリックで削除）</span>
     </div>
 
-    <div class="legend" id="legend"></div>
-
     <div class="ganttCard">
       <div class="ganttHeaderScroll" id="ganttHeaderScroll">
         <div class="ganttHeaderInner" id="ganttHeaderInner"></div>
@@ -866,6 +860,7 @@
     'EW':'#be185d', '前板':'#be185d', '後板':'#9d174d',
     'OMI':'#16a34a', 'OGS':'#65a30d', 'GS':'#65a30d',
     'GC':'#ca8a04',
+    'OGC':'#ca8a04',   // PT-0004：これまでも部分一致で GC の色が出ていたものを明示（表示色は変わらない）
     'EM':'#0891b2',
     'DR':'#9333ea',
     'WEL':'#c2410c', 'WEL-FIN':'#c2410c',
@@ -878,17 +873,27 @@
     'DE':'#94a3b8', 'SU':'#a1a1aa', 'PN':'#71717a'
   };
   const DEFAULT_BAR_COLOR = '#173a68';
-  const LEGEND_CODES = ['NC','LA','MI','JG','EW','GS','GC','EM','DR','WEL','NCM','FIN','熱処理','外注','3D','納品'];
   // バーに置けるのは工程コードのみ（支給材の手配状況や合せ有／ダミー有などのフラグ・注記は工程ではないため対象外）
   const NON_PROCESS_MARKERS = ['支給材','在庫材','完成品在庫','合せ有','ダミー有'];
   function isProcessToken(tok){
     return !NON_PROCESS_MARKERS.some(m => tok.indexOf(m) !== -1);
   }
 
-  // ---- バー作成・編集時のクイック選択肢（作業票の工程一覧と揃えてある。それ以外の工程名は上の入力欄から自由入力できる） ----
+  // ---- バー作成・編集時のクイック選択肢。PT-0004（2026/10/15 榮製機現地確認）：作業票の PROCESS_GROUPS と同じ正式工程 18。
+  //      DE/SU/PN は下の SIDE_BOX_CODES の除外で候補に出ないため、候補は 15。それ以外の工程名は上の入力欄から自由入力できる。
+  //      ニューカナックは保存値（data-code）が既存データと同じ半角「ﾆｭｰｶﾅｯｸ」、ボタンの表示だけ全角（LABEL_DISPLAY）。 ----
   const LABEL_PRESETS = [
-    { group:'工程', items:['NC','DE','SU','OMI','OGS','GS','FIN','NCM','PN','3D'] },
+    { group:'工程', items:['DE','SU','PN','NC','LA','MI','EW','JG','WEL','FIN','HET','外注','OGC','OGS','OST','3D','NCM','ﾆｭｰｶﾅｯｸ'] },
   ];
+  const LABEL_DISPLAY = { 'ﾆｭｰｶﾅｯｸ':'ニューカナック' };
+  // 工程記号の保存値を揃える。全角で手入力されたニューカナックは、既存データと同じ半角へ（既存データの一括変換はしない）
+  const PROC_CODE_CANON = { 'ニューカナック':'ﾆｭｰｶﾅｯｸ' };
+  function canonProcCode(code){
+    const raw = (code==null ? '' : String(code));
+    let n = raw;
+    try{ n = raw.trim().normalize('NFKC'); }catch(e){ n = raw.trim(); }
+    return Object.prototype.hasOwnProperty.call(PROC_CODE_CANON, n) ? PROC_CODE_CANON[n] : raw;
+  }
 
   // ---- 一覧に無いコードにも毎回違う色を自動で割り当てる（作業票と共通のlocalStorageキーで色を揃える） ----
   const CUSTOM_COLOR_KEY = 'sakaeIS_customCodeColors_v1';
@@ -1724,18 +1729,6 @@
     });
   })();
 
-  function buildLegend(){
-    const legendEl = document.getElementById('legend');
-    let html = '';
-    LEGEND_CODES.forEach(code=>{
-      html += '<span class="lgItem"><span class="lgSwatch" style="background:'+CODE_COLORS[code]+';"></span>'+esc(code)+'</span>';
-    });
-    html += '<span class="lgItem"><span class="lgSwatch" style="background:'+DEFAULT_BAR_COLOR+';"></span>その他</span>';
-    html += '<span class="lgHint">1部品＝3行（区分ラベルは省略・色で判別）</span>';
-    legendEl.innerHTML = html;
-  }
-  buildLegend();
-
   function buildHeader(){
     const segs = getMonthSegments();
     const total = currentUnitCount();
@@ -1986,7 +1979,7 @@
         // 記号そのもの・既存データ・専用欄の動きは変えない。手で入力することは従来どおりできる。
         if(SIDE_BOX_CODES.indexOf(code) >= 0) return;
         const color = CODE_COLORS[code] || DEFAULT_BAR_COLOR;
-        html += '<button type="button" class="lpItem" data-code="'+esc(code)+'"><span class="lpItemSwatch" style="background:'+color+';"></span>'+esc(code)+'</button>';
+        html += '<button type="button" class="lpItem" data-code="'+esc(code)+'"><span class="lpItemSwatch" style="background:'+color+';"></span>'+esc(LABEL_DISPLAY[code] || code)+'</button>';
       });
     });
     html += '</div>';
@@ -2102,7 +2095,8 @@
         const dateStr = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
         // 「NC 2オモテ」のように空白区切りで入力したら、工程記号（NC）と識別BOX（2オモテ）に分けて保存する。
         // 項目の持ち方は作業票側の仕様にそろえる（独自形式は作らない）。
-        const { code: newCode, ident: newIdent } = splitLabelInput(label);
+        const { code: rawCode, ident: newIdent } = splitLabelInput(label);
+        const newCode = canonProcCode(rawCode);   // PT-0004：全角ニューカナックは半角の保存値へ
         const newProc = { id: uid(), code: newCode, ident: newIdent, machine:'', date: dateStr, note: '',
                           ampm: d.isPM?'PM':'AM', hours: hoursVal, days: Math.max(1, bar.end - bar.start + 1) };
         bs.processes = bs.processes || [];
@@ -2134,7 +2128,7 @@
             saveLaneAssign();
           }else{
             const { code: newCode, ident: newIdent } = splitLabelInput(label);
-            proc.code = newCode;
+            proc.code = canonProcCode(newCode);   // PT-0004：全角ニューカナックは半角の保存値へ
             proc.ident = newIdent;
             // 工数の正本は processes[].hours。この工程（procId）だけを書き換える。
             proc.hours = hoursVal;

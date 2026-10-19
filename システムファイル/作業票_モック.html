@@ -475,6 +475,9 @@
     'NC':'#2563eb','NCM':'#1d4ed8',
     'LA':'#7c3aed','MI':'#0d9488','JG':'#ea580c','EW':'#be185d',
     'OMI':'#16a34a','OGS':'#65a30d','GS':'#65a30d','GC':'#ca8a04',
+    // PT-0004：正式工程のうち色が無かったものを、個別日程表で実際に出ている色に合わせて追加
+    // （OGC＝個別日程表では GC の色で表示されている／HET＝個別日程表の HET と同じ色）。OST は両画面とも固定色が無いので追加しない
+    'OGC':'#ca8a04','HET':'#92400e',
     'EM':'#0891b2','DR':'#9333ea','WEL':'#c2410c','3D':'#0ea5e9',
     'FIN':'#dc2626','熱処理':'#92400e','ｶﾅｯｸ':'#4b5563','ﾆｭｰｶﾅｯｸ':'#6b7280','納品':'#e11d48',
     'DE':'#94a3b8','SU':'#a1a1aa','支給':'#78716c','外注':'#8592a6','PN':'#71717a','その他':'#8592a6'
@@ -514,9 +517,19 @@
 
   // 工程を編集ポップアップに固定の並びで表示する工程一覧。この順番のまま並べる。
   // これ以外の工程名は下の「工程名を入力して追加」欄から自由に追加でき、追加したものはこの固定リストの最後尾に表示される。
+  // PT-0004（2026/10/15 榮製機現地確認）：正式工程 18。個別日程表の LABEL_PRESETS と同じ並び。
+  // ニューカナックは候補の見た目だけ全角で、保存値は既存データと同じ半角「ﾆｭｰｶﾅｯｸ」（canonProcCode で揃える）。
   const PROCESS_GROUPS = [
-    { group:'工程', items:['DE','SU','PN','LA','MI','NC','EW','GS','WEL','FIN','3D','NCM','OST','HET','外注'] },
+    { group:'工程', items:['DE','SU','PN','NC','LA','MI','EW','JG','WEL','FIN','HET','外注','OGC','OGS','OST','3D','NCM','ニューカナック'] },
   ];
+  // 工程記号の保存値を揃える。全角で入力・選択されたニューカナックは、既存データと同じ半角へ（既存データの一括変換はしない）
+  const PROC_CODE_CANON = { 'ニューカナック':'ﾆｭｰｶﾅｯｸ' };
+  function canonProcCode(code){
+    const raw = (code==null ? '' : String(code));
+    let n = raw;
+    try{ n = raw.trim().normalize('NFKC'); }catch(e){ n = raw.trim(); }
+    return Object.prototype.hasOwnProperty.call(PROC_CODE_CANON, n) ? PROC_CODE_CANON[n] : raw;
+  }
 
   // ---- 手配チェックシート固有項目（現物「生産管理手配チェックシート」に実在する12項目をそのまま採用）。
   // daysは入力日からの目安期限（土日だけを除外した営業日換算。現物のExcelの目安日時・期限の実データから逆算して一致を確認済み）。
@@ -964,9 +977,9 @@
   }
 
   function procChipsHtml(part){
-    // DE/SU/PN は「通常工程」ではなく個別日程表専用の日付項目（基本仕様 v1.0）。作業票の工程欄には出さない。
-    // データ（processes[] の当該工程）はそのまま保持し、表示だけを分ける。「未設定」は通常工程が無いという意味。
-    const shown = (part.processes||[]).filter(p=> !DATE_ONLY_CODES[p.code]);
+    // PT-0004（2026/10/15 現地確認で旧裁定を上書き）：DE/SU/PN も含め、登録済みの工程はすべて工程欄に出す。
+    // 「半」を付けない判定（DATE_ONLY_CODES）は下の dateShort でそのまま使う。「未設定」は工程が 1 件も無いという意味。
+    const shown = (part.processes||[]).slice();
     if(!shown.length) return '<span style="color:#c7cfdc;font-size:11px;">未設定</span>';
     // 日程の若い順（未設定の日付は末尾）に並べ替えて表示する
     const sorted = shown.slice().sort((a,b)=>{
@@ -1422,9 +1435,8 @@
     let html = '';
     PROCESS_GROUPS.forEach(g=>{
       g.items.forEach(code=>{
-        // DE/SU/PN は個別日程表の左側に専用の日付欄があるため、通常工程の候補には出さない（基本仕様 v1.0）。
-        // 記号そのものや既存データ・日付だけの扱い（DATE_ONLY_CODES）は変えない。手で入力することは従来どおりできる。
-        if(DATE_ONLY_CODES[code]) return;
+        // PT-0004：正式 18 工程をすべて候補に出す（DE/SU/PN も選べる。同じ部品に既にある時は入力時に止める）。
+        // ニューカナックは全角のまま候補に出し、入力時に canonProcCode で半角の保存値へ揃える。
         html += '<option value="'+esc(code)+'"></option>';
       });
     });
@@ -1489,9 +1501,8 @@
     }).map(x=>x.p);
   }
   function buildPpList(part){
-    // DE/SU/PN は個別日程表の専用欄で扱うため、ここでは行として出さない。part.processes 自体は触らない
-    // （編集・削除は工程 id で配列を直接更新し、保存はメモリの state 全体を書くので、隠した工程が消えることはない）。
-    const list = (part.processes || []).filter(p=> !DATE_ONLY_CODES[p.code]);
+    // PT-0004：DE/SU/PN も行として出し、ここで編集できるようにする。part.processes 自体は触らない。
+    const list = (part.processes || []).slice();
     // PT-0002：表示用に並べ替える。filter で作った写しをさらに写して並べるので part.processes は不変。
     const shown = ppSortForDisplay(list);
     ppList.innerHTML = shown.map(ppRowHtml).join('');
@@ -1531,13 +1542,42 @@
     if(field === 'hours') return;
     const proc = findProc(tr.dataset.procid);
     if(!proc) return;
-    proc[field] = e.target.value;
     if(field === 'code'){
+      const code = canonProcCode(e.target.value);
+      // PT-0004：DE/SU/PN は個別日程表の専用欄に同じコードを全部並べるため、1 部品に 1 つだけ。
+      // 同じ部品の別の工程が既に持っている時は、この工程には書かない（既存の行を編集してもらう）。
+      if(ppIsDuplicateDateOnly(proc, code)){
+        ppMarkDuplicate(e.target, code);
+        return;
+      }
+      ppMarkDuplicate(e.target, null);
+      proc.code = code;
       const sw = tr.querySelector('.pmSwatch');
       if(sw) sw.style.background = colorOf(proc.code);
+      save();
+      return;
     }
+    proc[field] = e.target.value;
     save();
   });
+  // PT-0004：同じ部品に同じ DE/SU/PN が既にあるか（自分自身は除く）
+  function ppIsDuplicateDateOnly(proc, code){
+    if(!DATE_ONLY_CODES[code]) return false;
+    const part = currentPart();
+    if(!part) return false;
+    return (part.processes||[]).some(p=> p && p.id !== proc.id && p.code === code);
+  }
+  function ppMarkDuplicate(input, code){
+    if(code){
+      input.dataset.dup = code;
+      input.style.outline = '2px solid #dc2626';
+      input.title = 'この部品には既に ' + code + ' があります。既存の ' + code + ' の行を編集してください。';
+    }else if(input.dataset.dup){
+      delete input.dataset.dup;
+      input.style.outline = '';
+      input.title = '';
+    }
+  }
   // 選択欄（午前/午後）は input が飛ばないブラウザでも拾えるよう change でも受ける（同じ値を入れるだけなので二重でも害はない）
   ppList.addEventListener('change', (e)=>{
     const field = e.target.dataset.field;
@@ -1545,6 +1585,16 @@
     if(!tr) return;
     const proc = findProc(tr.dataset.procid);
     if(!proc) return;
+    if(field === 'code'){
+      // PT-0004：入力し終えた時点でまだ DE/SU/PN の重複なら、知らせて元の記号へ戻す（保存済みの値は変わっていない）
+      const dup = e.target.dataset.dup;
+      if(dup){
+        window.alert('この部品には既に ' + dup + ' があります。新しく追加せず、既存の ' + dup + ' の行を編集してください。');
+        ppMarkDuplicate(e.target, null);
+        e.target.value = proc.code || '';
+      }
+      return;
+    }
     if(field === 'hours'){
       // 0以上の数だけを受け付ける。空欄は「未入力」として保存する（0とは別の状態）。
       // 負数や数値でないものは保存せず、元の値へ戻す。打った通りの文字列で保存し、小数の桁は丸めない。
