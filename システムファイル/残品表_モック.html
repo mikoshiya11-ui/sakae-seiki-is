@@ -292,8 +292,9 @@
   const RECORDS_KEY = 'sakaeIS_records_v1';
   // タブは工程完了期限が近い順に、最大でこの件数まで表示する（数が多すぎてタブが埋まらないように上限を設ける）。
   // 上限を超えた分は消してしまうと抜け漏れの原因になるので、まとめて「その他」タブに拾われるようにする。
-  // ★SAKAE-ZANPIN-02A（2026-09-17 ジョーシ再裁定）：groupOf() の正式分類は 16 種（NC／3D・NCM／GS・GC／FIN・ASS・DAS・SA／PN／LA／MI／EW／DR／WEL／EM／JG／GG／DG／ST／外注）。
-  //   正式分類は同時に全部 active でも専用タブを失わないこと（期限順で「その他」へ畳まない）が契約。上限は 16＋「その他」を完全収容する 20。
+  // ★SAKAE-ZANPIN-02A（2026-09-17 ジョーシ再裁定）：groupOf() の正式分類は 16 種だった。
+  //   ★PT-0012（2026/10/15）で GG・DG・ST・外注 を撤去し 12 種（NC／3D・NCM／GS・GC／FIN・ASS・DAS・SA／PN／LA／MI／EW／DR／WEL／EM／JG）。
+  //   正式分類は同時に全部 active でも専用タブを失わないこと（期限順で「その他」へ畳まない）が契約。上限 20 は従来どおり。
   //   「その他」は正式分類の overflow 箱としては使わない（正式分類が 20 を超えない限り出ない）。groupOf() 対象外の工程は従来どおりどのタブにも出さない。
   const MAX_TABS = 20;
   const OTHER_KEY = '__OTHER__';
@@ -302,6 +303,12 @@
   // 「全体だから」という理由で新たに表示することはしない（表示対象そのものは増やさない）。
   // 今後 手配系の項目が増えた場合も、DATA に入っていれば自動的にここへ含まれる。 ----
   const ALL_KEY = '__ALL__';
+  // ---- PT-0014・PT-0018：タブを持たず「全体」にだけ出す行（SU と、既存データの読込互換としての DG）。
+  //      タブ一覧・「その他」には出さない。DE など他の分類のない工程は従来どおり出さない。 ----
+  const ALL_ONLY_KEY = '__ALLONLY__';
+  const ALL_ONLY_CODES = { 'SU':true, 'DG':true };
+  // ---- PT-0018：「全体」の既定の並び（社内№の若い順→案件→部品→工程の日程順）。見出しで並べ替えた時は従来どおり ----
+  const CASE_SORT_KEY = '__case__';
 
   function esc(s){
     return (s==null?'':s).toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -331,8 +338,11 @@
   // 残品表に出さない（groupOfがnullを返すとbuildData()側で除外される）。
   // カッコで指定された組は同じタブにまとめる：(3D,NCM)／(FIN,ASS,DAS,SA)／(GS,GC)。NC1〜NC5・NCは
   // 従来通り「NC」1本にまとめる（NCMは上のNC正規表現より先に判定して別グループに振り分ける）。
-  // ★SAKAE-ZANPIN-02A（2026-09-17）：HET は独立分類をやめ「熱処理手配」だけに出す（HIH も同じ）。EM・JG・GG・DG・ST を工程分類に追加。
-  //   OST の特別扱い（独立タブ）は廃止＝先頭 O の外注工程として「外注手配 ＋ ST」に出す（下の externalBaseCode）。正本の工程コードは一切書き換えない。
+  // ★SAKAE-ZANPIN-02A（2026-09-17）：HET は独立分類をやめ「熱処理手配」だけに出す（HIH も同じ）。EM・JG を工程分類に追加。
+  // ★PT-0012・PT-0018（2026/10/15 榮製機現地確認）：GG・ST・DG・外注 の専用タブは撤去。
+  //   GG・ST は先頭 O の外注工程（OGG・OST）の基本タブのためだけにあった分類で、単独の工程は存在しない（本番 0 件）。
+  //   DG は単独の既存データ（本番 4 件）があるため、タブは作らず「全体」にだけ出す（ALL_ONLY_CODES）。
+  //   外注工程（先頭 O・「外注」を含む）は「外注手配」にだけ出す（isExternalCode）。正本の工程コードは一切書き換えない。
   function groupOf(code){
     if(!code) return null;
     if(code==='3D' || code==='NCM') return '3D・NCM';
@@ -340,22 +350,22 @@
     if(code==='GS' || code==='GC') return 'GS・GC';
     if(code==='FIN' || code==='ASS' || code==='DAS' || code==='SA') return 'FIN・ASS・DAS・SA';
     if(code==='PN' || code==='LA' || code==='MI' || code==='EW' || code==='DR' || code==='WEL'
-       || code==='EM' || code==='JG' || code==='GG' || code==='DG' || code==='ST' || code==='外注') return code;
+       || code==='EM' || code==='JG') return code;
     return null;
   }
-  // ---- 外注工程（O-prefix）：工程コードの先頭が「O」＋英数字なら外注工程。正本は 1 工程のまま、残品表では「外注手配」と「O を外した基本工程」の 2 分類から同じ工程を参照する。
-  //   例：OLA → 外注手配 ＋ LA／OMI → 外注手配 ＋ MI／OST → 外注手配 ＋ ST。例外は設けない（テンチョー業務裁定 2026-09-17）。
-  //   工程を 2 件に複製しない・完了ログも 1 件（同じ proc.id を両方の分類が見る）。
+  // ---- 外注工程：PT-0012・PT-0018（2026/10/15 榮製機現地確認）で判定を一本化。
+  //   trim＋Unicode NFKC 正規化のあと「外注」を含む、または先頭が「O」（O の次は何でもよい：OGS・OST・O黒染め、全角Ｏも NFKC で O）。
+  //   外注工程は「外注手配」の行だけを作り、O を外した基本工程のタブ・「全体」の工程行には出さない（1 工程 1 行）。
+  //   旧ロジック（ZANPIN-02A：O＋英数字だけを外注とし、O を外した基本工程のタブにも同じ工程を出す二重表示）は廃止。
+  function isExternalCode(code){
+    const n = normCode(code);
+    return n.indexOf('外注') >= 0 || /^O./.test(n);
+  }
+  // O＋英数字の外注工程から O を外した基本工程（★PT-0012 後は表示の分類には使わない。
+  //   現在工程を選ぶ isPhysicalCode の判定〔前工程・次工程・期限の計算に関係〕を変えないためだけに残す）
   function externalBaseCode(code){
     const m = /^O([A-Z0-9].*)$/.exec(String(code||'').trim());
     return m ? m[1] : null;
-  }
-  // 表示上の工程分類：通常コードは groupOf、外注工程は O を外した基本工程の分類（無ければ null＝基本工程タブには出さない。外注手配には出る）
-  function displayGroupOf(code){
-    const g = groupOf(code);
-    if(g) return g;
-    const base = externalBaseCode(code);
-    return base ? groupOf(base) : null;
   }
   // ---- 手配忘れ防止のための注意項目（3種類）----
   // これは作業票の正式な工程ではない。作業票・工程マスタ・バーコード・実績入力には一切追加せず、
@@ -370,13 +380,13 @@
   //   熱処理手配   正式コード HET／HIH の完全一致。「熱処理」は既存データの読取互換（legacy alias）としてだけ拾う（新規の正式コードにはしない・独立の熱処理工程も作らない）
   //   カナック手配 6 名称（カナック／ニューカナック／カナックOX／EVOLK-D／AST／EVOLK-D+AST）と、trim＋Unicode NFKC 正規化後に完全一致。部分一致はしない
   //                （半角の ﾆｭｰｶﾅｯｸ は NFKC で ニューカナック になり一致する。「カナック追加工」「AST追加」のようなものは拾わない）
-  //   外注手配     コードに「外注」を含む（従来）または 先頭 O の外注工程（externalBaseCode）
+  //   外注手配     コードに「外注」を含む、または先頭 O の外注工程（★PT-0012：isExternalCode に一本化・NFKC 後に判定）
   function normCode(s){ try{ return String(s||'').trim().normalize('NFKC'); }catch(e){ return String(s||'').trim(); } }
   const KANACK_NAMES = ['カナック','ニューカナック','カナックOX','EVOLK-D','AST','EVOLK-D+AST'].map(normCode);
   const ARRANGE_TYPES = [
     { key:'HET',    label:'熱処理手配',   match:function(c){ const n = normCode(c); return n==='HET' || n==='HIH' || n==='熱処理'; } },
     { key:'KANACK', label:'カナック手配', match:function(c){ return KANACK_NAMES.indexOf(normCode(c)) >= 0; } },
-    { key:'GAICHU', label:'外注手配',     match:function(c){ return c.indexOf('外注')>=0 || !!externalBaseCode(c); } }
+    { key:'GAICHU', label:'外注手配',     match:function(c){ return isExternalCode(c); } }
   ];
   const ARRANGE_LABELS = ARRANGE_TYPES.map(function(t){ return t.label; });
   function arrangeTypeOf(code){
@@ -525,11 +535,12 @@
             reason = '全工程が実績入力で完了記録済み';
           }else{
             const cur = sorted[idx];
-            const group = displayGroupOf(cur.code);
+            // PT-0012・PT-0014：外注工程は外注手配、SU・DG は全体のみ、それ以外は groupOf の工程タブ
+            const group = isExternalCode(cur.code) ? '外注手配' : (groupOf(cur.code) ? groupOf(cur.code) + '工程タブ' : (ALL_ONLY_CODES[cur.code] ? '全体のみ' : null));
             if(!group){
               reason = '「'+cur.code+'」は対象外の工程コード';
             }else{
-              chosenLabel = cur.code + '（'+group+'工程タブ）';
+              chosenLabel = cur.code + '（'+group+'）';
               reason = cur.date ? ('今日との差 '+dayDistance(cur.date, todayStr)+'日') : '日付なしの工程しか残っていない';
             }
           }
@@ -638,9 +649,16 @@
       try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
       if(!bs || !bs.order) continue;
       const order = bs.order;
-      (bs.parts||[]).forEach(part=>{
+      // ---- PT-0018：「全体」で同じ案件の行をまとめて並べるための表示用の情報（保存はしない）。
+      //   社内№欄は部品ごとの番号（35481000-11 の部品 001 は 35481001-11）なので、その欄だけで並べると
+      //   末尾だけ違う別案件が混ざる。案件の基本の社内№（番号として比較）と案件の識別（recordId、無ければ保存キー）でまとめる。
+      const caseBaseNo = ((order.orderNo || order.productNo) || '').trim();
+      const caseId = entries[i].recordId || key;
+      (bs.parts||[]).forEach((part, partIdx)=>{
         const sorted = sortedProcesses(part.processes);
         if(!sorted.length) return;
+        const partSeq = (part.subNo != null && part.subNo !== '' && isFinite(Number(part.subNo))) ? Number(part.subNo) : (1000 + partIdx);
+        const caseSort = { caseBaseNo: caseBaseNo, caseId: caseId, partSeq: partSeq, partIdx: partIdx };
 
         // ---- 手配忘れ防止の注意項目。工程の「現在／これから」に関係なく、
         // まだ完了していない対象工程があれば必ず出す（手配は工程より前に済ませるものなので、
@@ -671,7 +689,9 @@
             // 取り違えないよう、そのまま持っておく。工程記号では特定しない（同じ記号が複数あるため）。
             storeKey: key, recordId: entries[i].recordId || '', partId: part.id, procId: proc.id,
             // arrange が無い＝未手配。ここでは読むだけで、実データには作らない（表示用の既定値）。
-            arrange: proc.arrange || null
+            arrange: proc.arrange || null,
+            // PT-0018：「全体」の並び用（工程の日程順＝sortedProcesses の位置）
+            caseBaseNo: caseSort.caseBaseNo, caseId: caseSort.caseId, partSeq: caseSort.partSeq, partIdx: caseSort.partIdx, procSeq: sorted.indexOf(proc)
           });
         });
 
@@ -689,7 +709,10 @@
         const orderLabel = partOrderNo(order, part);
         sorted.forEach((proc, j)=>{
           const isDoneProc = doneIds.has(proc.id);
-          const group = displayGroupOf(proc.code);   // 外注工程（O-prefix）は O を外した基本工程の分類へ（正本は proc のまま・複製しない）
+          // ★PT-0012・PT-0018：外注工程は上の「外注手配」の行だけ（基本工程のタブ・「全体」の工程行には出さない＝1 工程 1 行）
+          if(isExternalCode(proc.code)) return;
+          // ★PT-0014・PT-0018：SU（と既存データの DG）はタブを持たず「全体」にだけ出す。期限は SU の日付・完了✓は既存の工程完了状態
+          const group = groupOf(proc.code) || (ALL_ONLY_CODES[proc.code] ? ALL_ONLY_KEY : null);
           if(!group) return;
           const prev = j>0 ? sorted[j-1] : null;
           const next = j<sorted.length-1 ? sorted[j+1] : null;
@@ -705,9 +728,10 @@
           prevProc: prev ? ((prev.code||'')+(prev.ident||'')) : '-', nextProc: next ? ((next.code||'')+(next.ident||'')) : '-',
           isArrange: false, arrangeDue: '', arrangeAmpm: '',
           storeKey: '', recordId: '', partId: '', procId: cur.id, arrange: null,   // 手配欄は手配行にだけ出す
-          isExternal: !!externalBaseCode(cur.code),          // 外注工程を基本工程タブに出す時の印（同じ工程が外注手配にも出る）
           isDone: isDoneProc,                                 // 左端✓（読取専用）＝実績入力の工程完了状態
-          _rowKey: (order.productNo||'') + '_' + part.id + '_' + cur.id
+          _rowKey: (order.productNo||'') + '_' + part.id + '_' + cur.id,
+          // PT-0018：「全体」の並び用（工程の日程順）
+          caseBaseNo: caseSort.caseBaseNo, caseId: caseSort.caseId, partSeq: caseSort.partSeq, partIdx: caseSort.partIdx, procSeq: j
           });
         });
       });
@@ -744,13 +768,15 @@
     // 手配の3種は工程グループではないので、MAX_TABS の「その他」畳み込みには巻き込まない
     // （畳み込まれると手配忘れ防止のタブが消えてしまうため）。並びは常に一番右。
     const arrangeKeys = ARRANGE_LABELS.filter(function(l){ return (data[l]||[]).length; });
-    const sorted = sortedGroupKeys(data).filter(function(k){ return ARRANGE_LABELS.indexOf(k) === -1; });
+    // PT-0014：「全体だけの行」（SU・DG）はタブにしない・「その他」にも畳まない
+    const sorted = sortedGroupKeys(data).filter(function(k){ return ARRANGE_LABELS.indexOf(k) === -1 && k !== ALL_ONLY_KEY; });
     const groups = (sorted.length <= MAX_TABS)
       ? sorted
       : sorted.slice(0, MAX_TABS - 1).concat([OTHER_KEY]);
     const all = groups.concat(arrangeKeys);
     // 「全体」は工程グループではないので MAX_TABS の数には数えず、常に一番左に置く
-    return all.length ? [ALL_KEY].concat(all) : [];
+    // （PT-0014：SU・DG の行しか無い時も「全体」だけは出す）
+    return (all.length || (data[ALL_ONLY_KEY]||[]).length) ? [ALL_KEY].concat(all) : [];
   }
   // 指定したタブ（グループ）に表示する行一覧。「その他」タブの場合はMAX_TABSに収まりきらなかった
   // 残り全グループの行をまとめて返す（＝件数が多くてもデータが消えることはない）
@@ -762,11 +788,12 @@
       return rows;
     }
     if(group === OTHER_KEY){
-      const sorted = sortedGroupKeys(data).filter(function(k){ return ARRANGE_LABELS.indexOf(k) === -1; });
+      const sorted = sortedGroupKeys(data).filter(function(k){ return ARRANGE_LABELS.indexOf(k) === -1 && k !== ALL_ONLY_KEY; });
       let rows = [];
       sorted.slice(MAX_TABS - 1).forEach(g=>{ rows = rows.concat(data[g]||[]); });
       return rows;
     }
+    if(group === ALL_ONLY_KEY) return [];   // タブではない（「全体」にだけ含める）
     return data[group] || [];
   }
 
@@ -828,11 +855,11 @@
 
   let DATA = buildData();
   let currentProc = orderedGroups(DATA)[0] || '';   // orderedGroups の先頭は「全体」
-  // 並び順の既定はタブごとに変える。「全体」は工程を横断して見る画面なので、
-  // 工程完了期限ではなく案件の納期が近い順にする（現場要望）。工程タブは従来どおり工程完了期限順。
-  // 見出しをクリックして並べ替えたあとは、その選択をタブを切り替えるまで保つ。
+  // 並び順の既定はタブごとに変える。★PT-0018（2026/10/15 榮製機現地確認）：「全体」は同じ社内№の行がまとまって
+  // 並び、その製品がどの工程まで進んでいるかを追えるよう、社内№の若い順→案件→部品→工程の日程順（CASE_SORT_KEY）。
+  // 工程タブは従来どおり工程完了期限順。見出しをクリックして並べ替えたあとは、その選択をタブを切り替えるまで保つ。
   function defaultSortKeyFor(group){
-    if(group === ALL_KEY) return 'due';
+    if(group === ALL_KEY) return CASE_SORT_KEY;
     if(ARRANGE_LABELS.indexOf(group) >= 0) return 'arrangeDue';   // 手配タブは手配期限が近い順
     return 'procDue';
   }
@@ -1019,6 +1046,28 @@
     ).join('');
   }
 
+  // ---- PT-0018：「全体」の既定の並び。①案件の基本の社内№（数字の塊ごとに番号として比較：35481000-11 → [35481000, 11]）
+  //      ②同じ社内№の別案件は案件の識別（recordId）で分ける ③部品（枝番の若い順）④工程の日程順（sortedProcesses の位置）。
+  //      表示用の比較だけで、データは書かない。 ----
+  function caseNoParts(s){ return (String(s||'').match(/\d+/g) || []).map(Number); }
+  function compareCaseOrder(a, b){
+    const na = caseNoParts(a.caseBaseNo), nb = caseNoParts(b.caseBaseNo);
+    for(let k=0; k<Math.max(na.length, nb.length); k++){
+      if(na[k] === undefined) return -1;
+      if(nb[k] === undefined) return 1;
+      if(na[k] !== nb[k]) return na[k] - nb[k];
+    }
+    const sa = String(a.caseBaseNo||''), sb = String(b.caseBaseNo||'');
+    if(sa !== sb) return sa < sb ? -1 : 1;
+    const ca = String(a.caseId||''), cb = String(b.caseId||'');
+    if(ca !== cb) return ca < cb ? -1 : 1;
+    if((a.partSeq||0) !== (b.partSeq||0)) return (a.partSeq||0) - (b.partSeq||0);
+    if((a.partIdx||0) !== (b.partIdx||0)) return (a.partIdx||0) - (b.partIdx||0);
+    if((a.procSeq||0) !== (b.procSeq||0)) return (a.procSeq||0) - (b.procSeq||0);
+    const ka = String(a._rowKey||''), kb = String(b._rowKey||'');
+    return ka < kb ? -1 : (ka > kb ? 1 : 0);
+  }
+
   function getRows(){
     let rows = rowsForGroup(DATA, currentProc).slice();
     if(searchTerm){
@@ -1029,6 +1078,10 @@
         (r.name||'').toLowerCase().includes(t) ||
         (r.model||'').toLowerCase().includes(t)
       );
+    }
+    if(sortKey === CASE_SORT_KEY){
+      rows.sort((a,b)=> compareCaseOrder(a, b) * (sortAsc ? 1 : -1));
+      return rows;
     }
     rows.sort((a,b)=>{
       let av = a[sortKey], bv = b[sortKey];
@@ -1091,7 +1144,7 @@
       html += '<td class="nameCell">'+esc(row.name)+'</td>';
       html += '<td>'+esc(row.qty)+'</td>';
       html += '<td><span class="procTag'+(row.isArrange?' arrange':'')+'">'+esc(row.process)+'</span>'
-        + (row.isArrange ? '<span class="arrangeTag">手配</span>' : (row.isExternal ? '<span class="arrangeTag">外注</span>' : '')) + '</td>';
+        + (row.isArrange ? '<span class="arrangeTag">手配</span>' : '') + '</td>';   // PT-0012：外注工程は手配行だけになったため「外注」印の工程行は無い
       html += '<td>'+(row.hours || row.hours===0 ? row.hours+'H' : '-')+'</td>';
       const ampmText = row.procDue ? '<span class="dueAmpm">'+(row.procAmpm==='PM'?'午後':'午前')+'</span>' : '';
       html += '<td class="dueCell '+dueCls+'">'+fmtDate(row.procDue)+ampmText+badge+'</td>';
