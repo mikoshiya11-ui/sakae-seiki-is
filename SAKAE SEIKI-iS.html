@@ -447,9 +447,9 @@
             <div class="pfHeaderLeft">
               <div class="pfTitle">受注に関する連絡書</div>
               <div class="pfStatusRow">
-                <label class="pfCheck"><input type="radio" name="f_status" value="検討" checked><span class="box"></span>検討</label>
+                <label class="pfCheck"><input type="radio" name="f_status" value="検討"><span class="box"></span>検討</label>
                 <label class="pfCheck"><input type="radio" name="f_status" value="情報"><span class="box"></span>情報</label>
-                <label class="pfCheck"><input type="radio" name="f_status" value="確定"><span class="box"></span>確定</label>
+                <label class="pfCheck"><input type="radio" name="f_status" value="確定" checked><span class="box"></span>確定</label>
               </div>
             </div>
             <div class="pfHeaderRight">
@@ -841,6 +841,13 @@
     markUpdated();
   }
 
+  // ★PT-0017（2026-10-19）：受注に関する連絡書の状態（検討／情報／確定）の既定は「確定」。
+  //   新規は「確定」で始めて保存時に明示的に記録する。状態が記録されていない既存案件は、フォーム・案件詳細とも「確定」と表示するだけで、
+  //   表示のために書き換えない（一括変更・移行もしない）。明示的に保存済みの状態はそのまま。
+  //   保存時の欄比較（3-way）でも未記録＝「確定」と同じ値として扱う：未記録の案件で別の状態を選んだ時に、表示上の「確定」と記録の空が
+  //   食い違って「同じ欄の重なり」にならないようにするため（記録の形式・保存の仕組みは変えない）
+  const STATUS2_DEFAULT = '確定';
+
   // ---- 受注に関する連絡書のフォームを通さずに案件を1件作るときの形 ----
   // ★形をここ以外で新しく作らない。作業票データから補うときも、新規作成から作るときも同じ形にする。
   //   別々に書いていると、どちらかにだけ項目が増えたときに案件によって形が違う状態になる。
@@ -855,6 +862,7 @@
       itemName: o.itemName || '',
       category: '型',
       subject: '新作',
+      status2: STATUS2_DEFAULT,   // PT-0017：新しく作る案件は状態「確定」を明示的に記録する
       orderDate: o.orderDate || '',
       dueDate: o.dueDate || '',
       qty: o.qty || '',
@@ -1729,11 +1737,12 @@
   const TOPFORM_LEAVES = [].concat(TOPFORM_BASIC, TOPFORM_NOTICE_TEXT, Object.keys(TOPFORM_RADIO), TOPFORM_TABLES, TOPFORM_REG_KEYS.map(k=> 'registration.' + k));
   // 新規フォームの「まっさら」な値（radio の既定表示は intent ではない）。orderDate は新規既定（当日）として別扱い
   // ★PT-0011：登録事項の 3 項目（品種・型精度・見切変化）は新規フォームで未選択なので、基準値も未選択（''）＝ここに書かない
-  const TOPFORM_PRISTINE = { status2:'検討', category:'型', subject:'新作' };
+  const TOPFORM_PRISTINE = { status2:STATUS2_DEFAULT, category:'型', subject:'新作' };
   function topformCanon(v){ try{ if(window.sakaeCausal && typeof window.sakaeCausal.canon === 'function') return window.sakaeCausal.canon(v); }catch(e){} return JSON.stringify(v); }
   // 比較前の正規化：null/undefined/'' は同値・前後空白は無視・日付は文字列のまま・数値は文字列化。表は正規化 JSON を 1 値として比べる
   function normalizeTopField(key, v){
     if(TOPFORM_TABLES.indexOf(key) >= 0) return topformCanon(Array.isArray(v) ? v : []);
+    if(key === 'status2' && (v === null || v === undefined || String(v).trim() === '')) return STATUS2_DEFAULT;   // PT-0017：未記録＝確定として比べる
     return (v === null || v === undefined) ? '' : String(v).trim();
   }
   // フォーム DOM から LOCAL を読む。values＝保存に使う値（従来の persistOrderForm と同じ作り方）／leaves＝正規化した比較用
@@ -1876,7 +1885,7 @@
     Object.keys(REG_FIELD_KEYS).forEach(id=>{ document.getElementById(id).value = rec ? (reg[REG_FIELD_KEYS[id]] || '') : ''; });
     document.getElementById('f_orderDate').value = rec ? (rec.orderDate || '') : todayStr();
     document.getElementById('f_dueDate').value = rec ? (rec.dueDate || '') : '';
-    setRadio('f_status', rec ? (rec.status2 || '検討') : '検討');
+    setRadio('f_status', rec ? (rec.status2 || STATUS2_DEFAULT) : STATUS2_DEFAULT);   // PT-0017：未記録は「確定」と表示（書き換えない）
     setRadio('f_shikyu', rec ? (rec.shikyu || '') : '');
     setRadio('f_category', rec ? (rec.category || '型') : '型');
     setRadio('f_subject', rec ? (rec.subject || '新作') : '新作');
@@ -2074,7 +2083,8 @@
     }
     // ---- 新規作成：入力した欄と新規の既定（進行中・品目「型」・科目「新作」・受注日）だけで作る。radio の初期表示は intent ではない ----
     const dirty = diffTopFormFields(pristineNewFormLeaves(), L);
-    const rec = { productNo: orderNo, orderNo: orderNo, customer: customer, category: '型', subject: '新作', orderDate: L.values.orderDate || '' };
+    // PT-0017：状態は新規の既定「確定」を明示的に記録する（別の状態を選んだ時は下の dirty で上書き）
+    const rec = { productNo: orderNo, orderNo: orderNo, customer: customer, category: '型', subject: '新作', status2: STATUS2_DEFAULT, orderDate: L.values.orderDate || '' };
     Object.keys(dirty).forEach(k=>{ topformSetLeaf(rec, k, topformLeafValue(L.values, k)); });
     rec.productNo = orderNo;
     // ---- ひな形から作成する場合だけ、日程を展開できるかを先に確認する ----
@@ -2170,7 +2180,7 @@
     currentDetailId = id;
     detailTitle.textContent = rec.orderNo + '　案件詳細';
     const rows = [
-      ['ステータス', rec.status2 || '-'],
+      ['ステータス', rec.status2 || STATUS2_DEFAULT],   // PT-0017：未記録は「確定」と表示
       ['T', rec.tCode || '-'],
       ['社内№', rec.orderNo || '-'],
       ['客先名', rec.customer],
@@ -2400,7 +2410,7 @@
     // 科目（新作／改造／修理／修正／芯出／残工事）はひな形の内容を表す項目なので、以前は強制的に「新作」に上書きしてしまっていたのを修正。
     // ひな形が「改造」用に作られていた場合など、そのまま引き継がれるようにする。
     const seed = Object.assign({}, tpl, {
-      id: null, isTemplate: false, status: 'inprogress', status2: '検討',
+      id: null, isTemplate: false, status: 'inprogress', status2: STATUS2_DEFAULT,
       productNo: '', orderNo: '', tCode: '',
       orderDate: todayStr(), dueDate: '', issueDate1: '', issueDate2: '',
       designSchedule: stripDates(tpl.designSchedule),
