@@ -241,6 +241,17 @@
   .rowCtxMenu button:disabled:hover{ background:none; }
 
   /* ---- 直前の1操作だけ元に戻せるトースト通知（部品削除のやり直しに使う。ページを開いている間だけ有効） ---- */
+  /* ---- PT-0016：業務データの保存に失敗した時の知らせ（同期の知らせ・元に戻すトーストとは別）。印刷には出さない。
+     ヘッダーや上部のボタンに重ねないよう、固定表示にせずページの流れの中（ボタン列の上）に置く（出ている間だけ下を押し下げる） ---- */
+  .saveErrorBar{
+    display:none; box-sizing:border-box; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;
+    background:#fdecea; border:2px solid #c0392b; border-radius:10px; padding:10px 14px; color:#7a1a10;
+    font-size:13.5px; font-weight:700;
+  }
+  .saveErrorBar.show{ display:flex; }
+  .saveErrorBar .saveErrorDetail{ font-weight:400; font-size:12px; color:#8a3a30; }
+  .saveErrorBar button{ border:none; border-radius:7px; padding:6px 14px; font-size:13px; font-weight:700; cursor:pointer; background:#c0392b; color:#fff; font-family:inherit; }
+  @media print{ .saveErrorBar{ display:none !important; } }
   .undoToast{
     position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:9999;
     background:#1a2233; color:#fff; border-radius:10px; padding:11px 16px; font-size:13px;
@@ -267,6 +278,11 @@
   </div>
 
   <div class="wrap">
+
+    <div class="saveErrorBar" id="saveErrorBar" role="alert">
+      <span><span id="saveErrorMain">保存できませんでした。</span>入力した内容はまだ保存されていません（画面の値は残っています）。<span class="saveErrorDetail" id="saveErrorDetail"></span></span>
+      <button type="button" id="saveErrorRetryBtn">もう一度保存</button>
+    </div>
 
     <div class="card mainActionCard" id="mainActionCard">
       <div class="mainActionRow">
@@ -746,14 +762,75 @@
     //   1回目は案件カードがまだ無く v1 へ、カードができた次の保存で rid へ移る。
     // 未解決の「同じ欄の重なり」がある間は、その欄だけ保存先の現在値で書く（自分の値を黙って共有へ流さない）。
     // 因果同期（SYNC-RACE-01）：guard が「どの保存先テキストを見て作った保存か」（_sync）を付ける。付けられない時は書かない（旧 setItem へ戻さない）
+    // ★PT-0016：業務データの保存に失敗した時（保存の準備ができない／保存結果が失敗／例外）は、黙って終わらず画面上部に知らせる。
+    //   画面の入力値（state）はそのまま残すので、次の保存操作か「もう一度保存」で保存し直せる。成功した時だけ知らせを消す。
+    //   知らせるのは端末への保存の失敗だけ。共有への送信は従来どおり（未送信の控えを残して再送）で、ここでは「共有まで保存済み」とは表示しない。
+    //   同期の因果記録だけの失敗（PT-0003）は業務データの保存結果に含まれないので、ここでは知らせない。
     const prepared = syncGuard ? syncGuard.prepareSave(state) : null;
-    if(prepared === null) return;
-    const text = JSON.stringify(prepared);
-    const res = window.sakaeKeys.writeProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }, text, { kind: 'stamped' });
+    if(prepared === null){ showSaveError('prepare', '保存の準備ができませんでした（prepareSave が null）'); return; }
+    let res;
+    try{
+      const text = JSON.stringify(prepared);
+      res = window.sakaeKeys.writeProductData('buhinhyo', { productNo: urlProductNo, recordId: caseCtx.recordId }, text, { kind: 'stamped' });
+    }catch(e){
+      showSaveError('exception', (e && e.message) || String(e));
+      return;
+    }
     if(syncGuard) syncGuard.noteOwnSave(res);   // 「自分が書いた値」を控え、共有へ届いたら基準を進める（書かなかった時は数えない）
-    if(!res || !res.ok) return;
+    if(!res || !res.ok){ showSaveError(saveErrorKind(res), (res && res.error) || '保存結果を確認できませんでした（結果なし）'); return; }
+    hideSaveError();
     syncToOrderRecords();
   }
+  // ---- PT-0016：保存失敗の知らせ。主メッセージは原因の種類ごとに利用者向けの言葉で出し、内部の識別子（rid／v1 など）は出さない。
+  //   原因別の診断情報（保存処理が返した理由そのもの）は、帯の data-diag・title（マウスを重ねると見える）と console に残す。
+  //   端末への書込みの失敗と言えるのは、共通処理が書込み失敗・読み戻し不一致を返した時だけ。それ以外を端末の失敗とは説明しない。 ----
+  const SAVE_ERROR_MAIN = {
+    write:     '端末への保存に失敗しました。',
+    verify:    '端末に保存した内容を確認できませんでした。',
+    prepare:   '保存の準備ができず、保存できませんでした。',
+    check:     '保存前の確認で止まったため、保存できませんでした。',
+    exception: '保存中にエラーが起きたため、保存できませんでした。',
+    noresult:  '保存の結果を確認できませんでした。'
+  };
+  function saveErrorKind(res){
+    if(!res) return 'noresult';
+    const er = String(res.error || '');
+    if(/^(v1|rid)保存に失敗/.test(er)) return 'write';
+    if(er === 'ridの読み戻しが一致しない') return 'verify';
+    return 'check';
+  }
+  // ★PT-0016 追加対策A（2026-10-19 アヤコ判断）：保存に失敗して未保存の入力が残っている間は、ブラウザ標準の離脱確認を出す。
+  //   状態は save() の結果だけで決める：失敗で true、保存成功で false（失敗後に入力を足しても、成功を確認するまで true のまま）。
+  //   共有同期だけ・因果記録だけの失敗は save() の失敗ではないので対象外。独自の確認画面は作らない（表示・文言はブラウザ任せで、必ず出るとは限らない）。
+  var unsavedAfterFailure;   // var・初期値なし：この行より前に save() が呼ばれても参照でき、その結果を上書きしない（未設定＝確認なし）
+  window.addEventListener('beforeunload', (e)=>{
+    if(!unsavedAfterFailure) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+  function showSaveError(kind, diag){
+    unsavedAfterFailure = true;
+    const bar = document.getElementById('saveErrorBar');
+    if(!bar) return;
+    const m = document.getElementById('saveErrorMain');
+    if(m) m.textContent = SAVE_ERROR_MAIN[kind] || SAVE_ERROR_MAIN.check;
+    const d = document.getElementById('saveErrorDetail');
+    if(d) d.textContent = (kind === 'write' || kind === 'verify') ? '端末の空き容量や、ブラウザの設定（保存の制限）をご確認ください。' : '';
+    bar.dataset.kind = kind;
+    bar.dataset.diag = String(diag || '').slice(0, 200);
+    bar.title = '診断情報：' + bar.dataset.diag;
+    bar.classList.add('show');
+    try{ console.warn('[作業票] 業務データの保存に失敗:', kind, diag); }catch(e){}
+  }
+  function hideSaveError(){
+    unsavedAfterFailure = false;   // 保存成功を確認した時だけ呼ばれる
+    const bar = document.getElementById('saveErrorBar');
+    if(bar) bar.classList.remove('show');
+  }
+  (function(){
+    const btn = document.getElementById('saveErrorRetryBtn');
+    if(btn) btn.addEventListener('click', ()=>{ save(); });
+  })();
 
   // ---- 受注連絡書一覧（SAKAE SEIKI-iS.html）ともリンクする ----
   // 正式には受注連絡書→作業票の順で決まる想定だが、実際には作業票側で客先・型式・納期を先に決めることも多いため、

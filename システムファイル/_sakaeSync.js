@@ -591,7 +591,12 @@
       // 解決できない・曖昧 → 従来どおり v1 へ保存する（今日とまったく同じ挙動）。
       // ★曖昧なときに、どちらかの recordId へ rid 保存するのは禁止。
       if(r.state !== 'ok'){
-        localStorage.setItem(k1, raw);
+        // ★PT-0016：端末への書込み失敗（容量超過など）を捕まえて「失敗」として返す（以前は例外が呼び出し元へ抜け、利用者に知らされなかった）
+        try{
+          localStorage.setItem(k1, raw);
+        }catch(e){
+          return { ok:false, wrote:null, key:k1, migrated:false, state:r.state, error:'v1保存に失敗: ' + (e && e.message) };
+        }
         SK._noteWriteToGuards(k1, raw);
         return { ok:true, wrote:'v1', key:k1, migrated:false, state:r.state, reason:r.reason, identity: identity, text: raw };
       }
