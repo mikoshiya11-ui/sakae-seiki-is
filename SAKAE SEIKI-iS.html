@@ -1193,8 +1193,33 @@
       return r;
     }
   }) : null;
+  // ★PT-0020（2026-10-21）：旧版（SAKAE-TOPFORM-01〜b0987108）が誤って作った「状態（status2）」の重なりの控えを、起動時に端末からだけ片付ける。
+  //   PT-0017 起因の新規不具合ではなく、旧版で生成された控えの残留是正。片付けるのは次をすべて満たすものだけで、それ以外は触らない：
+  //   ・欄が records[<id>].status2 ／こちら＝「確定」／相手＝未記録（null・undefined・空）／保存先（端末の案件一覧）の現在値も未記録
+  //     （PT-0017 の定義で未記録＝確定なので、意味が同じで選ぶ必要が無い）
+  //   ・相手が「検討」「情報」など実際の値を持つもの、案件が見つからないもの、「こちらを残す」を選んで送信待ちのもの（unsent）は対象外
+  //   共有へは書かない（guard.dismissStale：控えを消し、メモリのその欄を保存先の値へ戻すだけ・保存しない）。何度開いても結果は同じ。
+  let cleanedStatus2Conflicts = 0;
+  function cleanupLegacyStatus2Conflicts(){
+    if(!syncGuard || typeof syncGuard.dismissStale !== 'function') return 0;
+    const isUnrecorded = (v)=> v === null || v === undefined || String(v).trim() === '';
+    let list;
+    try{ list = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }catch(e){ return 0; }
+    if(!Array.isArray(list)) return 0;
+    let n = 0;
+    (syncGuard.snapshot().entries || []).forEach(e=>{
+      const m = /^records\[([^\]]+)\]\.status2$/.exec((e && e.path) || '');
+      if(!m || e.unsent) return;
+      if(isUnrecorded(e.mine) || String(e.mine).trim() !== STATUS2_DEFAULT || !isUnrecorded(e.incoming)) return;
+      const cur = list.find(r=> r && r.id === m[1]);
+      if(!cur || !isUnrecorded(cur.status2)) return;
+      if(syncGuard.dismissStale(e.path)) n++;
+    });
+    return n;
+  }
   if(syncGuard){
     syncGuard.init();
+    cleanedStatus2Conflicts = cleanupLegacyStatus2Conflicts();
     // 控えを読み戻したときの描き直しは、描画に使う要素を取得した後（下の「const quickLinks = …」の直後）で行う（TOPBOOT-01）
   }
   window.addEventListener('storage', (e)=>{
@@ -1275,7 +1300,7 @@
   const resultsMeta = document.getElementById('resultsMeta');
   const hero = document.getElementById('hero');
   const quickLinks = document.getElementById('quickLinks');
-  if(syncGuard && syncGuard.snapshot().entries.length) render();   // guard.init が控え（同じ欄の重なり）を読み戻していれば、その内容で描く（TOPBOOT-01：元は init 直後）
+  if(syncGuard && (syncGuard.snapshot().entries.length || cleanedStatus2Conflicts)) render();   // guard.init が控え（同じ欄の重なり）を読み戻していれば、その内容で描く（TOPBOOT-01：元は init 直後）
 
   function esc(s){
     return (s||'').toString().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');

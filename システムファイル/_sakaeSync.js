@@ -2254,6 +2254,66 @@
     await Promise.all(jobs);
   };
 
+  // ---- ★PT-0019（2026-10-21）：1 つのキーを「いま」共有へ送り、結果を返す窓口（契約 version 1）----
+  //   画面側の「こちらを残す」が、共有へ保存できたかを確かめてから解決済みにするために使う（_sakaeLocalMerge.js）。
+  //   デバウンス待ちの送信があれば取り消して、端末の現在値をその場で送る。送信の中身・控えの扱いは pushKey と同じ。
+  //   戻り値：{ ok, key, error?, denied? }（denied＝書込みの許可が無い）。同期対象外のキーは送る必要が無いので ok とする。例外は投げない
+  window.sakaeSyncCommit = Object.freeze({
+    version: 1,
+    flushKey: async function(key){
+      try{
+        if(!isSyncKey(key)) return { ok:true, key: key, localOnly:true };
+        if(pushTimers[key]){ clearTimeout(pushTimers[key]); delete pushTimers[key]; }
+        delete pendingActions[key];
+        const cur = localStorage.getItem(key);
+        if(cur == null) return { ok:false, key: key, error:'端末に値がありません' };
+        return await pushKey(key, cur);
+      }catch(e){
+        return { ok:false, key: key, error: String((e && e.message) || e) };
+      }
+    }
+  });
+
+  // ---- ★PT-0019：書込みの許可が無い時の知らせ ----
+  // 401／403、または PostgreSQL の権限拒否（42501：RLS の new row violates … を含む）を「許可が無い」とみなす。
+  // 圏外・一時的な通信失敗は対象外（従来どおり控えを残して自動で送り直す）。
+  function isWriteDenied(res){
+    try{
+      const e = (res && res.error) || {};
+      const st = Number(res && res.status);
+      if(st === 401 || st === 403) return true;
+      const code = String(e.code || '');
+      if(code === '42501' || code === 'PGRST301' || code === 'PGRST302') return true;
+      return /row-level security|permission denied/i.test(String(e.message || ''));
+    }catch(x){ return false; }
+  }
+  const WRITE_DENIED_ID = 'sakaeSyncWriteDeniedNotice';
+  // 利用者向けの本文には技術情報（キー・JSON・エラー文）を出さない。診断用の情報は data-diag／title と console にだけ残す。
+  // 閉じるボタンは置かない（送信が通ったら自動で消える）
+  function showWriteDeniedNotice(error, res){
+    try{
+      if(typeof document === 'undefined' || !document || !document.body) return;
+      const diag = 'status=' + String(res && res.status != null ? res.status : '-') + ' code=' + String((error && error.code) || '-');
+      let d = document.getElementById(WRITE_DENIED_ID);
+      if(!d){
+        d = document.createElement('div');
+        d.id = WRITE_DENIED_ID;
+        d.setAttribute('role', 'alert');
+        d.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:99998;'
+          + 'background:#fdecea;border:2px solid #c0392b;border-radius:10px;color:#7a1a10;padding:10px 14px;'
+          + 'font-size:14px;font-weight:700;line-height:1.6;font-family:"Hiragino Sans","Yu Gothic",sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.2);';
+        d.textContent = '共有へ保存できませんでした。このアカウントには共有データへの書込みの許可がありません。'
+          + '入力した内容はこの端末に残っています。管理者へ連絡してください。';
+        document.body.appendChild(d);
+      }
+      d.dataset.diag = diag;
+      d.title = '診断情報：' + diag;
+    }catch(e){}
+  }
+  function hideWriteDeniedNotice(){
+    try{ const d = document.getElementById(WRITE_DENIED_ID); if(d && d.parentNode) d.parentNode.removeChild(d); }catch(e){}
+  }
+
   // ---- localStorageへの書き込み・削除を乗っ取り、対象キーならSupabaseにも送る ----
   // （確定解除・残品表の削除などlocalStorage.removeItem()を使う操作も、ここでフックしないと
   //   Supabase側に古い値が残り続け、他の人の画面や次回読み込み時に元の状態へ巻き戻ってしまうため必須）
@@ -2402,16 +2462,24 @@
     rememberOutbound(key, mid);
     try{
       const { data:{ user } } = await sb.auth.getUser();
-      const { error } = await sb.from('kv_store').upsert({ key, value: parsed, updated_by: user ? user.id : null, client_mutation_id: mid }, { onConflict:'key' });
+      const res = await sb.from('kv_store').upsert({ key, value: parsed, updated_by: user ? user.id : null, client_mutation_id: mid }, { onConflict:'key' });
+      const error = res && res.error;
       if(error){
         console.warn('[sakaeSync] push失敗:', key, error);
-        return { ok:false, key: key, error: String((error && error.message) || error) };
+        // ★PT-0019：書込みの許可が無い（401／403・RLS 拒否）時は、画面に消えない知らせを出す（以前は console だけで、保存できたように見えた）。
+        //   未送信の内容（控え）は従来どおり残し、次の起動・保存で送り直す
+        const denied = isWriteDenied(res);
+        if(denied) showWriteDeniedNotice(error, res);
+        return { ok:false, key: key, error: String((error && error.message) || error), denied: denied };
       }
+      hideWriteDeniedNotice();
       // ---- 送っただけでは控えを消さない ----
       // 送信が通ったように見えても、共有側にその値が入ったとは限らない。
       // 共有を読み直して、送りたかった値になっていることを確かめてからだけ控えを消す。
       // 確かめられなければ控えを残す（次につないだ時にもう一度送る）。
       await settlePendingAfterPush(key);
+      // ★PT-0019：送信が通ったことを画面側（_sakaeLocalMerge.js の未保存の控え）へ知らせる
+      try{ window.dispatchEvent(new CustomEvent('sakaeSync:pushed', { detail: { key: key } })); }catch(e){}
       return { ok:true, key: key };
     }catch(e){
       console.warn('[sakaeSync] push失敗:', key, e);

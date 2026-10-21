@@ -239,13 +239,28 @@
                    'order.orderDate':'受注日', 'order.dueDate':'納期', 'order.issueDate':'発行日', 'order.shipDate':'発送日',
                    'name':'部品名', 'code':'工程記号', 'date':'工程日付', 'days':'日数', 'hours':'工数', 'note':'メモ', 'ampm':'午前/午後',
                    'customer':'客先名', 'modelName':'型式', 'itemName':'品名', 'qty':'数量', 'status':'状態', 'dueDate':'納期' };
+  // ★PT-0020（2026-10-21）：案件一覧（records）の受注連絡書の欄は、内部キー名（status2 など）をそのまま出さず画面の項目名で出す。
+  //   records の path だけに使う（他の画面の同名キーの表示は変えない）
+  const RECORD_LABELS = { status2:'状態（検討／情報／確定）', tCode:'T', category:'品目', subject:'科目', shikyu:'支給', komeSu:'込メ数',
+                          amount:'受注金額', extraDocs:'本票以外資料', infoForecast:'受注見込', drafter:'起票者', mfgResp:'製造責任者',
+                          salesResp:'営業責任者', designResp:'設計責任者', issueDate1:'発行日①', issueDate2:'発行日②', orderDate:'受注日',
+                          designSchedule:'見積工数・日程', designPlan:'設計計画', costSummary:'変動費',
+                          hinshu:'品種', precision:'型精度', partingChange:'見切変化', mbSpec:'ＭＢ仕様', slideCount:'スライド数',
+                          cavityMaterial:'キャビコア材質', plateSize:'型板サイズ', shapeArea:'形状面積', expectedProfit:'見込利益' };
   function labelOf(path){
     if(LABELS[path]) return LABELS[path];
     const last = String(path).split('.').pop().replace(/\[.*\]$/, '');
-    const ctx = /processes\[/.test(path) ? '工程の' : /parts\[/.test(path) ? '部品の' : /records\[/.test(path) ? '案件の' : '';
-    return ctx + (LABELS[last] || last || path);
+    const isRec = /records\[/.test(path);
+    const ctx = /processes\[/.test(path) ? '工程の' : /parts\[/.test(path) ? '部品の' : isRec ? '案件の' : '';
+    return ctx + ((isRec && RECORD_LABELS[last]) || LABELS[last] || last || path);
   }
-  function short(v){ if(v === null || v === undefined) return '（なし）'; const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > 24 ? s.slice(0, 24) + '…' : s; }
+  // ★PT-0020：値の表示。案件一覧の欄が無い時は「（未記録）」。表・まとまり（配列・オブジェクト）は JSON をそのまま出さず件数で示す
+  function short(v, path){
+    if(v === null || v === undefined) return /records\[/.test(String(path || '')) ? '（未記録）' : '（なし）';
+    if(Array.isArray(v)) return '（表 ' + v.length + ' 行）';
+    if(typeof v === 'object') return '（' + Object.keys(v).length + ' 項目）';
+    const s = String(v); return s.length > 24 ? s.slice(0, 24) + '…' : s;
+  }
 
   // ---------------- 画面ごとの取り込み係（guard） ----------------
   // opts: { page, syncKey(), getMem(), setMem(obj), parse(raw), save(), render(), isProtected(), merge(base,mine,incoming) }
@@ -991,7 +1006,8 @@
     }
 
     // ---- 退避の読み書き ----
-    function loadEntries(){ const rec = conflictStore.read(key()); g.entries = rec ? rec.entries.slice() : []; }
+    // ★PT-0019：resolving（送信中の印）はこのページの中だけの状態なので、読み戻した控えからは外す（前のページで送信途中に閉じた場合も、選び直せるように）
+    function loadEntries(){ const rec = conflictStore.read(key()); g.entries = rec ? rec.entries.slice() : []; g.entries.forEach(e=>{ if(e) delete e.resolving; }); }
     function persistEntries(){
       conflictStore.write(key(), g.entries.length ? { version: 1, syncKey: key(), dataType: opts.dataType || '', recordId: opts.recordId || '', productNo: opts.productNo || '', entries: g.entries } : null);
     }
@@ -1003,10 +1019,20 @@
       });
     }
     // R-d：LS の欄が自分の値と一致していれば解決成立（両者一致）。相手がさらに変えていれば incoming を更新（J-11）。
+    // ★PT-0019：「こちらを残す」を選んだが共有へまだ保存できていない控え（unsent）は、保存先（LS）が自分の値でも解決にしない。
+    //   共有へ届いた（同期の控え＝pending が無い）ことを確かめた時だけ解決とする。保存先が別の値に変わっていれば、通常の重なりへ戻す。
+    function syncPendingExists(){ try{ return !!(window.sakaeSyncRead && window.sakaeSyncRead.getPending(key())); }catch(e){ return false; } }
     function reconcileEntriesWithLS(lsObj){
       if(!g.entries.length || !lsObj) return;
       g.entries = g.entries.filter(e=>{
         const cur = getPath(lsObj, e.path);
+        if(e.unsent){
+          if(e.resolving) return true;                   // 送信の結果待ち（結果で決める）
+          // 控えでは「欄なし」を null で持つ（保存先では undefined）ので、両方とも「欄なし」なら同じ値とみなす
+          if((cur == null && e.mine == null) || same(cur, e.mine)) return syncPendingExists();   // 共有へ届いていれば解決・未送信なら残す
+          e.unsent = false; delete e.unsentError; e.incoming = clone(cur);   // 保存先が別の値に変わった＝選び直してもらう
+          return true;
+        }
         if(same(cur, e.mine)) return false;              // 一致＝解決
         if(!same(cur, e.incoming)) e.incoming = clone(cur);
         return true;
@@ -1125,7 +1151,7 @@
         persistEntries();
         renderNotice();
       }
-      const own = ownEntries();
+      const own = ownEntries().filter(e=> !e.unsent);   // ★PT-0019：「こちらを残す」を選んだ欄（unsent）は自分の値で書く（送信待ちのため控えは残している）
       if(own.length){
         out = clone(out);
         own.forEach(e=>{
@@ -1275,20 +1301,72 @@
     };
 
     // ---- 解決 ----
+    // ★PT-0019（2026-10-21）：「こちらを残す」は、共有へ保存できた時だけ解決済みにする。
+    //   端末へ保存した後、同期の窓口（sakaeSyncCommit.flushKey）でその場で共有へ送り、結果を待つ。
+    //   送れなかった（403・圏外など）時は、控えを「こちらを選んだが未保存（unsent）」として残し、未送信の内容（同期の控え）もそのまま残す。
+    //   同期の窓口が無い画面（同期を読み込まない画面）は従来どおり（その場で解決）。
+    function syncCommit(){ try{ const c = window.sakaeSyncCommit; return (c && typeof c.flushKey === 'function') ? c : null; }catch(e){ return null; } }
     g.resolveMine = function(path){
-      const e = g.entries.find(x=> x.path === path); if(!e) return;
+      const e = g.entries.find(x=> x.path === path); if(!e || e.resolving) return;
       const mem = getMem();
       if(e.mine === null || e.mine === undefined) setPath(mem, path, undefined); else setPath(mem, path, e.mine);
-      g.entries = g.entries.filter(x=> x !== e);
+      const commit = syncCommit();
+      if(commit){ e.unsent = true; e.resolving = true; delete e.unsentError; }
+      else g.entries = g.entries.filter(x=> x !== e);
       persistEntries();
       opts.setMem(mem);
       g.base = (function(){ const b = clone(g.base); setPath(b, path, e.incoming === undefined ? undefined : e.incoming); return b; })();
       try{ opts.save(); }catch(err){}                              // 利用者の明示操作としての保存
       if(typeof opts.onResolve === 'function'){ try{ opts.onResolve({ path: path, chosen: 'mine', value: e.mine }); }catch(err){} }   // 解決結果を画面側の派生データへ（TOPFORM-01・任意）
       opts.render(); renderNotice();
+      if(!commit) return;
+      const done = (res)=>{
+        delete e.resolving;
+        if(g.entries.indexOf(e) >= 0){
+          if(res && res.ok) g.entries = g.entries.filter(x=> x !== e);          // 共有へ保存できた＝解決
+          else e.unsentError = (res && res.denied) ? 'denied' : 'failed';       // 送れなかった＝控えを残す
+          persistEntries();
+        }
+        renderNotice();
+      };
+      let p; try{ p = commit.flushKey(key()); }catch(err){ p = Promise.resolve({ ok:false, error: String(err && err.message || err) }); }
+      Promise.resolve(p).then(done, (err)=> done({ ok:false, error: String(err && err.message || err) }));
+    };
+    // ★PT-0019：共有への送信が通った知らせ（_sakaeSync.js が出す）。このキーの未保存の控え（unsent）を、保存先の値と同期の控えで確かめ直す
+    window.addEventListener('sakaeSync:pushed', (ev)=>{
+      try{
+        if(!ev || !ev.detail || ev.detail.key !== key() || !g.entries.some(e=> e.unsent)) return;
+        const before = g.entries.length;
+        reconcileEntriesWithLS(parse(readLS()));
+        if(g.entries.length !== before){ persistEntries(); renderNotice(); }
+      }catch(e){}
+    });
+    // ★PT-0020（2026-10-21）：画面側が「意味が同じで選ぶ必要が無い」と判定した控えを、端末からだけ消す。
+    //   共有へは書かない（保存しない）。メモリのその欄は保存先（LS）の現在値へ戻す。描き直しは呼び出し側が行う。消したら true
+    g.dismissStale = function(path){
+      const e = g.entries.find(x=> x.path === path); if(!e || e.unsent) return false;
+      const lsObj = parse(readLS());
+      const mem = getMem();
+      if(mem){ const cur = lsObj ? getPath(lsObj, path) : e.incoming; if(cur === undefined || cur === null) setPath(mem, path, undefined); else setPath(mem, path, clone(cur)); opts.setMem(mem); }
+      g.entries = g.entries.filter(x=> x !== e);
+      persistEntries();
+      renderNotice();
+      return true;
     };
     g.resolveTheirs = function(path){
-      const e = g.entries.find(x=> x.path === path); if(!e) return;
+      const e = g.entries.find(x=> x.path === path); if(!e || e.resolving) return;
+      // ★PT-0019：「こちらを残す」を選んで未保存（unsent）の欄は、保存先がすでに自分の値になっている。相手の値（incoming）へ戻して保存する
+      if(e.unsent){
+        const mem = getMem();
+        if(e.incoming === null || e.incoming === undefined) setPath(mem, path, undefined); else setPath(mem, path, clone(e.incoming));
+        g.entries = g.entries.filter(x=> x !== e);
+        persistEntries();
+        opts.setMem(mem);
+        try{ opts.save(); }catch(err){}
+        if(typeof opts.onResolve === 'function'){ try{ opts.onResolve({ path: path, chosen: 'theirs', value: e.incoming }); }catch(err){} }
+        opts.render(); renderNotice();
+        return;
+      }
       // J-11：解決の直前に LS の現在値を読み直す。表示していた incoming と違えば更新して選び直してもらう
       const lsObj = parse(readLS());
       const cur = lsObj ? getPath(lsObj, path) : e.incoming;
@@ -1345,18 +1423,22 @@
         g.infos.forEach(x=>{
           html += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:3px 0;">'
             + '<span style="min-width:120px;font-weight:600;">' + esc(labelOf(x.path)) + '</span>'
-            + '<span>直前の入力：<b>' + esc(short(x.mine)) + '</b> → 現在：<b>' + esc(short(x.incoming)) + '</b></span>'
+            + '<span>直前の入力：<b>' + esc(short(x.mine, x.path)) + '</b> → 現在：<b>' + esc(short(x.incoming, x.path)) + '</b></span>'
             + '<button type="button" data-fi="revert" data-path="' + esc(x.path) + '" style="padding:3px 10px;">元に戻す</button>'
             + '<button type="button" data-fi="ok" data-path="' + esc(x.path) + '" style="padding:3px 10px;">了解</button></div>';
         });
       }
       if(g.entries.length) html += '<div style="font-weight:700;margin:6px 0 4px;">他の画面・端末の変更と同じ欄が重なりました。どちらを残すか選んでください（選ぶまで共有側は相手の値のままです）</div>';
+      // ★PT-0019：「こちらを残す」を選んだが共有へまだ保存できていない欄は、その旨を出す（解決済みに見せない）
+      if(g.entries.some(e=> e.unsent && !e.resolving)) html += '<div data-sakae="unsent" style="font-weight:700;margin:2px 0 4px;color:#8a1f00;">「こちらを残す」を選んだ欄が、まだ共有へ保存できていません。入力した内容はこの端末に残っています。通信や利用の許可を確認して、もう一度「こちらを残す」を押してください。</div>';
       g.entries.forEach(e=>{
+        const st = e.resolving ? '（共有へ保存しています…）' : (e.unsent ? '（共有へ未保存）' : '');
+        const dis = e.resolving ? ' disabled' : '';
         html += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:4px 0;border-top:1px solid #f0d9a8;">'
           + '<span style="min-width:120px;font-weight:600;">' + esc(labelOf(e.path)) + '</span>'
-          + '<span>こちら：<b>' + esc(short(e.mine)) + '</b></span><span>相手：<b>' + esc(short(e.incoming)) + '</b>' + (changed ? '（更新されました）' : '') + '</span>'
-          + '<button type="button" data-fc="mine" data-path="' + esc(e.path) + '" style="padding:4px 10px;">こちらを残す</button>'
-          + '<button type="button" data-fc="theirs" data-path="' + esc(e.path) + '" style="padding:4px 10px;">相手の値にする</button></div>';
+          + '<span>こちら：<b>' + esc(short(e.mine, e.path)) + '</b>' + esc(st) + '</span><span>相手：<b>' + esc(short(e.incoming, e.path)) + '</b>' + (changed ? '（更新されました）' : '') + '</span>'
+          + '<button type="button" data-fc="mine" data-path="' + esc(e.path) + '" style="padding:4px 10px;"' + dis + '>こちらを残す</button>'
+          + '<button type="button" data-fc="theirs" data-path="' + esc(e.path) + '" style="padding:4px 10px;"' + dis + '>相手の値にする</button></div>';
       });
       box.innerHTML = html;
       box.onclick = function(ev){
