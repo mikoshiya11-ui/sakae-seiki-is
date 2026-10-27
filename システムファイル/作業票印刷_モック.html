@@ -194,7 +194,16 @@
 
   @media print{
     /* ★PT-0013（2026-10-06）：余白 0 で A3 横（420×297mm）を使い、帳票を紙の上の mm 位置に配置する（下の「PT-0013」の段落） */
-    @page{ size:420mm 297mm; margin:0; }
+    @page{
+      size:420mm 297mm; margin:0;
+      /* ★作業票印刷の不具合是正（2026-10-27・29141-11 西尾-C№9）：印刷画面で余白が付くと（カスタム余白など）帳票が 1 枚に収まらなくなる。
+         その時だけ用紙の余白に注意文を出す。余白 0（正しい設定）では余白ボックスに場所が無く、文字は帳票の白地の下に隠れて紙には出ない。
+         vertical-align:bottom で余白の下端（帳票のすぐ上）に寄せる。調査：tools/_evidence/PRINT_WORKTICKET_29141_11_INVESTIGATION_20261027 */
+      @top-left{
+        content:"⚠ 印刷設定を確認してください：余白「なし」または「デフォルト」・倍率「デフォルト」。このままでは 1 枚に収まらず、完了チケットが次の紙へ回ります。";
+        color:#c0392b; font-size:10pt; font-weight:700; vertical-align:bottom;
+      }
+    }
     *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; color-adjust:exact !important; }
     body{ background:#fff; }
     .topbar, .controlBar, .noteBar, .footNote{ display:none !important; }
@@ -217,6 +226,10 @@
     /* 紙送りのずれの補正（このプリンターは全体が 2mm 下へずれるため、2mm 上へ寄せる）。プリンターを替えて中心がずれない場合は 0mm にする */
     :root{ --pt-print-offset-y:-2mm; }
     .slipSheet{ width:420mm; height:297mm; box-sizing:border-box; transform:translateY(var(--pt-print-offset-y)); }
+    /* ★作業票印刷の不具合是正（2026-10-27・29141-11 西尾-C№9）：画面用の overflow:hidden を印刷では効かせない。
+       余白が付いて 1 枚に収まらない時、ブラウザは完了チケットの塊を次の紙へ送るが、overflow:hidden だとそれが切り落とされ、
+       バーコードごとどの紙にも出なかった（菰田様の実印刷）。visible なら次の紙に出る。正しい設定（余白 0・等倍）でははみ出しが無いので紙面は変わらない。 */
+    .slipSheet{ overflow:visible; }
     /* 左右のパネル：左 0〜208.15（内余白 左6・右4.15）／切り線の目印の点線帯 208.15〜211.85（中心 210）／右 211.85〜420（内余白 左4.15・右6） */
     .slipSheet > .slipPanel:first-child{ flex:0 0 208.15mm; padding:0 4.15mm 0 6mm; box-sizing:border-box; }
     .slipSheet > .slipPanel:last-child{ flex:0 0 208.15mm; padding:0 6mm 0 4.15mm; box-sizing:border-box; }
