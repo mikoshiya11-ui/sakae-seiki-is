@@ -639,8 +639,12 @@
     const todayStr = todayISO();
     // ★v1 と rid の両方をまとめて回す（共通層）
     const entries = window.sakaeKeys.listProductEntries('buhinhyo');
+    // ★PT-0021〜0023：削除した案件カードの部品データ（削除後に共有へ書き戻されて残ったもの）は出さない。
+    //   判定は有効な削除の墓標（取消されていないもの）の recordId だけ。社内No.・受注№では判定しない。保存データは消さない
+    const deletedIds = window.sakaeKeys.activeDeletedRecordIds();
     for(let i=0;i<entries.length;i++){
       const key = entries[i].key;
+      if(entries[i].recordId && deletedIds[entries[i].recordId]) continue;
       // 納品完了した案件の保存データは読み飛ばす（案件＝recordId 単位。社内No.単位ではない）。
       // ★必ず部品ループより前で外すこと。手配忘れ防止の注意行（isArrange）は部品ループの中で
       // 「現在の工程」の判定より前に積まれるため、部品ループの中で外すと手配行だけが残ってしまう
