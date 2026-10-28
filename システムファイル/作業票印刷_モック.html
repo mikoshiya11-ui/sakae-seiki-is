@@ -196,13 +196,6 @@
     /* ★PT-0013（2026-10-06）：余白 0 で A3 横（420×297mm）を使い、帳票を紙の上の mm 位置に配置する（下の「PT-0013」の段落） */
     @page{
       size:420mm 297mm; margin:0;
-      /* ★作業票印刷の不具合是正（2026-10-27・29141-11 西尾-C№9）：印刷画面で余白が付くと（カスタム余白など）帳票が 1 枚に収まらなくなる。
-         その時だけ用紙の余白に注意文を出す。余白 0（正しい設定）では余白ボックスに場所が無く、文字は帳票の白地の下に隠れて紙には出ない。
-         vertical-align:bottom で余白の下端（帳票のすぐ上）に寄せる。調査：tools/_evidence/PRINT_WORKTICKET_29141_11_INVESTIGATION_20261027 */
-      @top-left{
-        content:"⚠ 印刷設定を確認してください：余白「なし」または「デフォルト」・倍率「デフォルト」。このままでは 1 枚に収まらず、完了チケットが次の紙へ回ります。";
-        color:#c0392b; font-size:10pt; font-weight:700; vertical-align:bottom;
-      }
     }
     *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; color-adjust:exact !important; }
     body{ background:#fff; }
@@ -230,6 +223,14 @@
        余白が付いて 1 枚に収まらない時、ブラウザは完了チケットの塊を次の紙へ送るが、overflow:hidden だとそれが切り落とされ、
        バーコードごとどの紙にも出なかった（菰田様の実印刷）。visible なら次の紙に出る。正しい設定（余白 0・等倍）でははみ出しが無いので紙面は変わらない。 */
     .slipSheet{ overflow:visible; }
+    /* ★作業票印刷 A3 横 1 枚化（2026-10-28・29141-11 西尾-C№9 の実機印刷が 2 枚に分かれた件）：
+       榮製機の印刷では、印刷画面で余白が付き（実測：左右合計 約 27mm＝帳票が 0.935 倍に縮んだ）、紙と同寸（420×297mm）の帳票は 1 枚に収まらなかった。
+       帳票全体を同じ比率で縮め（--pt-print-scale・文字やバーコードだけを縮めない）、印刷できる範囲（100vh×100vw＝用紙−余白）の中央に置く。
+       0.90 倍＝上下左右の余白が各 14.8mm までなら 1 枚に収まる（余白 0 なら紙の上下左右に約 15mm の白）。中の配置（PT-0013 の比率）は変えない。
+       zoom は自分の余白や移動量も縮めるため、上の余白と紙送り補正は倍率で割って指定する。余白が大きすぎて入らない時は上へはみ出させず、従来どおり次の紙へ回す（max）。 */
+    :root{ --pt-print-scale:0.90; }
+    .slipSheet{ zoom:var(--pt-print-scale); margin:max(0mm, calc((100vh / var(--pt-print-scale) - 297mm) / 2)) auto 0;
+      transform:translateY(calc(var(--pt-print-offset-y) / var(--pt-print-scale))); }
     /* 左右のパネル：左 0〜208.15（内余白 左6・右4.15）／切り線の目印の点線帯 208.15〜211.85（中心 210）／右 211.85〜420（内余白 左4.15・右6） */
     .slipSheet > .slipPanel:first-child{ flex:0 0 208.15mm; padding:0 4.15mm 0 6mm; box-sizing:border-box; }
     .slipSheet > .slipPanel:last-child{ flex:0 0 208.15mm; padding:0 6mm 0 4.15mm; box-sizing:border-box; }
