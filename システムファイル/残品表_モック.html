@@ -124,10 +124,6 @@
 
   .checkCol{ width:34px; text-align:center; }
   .checkCol input{ width:16px; height:16px; cursor:default; }
-  /* ★PT-0024（2026-10-30）：その工程を選んだ状態で実績入力を開くボタン（完了の記録は実績入力で行う・この画面からは書かない）。印刷では .checkCol ごと出さない */
-  .checkCol{ white-space:nowrap; }
-  .toJissekiBtn{ margin-left:4px; border:1px solid #c9d3e2; background:#fff; color:#173a68; font-size:11px; font-weight:700; padding:2px 6px; border-radius:5px; cursor:pointer; font-family:inherit; vertical-align:middle; }
-  .toJissekiBtn:hover{ border-color:#173a68; background:#f2f6fb; }
 
   .emptyState{ padding:60px 20px; text-align:center; color:#a4adbc; font-size:13px; line-height:1.8; }
 
@@ -696,7 +692,6 @@
             // 保存し直すときに「どの案件の（storeKey）どの部品の（partId）どの工程か（procId）」を
             // 取り違えないよう、そのまま持っておく。工程記号では特定しない（同じ記号が複数あるため）。
             storeKey: key, recordId: entries[i].recordId || '', partId: part.id, procId: proc.id,
-            jsKey: key, jsPartId: part.id,   // PT-0024：実績入力をこの工程を選んだ状態で開くための手がかり（保存キー＋部品id＋工程id）
             // arrange が無い＝未手配。ここでは読むだけで、実データには作らない（表示用の既定値）。
             arrange: proc.arrange || null,
             // PT-0018：「全体」の並び用（工程の日程順＝sortedProcesses の位置）
@@ -737,7 +732,6 @@
           prevProc: prev ? ((prev.code||'')+(prev.ident||'')) : '-', nextProc: next ? ((next.code||'')+(next.ident||'')) : '-',
           isArrange: false, arrangeDue: '', arrangeAmpm: '',
           storeKey: '', recordId: '', partId: '', procId: cur.id, arrange: null,   // 手配欄は手配行にだけ出す
-          jsKey: key, jsPartId: part.id,   // PT-0024：実績入力をこの工程を選んだ状態で開くための手がかり（手配欄の storeKey とは別に持つ）
           isDone: isDoneProc,                                 // 左端✓（読取専用）＝実績入力の工程完了状態
           _rowKey: (order.productNo||'') + '_' + part.id + '_' + cur.id,
           // PT-0018：「全体」の並び用（工程の日程順）
@@ -1146,9 +1140,7 @@
         else if(dLeft <= 2){ dueCls = 'soon'; badge = '<span class="badge soon">あと'+dLeft+'日</span>'; }
       }
       html += '<tr class="'+(done?'checked':'')+'" data-key="'+esc(key)+'">';
-      html += '<td class="checkCol"><input type="checkbox" disabled title="実績入力の工程完了状態（この画面では変更できません）" '+(done?'checked':'')+'>'
-        + (row.jsKey && row.jsPartId && row.procId ? '<button type="button" class="toJissekiBtn" data-role="toJisseki" data-key="'+esc(row.jsKey)+'" data-part="'+esc(row.jsPartId)+'" data-proc="'+esc(row.procId)+'" title="この工程を選んだ状態で実績入力を開きます（完了・取消は実績入力で行います）">完了処理</button>' : '')
-        + '</td>';
+      html += '<td class="checkCol"><input type="checkbox" disabled title="実績入力の工程完了状態（この画面では変更できません）" '+(done?'checked':'')+'></td>';
       html += '<td>'+esc(row.orderNo)+'</td>';
       html += '<td>'+esc(row.customer)+'</td>';
       html += '<td class="modelCell">'+esc(row.model)+'</td>';
@@ -1251,13 +1243,6 @@
     searchTerm = initProductNo;
     document.getElementById('searchBox').value = initProductNo;
   }
-
-  // ---- PT-0024：「完了処理」＝その工程を選んだ状態で実績入力を開く（この画面では何も保存しない） ----
-  tableBody.addEventListener('click', (e)=>{
-    const b = e.target.closest('[data-role="toJisseki"]');
-    if(!b) return;
-    location.href = '実績入力_モック.html?storeKey=' + encodeURIComponent(b.dataset.key) + '&partId=' + encodeURIComponent(b.dataset.part) + '&procId=' + encodeURIComponent(b.dataset.proc);
-  });
 
   // ---- PT-0001：手配欄の操作。押したときだけ入力画面を出し、確定したときだけ保存する ----
   tableBody.addEventListener('click', (e)=>{
