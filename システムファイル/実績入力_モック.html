@@ -838,6 +838,21 @@
   renderCurInfo();
   renderLog();
   focusScan();
+
+  // ★PT-0024（2026-10-30）：工程別残品表の「完了処理」から開かれた時は、その工程を選んだ状態にする（手動選択の「選ぶ」と同じ処理）。
+  //   保存キー（作業票の保存データ）＋部品id＋工程id で 1 件に決める。社内No.や工程記号では探さない（同じ社内No.の別案件・同じ記号の別工程を選ばない）。
+  //   ここでは選ぶだけで何も保存しない。完了・取消は既存の「この工程を完了にする」「取り消す」で行う。
+  (function selectFromZanpin(){
+    const q = new URLSearchParams(location.search);
+    const key = q.get('storeKey'), partId = q.get('partId'), procId = q.get('procId');
+    if(!key && !partId && !procId) return;
+    let bs = null;
+    if(key && window.sakaeKeys.isProductKey('buhinhyo', key)){ try{ bs = JSON.parse(localStorage.getItem(key)); }catch(e){ bs = null; } }
+    const part = bs && bs.order && (bs.parts||[]).find(p=>p && p.id===partId);
+    const proc = part && (part.processes||[]).find(p=>p && p.id===procId);
+    closeCandidates();
+    setCurrentFromMatch(proc ? makeMatch(bs, part, proc) : null, '工程別残品表から');
+  })();
 })();
 </script>
 </body>
