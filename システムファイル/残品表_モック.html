@@ -124,6 +124,8 @@
 
   .checkCol{ width:34px; text-align:center; }
   .checkCol input{ width:16px; height:16px; cursor:default; }
+  /* ★PT-0024（2026-10-30 テンチョー裁定②）：左端✓で工程の完了・取消ができる（バーコードを読んだのと同じ完了記録へ書く）。工数ごと実績入力で完了登録した工程だけは押せない */
+  .checkCol input:not(:disabled){ cursor:pointer; }
 
   .emptyState{ padding:60px 20px; text-align:center; color:#a4adbc; font-size:13px; line-height:1.8; }
 
@@ -447,6 +449,11 @@
   // 実績入力側に「完了／未完」欄が追加されたため、②の「未完」で登録された分はまだ作業中とみなし、
   // 残品表からは消さない（completion項目が無い古いデータは、これまで通り「完了」扱いのままにする）----
   const PROC_DONE_KEY = 'sakaeIS_procDoneLog_v1';
+  // ★PT-0024：左端✓から書く完了記録。実績入力のバーコード完了（markProcDone／unmarkProcDone）と同じキー・同じ形（procId をキーに {procId, completedAt, source}）。
+  //   source は付けた場所の目印（'zanpin'）で、どの画面も読んでいない＝完了の扱いはバーコード完了と全く同じ。
+  function loadProcDoneMap(){
+    try{ const raw = localStorage.getItem(PROC_DONE_KEY); const m = raw ? JSON.parse(raw) : null; return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {}; }catch(e){ return {}; }
+  }
   function loadDoneProcIds(){
     const set = new Set();
     try{
@@ -1102,7 +1109,9 @@
     return rows;
   }
 
+  let procDoneMap = {};
   function render(){
+    procDoneMap = loadProcDoneMap();
     renderOrphanBar();
     renderDebugPanel();
     DATA = buildData();
@@ -1132,7 +1141,9 @@
     let html = '';
     rows.forEach(row=>{
       const key = rowKey(row);
-      const done = !!row.isDone;   // 実績入力の工程完了状態（読取専用）
+      const done = !!row.isDone;   // 工程完了状態（バーコード完了の記録・実績入力の完了登録のどちらか）
+      // PT-0024：工数ごと実績入力で完了登録した工程（完了記録に無い）は、ここで外すと食い違うため押せない（取消は実績入力の実績一覧から）
+      const lockByLog = done && !procDoneMap[row.procId];
       const dLeft = daysUntil(row.procDue);
       let dueCls = '', badge = '';
       if(dLeft !== null){
@@ -1140,7 +1151,10 @@
         else if(dLeft <= 2){ dueCls = 'soon'; badge = '<span class="badge soon">あと'+dLeft+'日</span>'; }
       }
       html += '<tr class="'+(done?'checked':'')+'" data-key="'+esc(key)+'">';
-      html += '<td class="checkCol"><input type="checkbox" disabled title="実績入力の工程完了状態（この画面では変更できません）" '+(done?'checked':'')+'></td>';
+      const cbTitle = lockByLog ? '実績入力で工数とともに完了登録済みです（取り消しは実績入力の実績一覧から）'
+        : (done ? 'クリックで完了を取り消します（バーコード完了の取消と同じ扱い）' : 'クリックでこの工程を完了にします（バーコードを読んだのと同じ扱い）');
+      html += '<td class="checkCol"><input type="checkbox" data-role="zanpinDone" data-proc="'+esc(row.procId||'')+'" title="'+esc(cbTitle)+'" '
+        + ((lockByLog || !row.procId) ? 'disabled ' : '') + (done?'checked':'')+'></td>';
       html += '<td>'+esc(row.orderNo)+'</td>';
       html += '<td>'+esc(row.customer)+'</td>';
       html += '<td class="modelCell">'+esc(row.model)+'</td>';
@@ -1243,6 +1257,25 @@
     searchTerm = initProductNo;
     document.getElementById('searchBox').value = initProductNo;
   }
+
+  // ---- PT-0024：左端✓＝工程の完了・取消（確認してから、バーコード完了と同じ完了記録へ書く。作業票データ・実績ログは書かない） ----
+  tableBody.addEventListener('change', (e)=>{
+    const cb = e.target.closest('input[data-role="zanpinDone"]');
+    if(!cb) return;
+    const procId = cb.dataset.proc;
+    const tr = cb.closest('tr');
+    const td = tr ? tr.querySelectorAll('td') : [];
+    const label = (td[1] ? td[1].textContent.trim() : '') + ' ' + (td[5] ? td[5].textContent.trim() : '') + ' ' + ((tr && tr.querySelector('.procTag')) ? tr.querySelector('.procTag').textContent.trim() : '');
+    const map = loadProcDoneMap();
+    if(cb.checked){
+      if(!window.confirm('「' + label + '」を完了にしますか？\n（バーコードを読んだのと同じ扱いになり、実績入力など他の画面にも反映されます）')){ cb.checked = false; return; }
+      if(!map[procId]){ map[procId] = { procId: procId, completedAt: new Date().toISOString(), source: 'zanpin' }; localStorage.setItem(PROC_DONE_KEY, JSON.stringify(map)); }
+    }else{
+      if(!window.confirm('「' + label + '」の工程完了を取り消しますか？\n（バーコード完了の取消と同じ扱いです。工数などの実績詳細は消えません）')){ cb.checked = true; return; }
+      if(map[procId]){ delete map[procId]; localStorage.setItem(PROC_DONE_KEY, JSON.stringify(map)); }
+    }
+    render();
+  });
 
   // ---- PT-0001：手配欄の操作。押したときだけ入力画面を出し、確定したときだけ保存する ----
   tableBody.addEventListener('click', (e)=>{
