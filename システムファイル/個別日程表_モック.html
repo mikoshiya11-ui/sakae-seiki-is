@@ -97,6 +97,9 @@
   .checkCell.done .checkMark{ color:#1e8449; }
   .checkCell.done .checkMark::after{ content:'✓'; }
   .checkCell.today{ background:rgba(23,58,104,.07); }
+  /* ★PT-0025（2026-10-30 菰田様）：進捗チェック欄の日付を日程表の日付の真上にそろえる。日程表の左は 部品欄 280px＋DE/SU/PN 欄 156px なので、
+     DE/SU/PN 欄がある時（作業票とリンク）は担当者欄も同じ 436px にする（日の幅 --day-w と横スクロールの同期は元から共通） */
+  .checkInner.withDates .checkSideHead, .checkInner.withDates .checkNameCell{ flex-basis:436px; }
 
   .toolRow{ display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
   .monthToggle{ display:flex; gap:4px; background:#fff; border-radius:10px; padding:4px; box-shadow:0 2px 8px rgba(20,35,70,.06); }
@@ -442,31 +445,6 @@
 
   <div class="wrap">
 
-    <div class="orderCard" id="orderCard">
-      <div>
-        <div class="oMeta">社内№</div>
-        <div class="oNo">35481000-11</div>
-      </div>
-      <div>
-        <div class="oMeta">型式・図番</div>
-        <div class="oModel">MKS(-)</div>
-      </div>
-      <div>
-        <div class="oMeta">客先</div>
-        <div class="oModel">株式会社ミコシヤ</div>
-      </div>
-      <div class="dueBadge">納期：9/18</div>
-    </div>
-
-    <div class="checkCard">
-      <div class="checkCardTitle">進捗チェック欄（担当者×日付でチェック）
-        <button type="button" id="addCheckNameBtn" title="担当者をこの案件に追加します">＋担当者を追加</button>
-      </div>
-      <div class="checkScroll" id="checkScroll">
-        <div class="checkInner" id="checkInner"></div>
-      </div>
-    </div>
-
     <div class="confirmRow" id="confirmRow"></div>
 
     <div class="toolRow">
@@ -494,6 +472,32 @@
       <button type="button" class="addMemoBtn" id="addMemoBtn">＋ メモを追加</button>
       <button type="button" class="printBtn" id="printBtn" title="A3サイズで印刷します（印刷前に表示期間・ズームを整えてください）">🖨 印刷する（A3）</button>
       <span style="font-size:12.5px; color:#a4adbc;">土日はグレー表示／バーの右端の位置が作業票の工程日付（終了・納期）になります（ドラッグで移動、右クリックで新規設置・編集・削除）／各日の中央の縦線が午前・午後の区切りです／付箋メモは自由な位置・サイズで配置できます（ハンドルをドラッグで移動、右下でリサイズ、クリックで編集、右クリックで削除）</span>
+    </div>
+
+    <!-- ★PT-0025：上から 確定・操作と表示期間・説明 → 案件情報 → 進捗チェック欄 → 日程表 の順（進捗チェック欄と日程表の日付を上下に並べる） -->
+    <div class="orderCard" id="orderCard">
+      <div>
+        <div class="oMeta">社内№</div>
+        <div class="oNo">35481000-11</div>
+      </div>
+      <div>
+        <div class="oMeta">型式・図番</div>
+        <div class="oModel">MKS(-)</div>
+      </div>
+      <div>
+        <div class="oMeta">客先</div>
+        <div class="oModel">株式会社ミコシヤ</div>
+      </div>
+      <div class="dueBadge">納期：9/18</div>
+    </div>
+
+    <div class="checkCard">
+      <div class="checkCardTitle">進捗チェック欄（担当者×日付でチェック）
+        <button type="button" id="addCheckNameBtn" title="担当者をこの案件に追加します">＋担当者を追加</button>
+      </div>
+      <div class="checkScroll" id="checkScroll">
+        <div class="checkInner" id="checkInner"></div>
+      </div>
     </div>
 
     <div class="ganttCard">
@@ -1465,6 +1469,7 @@
       html += '</div>';
     });
     checkInner.innerHTML = html;
+    checkInner.classList.toggle('withDates', !!handoff);   // PT-0025：日程表に DE/SU/PN 欄がある時だけ担当者欄を同じ幅に
   }
   checkInner.addEventListener('click', (e)=>{
     const editEl = e.target.closest('[data-role="checkNameEdit"]');
@@ -1525,14 +1530,28 @@
   function mirrorScroll(from, to){
     if(syncingScroll) return;
     syncingScroll = true;
-    to.scrollLeft = from.scrollLeft;
+    if(Math.round(to.scrollLeft) !== Math.round(from.scrollLeft)){
+      to.scrollLeft = from.scrollLeft;
+      to.__echoLeft = to.scrollLeft;   // PT-0025：ここで書いた値（後で scroll イベントとして返ってくる）
+    }
     syncingScroll = false;
   }
+  // ★PT-0025（2026-10-30）：進捗チェック欄が日程表と同じ幅になり、本体と同じだけ横に動くようになった。
+  //   こちらが書いた値は遅れて scroll イベントで返ってくるため、それをそのまま相手へ伝えると、本体を短い間に 111→41→0 と動かした時に
+  //   遅れて届いた 41 が本体を古い位置へ戻してしまう（pt0007a H7-17）。自分が書いた値のこだまだけは 1 回伝えない（利用者の操作・プログラムの位置指定は伝える）。
+  function isScrollEcho(el){
+    const e = el.__echoLeft;
+    if(e == null) return false;
+    el.__echoLeft = null;
+    return Math.abs(el.scrollLeft - e) < 1;
+  }
   checkScrollEl.addEventListener('scroll', ()=>{
+    if(isScrollEcho(checkScrollEl)) return;
     mirrorScroll(checkScrollEl, ganttScrollEl);
     mirrorScroll(checkScrollEl, ganttHeaderScrollEl);
   });
   ganttScrollEl.addEventListener('scroll', ()=>{
+    if(isScrollEcho(ganttScrollEl)) return;
     mirrorScroll(ganttScrollEl, checkScrollEl);
     mirrorScroll(ganttScrollEl, ganttHeaderScrollEl);
   });
