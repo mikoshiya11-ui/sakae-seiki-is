@@ -13,7 +13,10 @@
   const T = window.SAKAE_ISSUE_TARGET;
   if(!T){ document.addEventListener('DOMContentLoaded', ()=>{ document.body.innerHTML = '<p style="padding:24px">接続先が設定されていません（_issueTarget*.js が読み込まれていません）。</p>'; }); return; }
 
-  const SUPABASE_UMD = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+  // ★SEC-M-4：版を固定（@2 → @2.118.0）し、SRI で中身を固定する。
+  //   いまの @2 が解決する版と同一バイト（floating 版と SHA-384 一致を確認済み）なので、挙動は変えない。
+  const SUPABASE_UMD = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';
+  const SUPABASE_UMD_SRI = 'sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK';
   const LOGIN_PAGE = 'ログイン.html';
   const PAGE_SIZE = 50;                       // 裁定 f：1 ページ 50 件（DB 側 range で取得）
   const PREF_KEY = 'sakaeIssue_filters_v1';   // 画面の絞り込み条件のみ（業務データではない）
@@ -55,7 +58,7 @@
   const fmtDate = (s)=> s ? String(s).slice(0,10).replace(/-/g,'/') : '—';
   const fmtDateTime = (s)=>{ if(!s) return '—'; const d=new Date(s); return isNaN(d) ? String(s) : (d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')); };
   const trim = (v)=> String(v==null?'':v).trim();
-  function loadScript(src){ return new Promise((ok,ng)=>{ const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>ng(new Error('script load failed: '+src)); document.head.appendChild(s); }); }
+  function loadScript(src, integrity){ return new Promise((ok,ng)=>{ const s=document.createElement('script'); s.src=src; if(integrity){ s.integrity=integrity; s.crossOrigin='anonymous'; } s.onload=ok; s.onerror=()=>ng(new Error('script load failed: '+src)); document.head.appendChild(s); }); }
 
   // ---- 起動時の全面ゲート（既存画面と同じ見え方） ---------------------------
   function gate(msg){
@@ -82,7 +85,7 @@
   async function boot(){
     gate('ログイン状態を確認しています…');
     try{
-      await loadScript(SUPABASE_UMD);
+      await loadScript(SUPABASE_UMD, SUPABASE_UMD_SRI);
       sb = window.supabase.createClient(window.SAKAE_SUPABASE_URL, window.SAKAE_SUPABASE_ANON_KEY);
     }catch(e){
       blockScreen('共有に接続できません', ['Supabase の読み込みに失敗しました（'+e.message+'）。', 'ネットワークを確認して再読込してください。']);

@@ -1082,15 +1082,21 @@
   showGate('ログイン状態を確認しています…');
 
   // ---- Supabaseクライアント本体（CDNから動的読み込み） ----
-  function loadScript(src){
+  function loadScript(src, integrity){
     return new Promise((resolve, reject)=>{
       const s = document.createElement('script');
       s.src = src;
+      // ★SEC-M-4：SRI が指定されたら中身を固定する。SRI は cross-origin の取得に crossorigin を要する。
+      if(integrity){ s.integrity = integrity; s.crossOrigin = 'anonymous'; }
       s.onload = resolve;
       s.onerror = ()=> reject(new Error('failed to load '+src));
       document.head.appendChild(s);
     });
   }
+  // ★SEC-M-4：supabase-js を版固定（@2 → @2.118.0）＋SRI で読み込む。
+  //   いまの @2 が解決する版と同一バイト（SHA-384 一致を確認済み）のため挙動は不変。
+  const SUPABASE_UMD_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';
+  const SUPABASE_UMD_SRI = 'sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK';
 
   let sb = null;
   let applyingRemoteUpdate = false; // 受信した更新をlocalStorageへ書き込んでいる最中は、push処理を発火させないためのフラグ
@@ -2879,7 +2885,7 @@
 
   async function boot(){
     try{
-      await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js');
+      await loadScript(SUPABASE_UMD_URL, SUPABASE_UMD_SRI);
       sb = window.supabase.createClient(window.SAKAE_SUPABASE_URL, window.SAKAE_SUPABASE_ANON_KEY);
 
       const { data:{ session } } = await sb.auth.getSession();

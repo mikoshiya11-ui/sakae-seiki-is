@@ -88,7 +88,10 @@
   }
 
   const scriptEl = document.createElement('script');
-  scriptEl.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+  // ★SEC-M-4：版固定（@2 → @2.118.0）＋SRI。いまの @2 と同一バイト（SHA-384 一致確認済み）で挙動は不変。
+  scriptEl.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';
+  scriptEl.integrity = 'sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK';
+  scriptEl.crossOrigin = 'anonymous';
   scriptEl.onload = ()=>{
     if(btnEl.disabled) return; // 設定が無い場合はここで終わり
     const sb = window.supabase.createClient(window.SAKAE_SUPABASE_URL, window.SAKAE_SUPABASE_ANON_KEY);
