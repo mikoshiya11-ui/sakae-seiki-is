@@ -383,29 +383,31 @@
   body{ background:#f3f6fa; }
   .topbar{
     position:relative; z-index:3; justify-content:space-between; align-items:center; gap:18px;
-    padding:12px 40px; background:#fff; color:#3a4a63; font-size:12.5px; box-shadow:0 1px 0 rgba(20,35,70,.06);
+    padding:12px 40px; background:#143466; color:#fff; font-size:12.5px; box-shadow:0 1px 4px rgba(10,25,55,.25);
   }
   .tbBrand{ display:flex; align-items:baseline; gap:18px; min-width:0; }
-  .tbLogo{ font-size:24px; font-weight:900; letter-spacing:.01em; color:#173a68; white-space:nowrap; }
+  .tbLogo{ font-size:27px; font-weight:900; letter-spacing:.01em; color:#fff; white-space:nowrap; -webkit-text-stroke:.6px currentColor; }
   .tbLogo .os, .heroTitle .os{ color:#e67e22; }
-  .tbCompany{ font-size:15px; font-weight:700; color:#173a68; letter-spacing:.08em; white-space:nowrap; }
+  .tbCompany{ font-size:17px; font-weight:700; color:#fff; letter-spacing:.08em; white-space:nowrap; }
+  #lastUpdatedLabel{ color:#d6e0ee; }
   .tbRight{ display:flex; align-items:center; gap:22px; flex-wrap:wrap; justify-content:flex-end; }
-  .tbRight .tbItem{ display:inline-flex; align-items:center; gap:6px; color:#3a4a63; }
+  .tbRight .tbItem{ display:inline-flex; align-items:center; gap:6px; color:#fff; }
   .tbRight .tbIcon{ width:18px; height:18px; flex:0 0 auto; }
   #changePwLink{ text-decoration:none !important; }
-  #changePwLink:hover{ color:#173a68; text-decoration:underline !important; }
-  .tbAvatar{ width:34px; height:34px; border-radius:50%; background:#c9d2df; display:inline-flex; align-items:center; justify-content:center; }
+  #changePwLink:hover{ color:#fff; text-decoration:underline !important; }
+  .tbAvatar{ width:36px; height:36px; border-radius:50%; background:#c9d2df; display:inline-flex; align-items:center; justify-content:center; }
+  .tbAvatar svg path, .tbAvatar svg circle{ fill:#143466; }
   .tbAvatar svg{ width:22px; height:22px; }
 
   .hero{
     max-width:none; align-items:stretch; padding:0; position:relative; min-height:300px;
-    background:#dfeefb url("システムファイル/top_hero.jpg") right 78% / auto 118% no-repeat;   /* 2026-10-31 テンチョー提供のヒーロー画像（看板「榮製機株式会社」・1920×640 に縮小した JPG） */
+    background:#dfeefb url("システムファイル/top_hero.jpg") center 58% / cover no-repeat;   /* 2026-10-31 テンチョー提供のヒーロー画像（看板「榮製機株式会社」・1920×640 に縮小した JPG） */
   }
-  .hero::before{ content:''; position:absolute; inset:0; background:linear-gradient(90deg, rgba(243,246,250,.97) 0%, rgba(243,246,250,.95) 38%, rgba(243,246,250,.45) 50%, rgba(243,246,250,0) 62%); }
+  .hero::before{ content:''; position:absolute; inset:0; background:linear-gradient(90deg, rgba(243,246,250,.78) 0%, rgba(243,246,250,.55) 30%, rgba(243,246,250,.12) 46%, rgba(243,246,250,0) 56%); }
   .heroText{ position:relative; z-index:1; width:100%; max-width:1470px; margin:0 auto; padding:56px 40px 92px; }
-  .heroSub{ font-size:19px; font-weight:700; color:#3a4a63; letter-spacing:.12em; }
-  .heroTitle{ margin:6px 0 10px; font-size:64px; line-height:1.05; font-weight:900; color:#173a68; letter-spacing:.01em; }
-  .heroLead{ font-size:19px; font-weight:700; color:#3a4a63; letter-spacing:.12em; }
+  .heroSub{ font-size:20px; font-weight:800; color:#1a2a44; letter-spacing:.1em; }
+  .heroTitle{ margin:6px 0 10px; font-size:68px; line-height:1.05; font-weight:900; color:#143466; letter-spacing:.01em; -webkit-text-stroke:1.6px currentColor; }
+  .heroLead{ font-size:19px; font-weight:800; color:#1a2a44; letter-spacing:.06em; }
   .hero.compact{ padding:0; min-height:0; }
   .hero.compact .heroText{ padding:22px 40px 70px; }
   .hero.compact .heroTitle{ font-size:34px; margin:2px 0 4px; }
@@ -453,8 +455,9 @@
 
   .resultGrid{ grid-template-columns:repeat(3, minmax(0,1fr)); gap:18px; }
   .card{ border-radius:10px; padding:20px 24px 18px; border-color:#e6eaf1; box-shadow:0 2px 10px rgba(20,35,70,.07); }
-  .card .productNo{ font-size:21px; font-weight:800; color:#1a2233; }
-  .card .modelName{ font-size:16px; font-weight:800; margin-top:2px; }
+  .card .productNo{ font-size:21px; font-weight:800; color:#143466; }
+  .card .modelName{ font-size:16px; font-weight:800; margin-top:2px; color:#143466; }
+  .card{ background:#fff; }
   .card .itemNameRow, .card .meta{ font-size:13px; color:#3a4a63; margin-top:6px; }
   .card .itemNameRow b, .card .meta b{ color:#5b6b84; font-weight:600; margin-right:4px; }
   .badge{ font-size:12px; padding:4px 12px; border-radius:14px; }
@@ -502,7 +505,7 @@
   <!-- ★TOP デザイン刷新（2026-10-31）：ヘッダー → ヒーロー → 操作パネル → 案件フィルタ → 案件一覧。id・処理は従来どおり -->
   <div class="topbar">
     <div class="tbBrand"><span class="tbLogo">SAKAE SEIKI-<span class="os">OS</span></span><span class="tbCompany">榮製機株式会社　基本ソフトウェア</span></div>
-    <div class="tbRight"><span id="lastUpdatedLabel"></span><span id="changePwLink" class="tbItem" style="cursor:pointer;" title="ログインパスワードを変更します"><svg class="tbIcon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#173a68"/><text x="12" y="17" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" font-family="sans-serif">?</text></svg>パスワード変更</span><span class="tbItem"><svg class="tbIcon" viewBox="0 0 24 24" fill="#173a68"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>榮製機㈱社内システム</span><span class="tbAvatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="#fff"><circle cx="12" cy="8.5" r="4.2"/><path d="M3.8 21c.8-4.4 4.2-6.6 8.2-6.6s7.4 2.2 8.2 6.6z"/></svg></span></div>
+    <div class="tbRight"><span id="lastUpdatedLabel"></span><span id="changePwLink" class="tbItem" style="cursor:pointer;" title="ログインパスワードを変更します"><svg class="tbIcon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#fff"/><text x="12" y="17" text-anchor="middle" font-size="14" font-weight="700" fill="#143466" font-family="sans-serif">?</text></svg>パスワード変更</span><span class="tbItem"><svg class="tbIcon" viewBox="0 0 24 24" fill="#fff"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>榮製機㈱社内システム</span><span class="tbAvatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="#fff"><circle cx="12" cy="8.5" r="4.2"/><path d="M3.8 21c.8-4.4 4.2-6.6 8.2-6.6s7.4 2.2 8.2 6.6z"/></svg></span></div>
   </div>
 
   <div class="hero" id="hero">
