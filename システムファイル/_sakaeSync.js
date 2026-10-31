@@ -1180,8 +1180,23 @@
     const base = now ? now.base : beforeValue;
     // 直した結果が元に戻ったのなら、変更は無かったのと同じ。控えを残さない。
     if(base === afterValue){ clearPending(syncKey); return; }
-    const p = { version: 1, syncKey: syncKey, base: base, local: afterValue };
+    // ★SEC-M-1：この控えを作った利用者（＝いまログインしている人）を刻む。
+    //   共用端末で別の人がログインしたとき、前の人の未送信ぶんを
+    //   その人の資格で自動送信してしまわないための目印（cross-user replay を防ぐ）。
+    //   owner は base と同じく「最初に控えを作った1回」で固定する。
+    const owner = (now && now.owner) ? now.owner : currentUid;
+    const p = { version: 1, syncKey: syncKey, base: base, local: afterValue, owner: owner };
     try{ localStorage.setItem(pendingKey(syncKey), JSON.stringify(p)); }catch(e){}
+  }
+
+  // ★SEC-M-1：控えの持ち主が「いまの利用者」かどうか。
+  //   owner が無い控え（この是正より前に作られたもの）は、安全側に倒して
+  //   「今の人のもの」とは断定せず、送らずに残す（勝手に消さない）。
+  function pendingBelongsToCurrentUser(p){
+    if(!p) return false;
+    if(!currentUid) return false;          // いまの利用者が分からないうちは送らない
+    if(!p.owner) return false;             // 持ち主不明の控えは自動送信しない（残す）
+    return p.owner === currentUid;
   }
 
   // ---- 競合の記録 ----
@@ -1386,10 +1401,16 @@
       applyRemoteRow({ key: syncKey, value: JSON.parse(raw) }, { force: true });
     }catch(e){}
   }
+  // ★SEC-M-1：いまログインしている利用者の uid を同期用に控えておく。
+  //   notePending（storage フックから同期的に呼ばれる）と、控えの自動送信判定で使う。
+  //   boot と onAuthStateChange で更新する。確証が無い間は空にして「送らない」側に倒す。
+  let currentUid = '';
   async function currentUserId(){
     try{
       const r = await sb.auth.getUser();
-      return (r && r.data && r.data.user) ? r.data.user.id : '';
+      const id = (r && r.data && r.data.user) ? r.data.user.id : '';
+      if(id) currentUid = id;
+      return id;
     }catch(e){ return ''; }
   }
 
@@ -1962,6 +1983,13 @@
   // 途中の古い内容を順番に送り直す必要は無い（案件一覧は「今の全部」を送るキーなので）。
   async function flushPendingRecordsPush(){
     if(!recordsPushPending || !remoteRecordsKnown) return;
+    // ★SEC-M-1：案件一覧の耐久控えが別利用者のものなら、この人の資格で送らない。
+    //   控えが無い＝このセッションの現在値（＝今の利用者の編集）なので従来どおり送る。
+    const p = readPending(RECORDS_KEY);
+    if(p && !pendingBelongsToCurrentUser(p)){
+      console.warn('[sakaeSync] 別利用者の案件一覧控えはスキップ（自動送信しない）');
+      return;
+    }
     recordsPushPending = false;
     await pushKey(RECORDS_KEY, localStorage.getItem(RECORDS_KEY));
   }
@@ -2504,6 +2532,12 @@
         if(localStorage.getItem(conflictKey(sk))) continue;   // 競合中は触らない
         const p = readPending(sk);
         if(!p) continue;
+        // ★SEC-M-1：別の利用者が作った控えは、この人の資格で自動送信しない。
+        //   勝手に消さず残す（持ち主がログインし直したときに送れる）。
+        if(!pendingBelongsToCurrentUser(p)){
+          console.warn('[sakaeSync] 別利用者の控えはスキップ（自動送信しない）:', sk);
+          continue;
+        }
         const cur = localStorage.getItem(sk);
         if(cur === null) continue;                            // 消えたキーはここでは扱わない
         try{ await pushKey(sk, cur); }catch(e){}
@@ -2853,6 +2887,9 @@
         location.href = LOGIN_PAGE + '?next=' + encodeURIComponent(location.pathname + location.search);
         return;
       }
+      // ★SEC-M-1：いまの利用者を確定してから同期を始める。
+      //   これより前に控えの自動送信が走ると持ち主判定ができないため、initialSync より先に置く。
+      currentUid = (session.user && session.user.id) ? session.user.id : '';
 
       installLocalStorageHook();
       await initialSync();
@@ -2875,8 +2912,10 @@
       }, RECORDS_RETRY_MS);
 
       // セッションが切れた（ログアウトされた）タイミングでもログイン画面へ
-      sb.auth.onAuthStateChange((event)=>{
-        if(event === 'SIGNED_OUT') location.href = LOGIN_PAGE;
+      sb.auth.onAuthStateChange((event, sess)=>{
+        if(event === 'SIGNED_OUT'){ currentUid = ''; location.href = LOGIN_PAGE; return; }
+        // ★SEC-M-1：利用者が変わったら uid を追従させる（別アカウントへの切替・トークン更新）。
+        currentUid = (sess && sess.user && sess.user.id) ? sess.user.id : currentUid;
       });
       window.sakaeSupabase = sb; // 他のページ（ログアウトボタンなど）から使えるように公開
     }catch(e){
