@@ -2621,6 +2621,12 @@
   function reconcileWithPending(key, remoteRaw){
     const p = readPending(key);
     if(!p) return true;                                   // 未送信の変更なし＝従来どおり
+    // ★SEC-M-1：別の利用者の控えは、この人の資格で送らない・控えを消さない・共有値も当てない（fail-closed）。
+    //   当てると端末の値が置き換わり、持ち主が戻ったときに自分の変更を送れなくなる。
+    if(!pendingBelongsToCurrentUser(p)){
+      console.warn('[sakaeSync] 別利用者の控えがあるため突き合わせを保留:', key);
+      return false;
+    }
     const local = localStorage.getItem(key);
     if(isSameJsonText(remoteRaw, p.local) || remoteRaw === p.local){
       clearPending(key);                                   // 共有に届いている
@@ -2654,6 +2660,11 @@
   function reconcileRecordsWithPending(mergedRaw, remoteRaw){
     const p = readPending(RECORDS_KEY);
     if(!p) return mergedRaw;
+    // ★SEC-M-1：別の利用者の案件一覧控えは、送らない・消さない・当てない（通常キーと同じ規則）。
+    if(!pendingBelongsToCurrentUser(p)){
+      console.warn('[sakaeSync] 別利用者の案件一覧控えがあるため突き合わせを保留');
+      return null;
+    }
     const byId = (text) => {
       const m = {};
       parseRecordList(text).forEach(function(r){ if(r && r.id) m[r.id] = JSON.stringify(r); });
@@ -2813,7 +2824,13 @@
     // この端末だけにあった案件を足したときは、共有側にも合流させる
     // （足さないままだと、その案件は他の端末からいつまでも見えない）
     if(merged && merged.added > 0){
-      pushKey(RECORDS_KEY, JSON.stringify(merged.list));
+      // ★SEC-M-1：案件一覧に別の利用者の控えがあるときは、この人の資格で合流を送らない（同じ規則）。
+      const pr = readPending(RECORDS_KEY);
+      if(pr && !pendingBelongsToCurrentUser(pr)){
+        console.warn('[sakaeSync] 別利用者の案件一覧控えがあるため合流送信を保留');
+      }else{
+        pushKey(RECORDS_KEY, JSON.stringify(merged.list));
+      }
     }
 
     // ④ いま生きている案件が使っている社内No.を集める。
@@ -2852,6 +2869,12 @@
       }
       // ★未解決の競合があるキーは送らない（flushPendingMutations と同じ規則）。人が解消するまで、共有側をこの経路で動かさない（CONFLICTCLEAR-01）。
       if(localStorage.getItem(conflictKey(key))) return;
+      // ★SEC-M-1：別の利用者の控えがある新規キーは、この人の資格で送らない。消しもしない（下の取り残し削除にも進めない）。
+      const pk = readPending(key);
+      if(pk && !pendingBelongsToCurrentUser(pk)){
+        console.warn('[sakaeSync] 別利用者の控えがある新規キーはスキップ（自動送信しない）:', key);
+        return;
+      }
       const productNo = productNoOfKey(key);
       if(productNo && !livingProductNos.has(productNo)){
         // この社内No.を使っている案件が、共有側にもこの端末にも1件も無い。
