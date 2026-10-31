@@ -373,6 +373,125 @@
     border-radius:6px; cursor:pointer; font-family:inherit; flex:0 0 auto;
   }
   .undoToast button:hover{ filter:brightness(1.1); }
+
+  /* =====================================================================
+     ★TOP デザイン刷新（2026-10-31 テンチョー提示の画像を正）。見た目だけを上書きする。
+     要素の id・class・data-role・処理は従来のまま（検索・新規作成・ひな形・案件カードの動きは変えない）。
+     配色＝MIKOSHIYA デザイン基準：ネイビー #173a68（主操作・見出し）／オレンジ #e67e22（アクセント・新規作成）／
+     白（カード・操作面）／薄いブルーグレー #f3f6fa（背景）・角丸・軽い影・余白多め。
+     ===================================================================== */
+  body{ background:#f3f6fa; }
+  .topbar{
+    position:relative; z-index:3; justify-content:space-between; align-items:center; gap:18px;
+    padding:12px 40px; background:#fff; color:#3a4a63; font-size:12.5px; box-shadow:0 1px 0 rgba(20,35,70,.06);
+  }
+  .tbBrand{ display:flex; align-items:baseline; gap:18px; min-width:0; }
+  .tbLogo{ font-size:24px; font-weight:900; letter-spacing:.01em; color:#173a68; white-space:nowrap; }
+  .tbLogo .os, .heroTitle .os{ color:#e67e22; }
+  .tbCompany{ font-size:15px; font-weight:700; color:#173a68; letter-spacing:.08em; white-space:nowrap; }
+  .tbRight{ display:flex; align-items:center; gap:22px; flex-wrap:wrap; justify-content:flex-end; }
+  .tbRight .tbItem{ display:inline-flex; align-items:center; gap:6px; color:#3a4a63; }
+  .tbRight .tbIcon{ width:18px; height:18px; flex:0 0 auto; }
+  #changePwLink{ text-decoration:none !important; }
+  #changePwLink:hover{ color:#173a68; text-decoration:underline !important; }
+  .tbAvatar{ width:34px; height:34px; border-radius:50%; background:#c9d2df; display:inline-flex; align-items:center; justify-content:center; }
+  .tbAvatar svg{ width:22px; height:22px; }
+
+  .hero{
+    max-width:none; align-items:stretch; padding:0; position:relative; min-height:300px;
+    background:#e9f1f8 url("システムファイル/会社外観イラスト.png") right center / auto 120% no-repeat;
+  }
+  .hero::before{ content:''; position:absolute; inset:0; background:linear-gradient(90deg, rgba(243,246,250,.97) 0%, rgba(243,246,250,.9) 32%, rgba(243,246,250,.35) 52%, rgba(243,246,250,0) 66%); }
+  .heroText{ position:relative; z-index:1; width:100%; max-width:1470px; margin:0 auto; padding:56px 40px 92px; }
+  .heroSub{ font-size:19px; font-weight:700; color:#3a4a63; letter-spacing:.12em; }
+  .heroTitle{ margin:6px 0 10px; font-size:64px; line-height:1.05; font-weight:900; color:#173a68; letter-spacing:.01em; }
+  .heroLead{ font-size:19px; font-weight:700; color:#3a4a63; letter-spacing:.12em; }
+  .hero.compact{ padding:0; min-height:0; }
+  .hero.compact .heroText{ padding:22px 40px 70px; }
+  .hero.compact .heroTitle{ font-size:34px; margin:2px 0 4px; }
+  .hero.compact .heroSub, .hero.compact .heroLead{ font-size:13px; }
+
+  .mainPanel{
+    position:relative; z-index:2; width:calc(100% - 80px); max-width:1470px; margin:-64px auto 0;
+    background:#fff; border-radius:14px; box-shadow:0 6px 24px rgba(20,35,70,.10); padding:22px 32px 22px;
+  }
+  .panelRow1{ display:flex; gap:16px; align-items:stretch; }
+  .panelRow1 .searchWrap{ flex:1 1 auto; }
+  .searchBox{ max-width:none; height:100%; min-height:52px; border-radius:8px; padding:8px 18px; gap:12px; box-shadow:none; border-color:#cfd7e3; }
+  .searchBox .icon{ font-size:18px; color:#3a4a63; }
+  .searchBox input{ font-size:15px; }
+  .panelRow1 .btnRow{ margin:0; flex:0 0 auto; flex-wrap:nowrap; gap:16px; }
+  .panelRow1 .btn{ border-radius:8px; min-width:180px; min-height:52px; font-size:16px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; gap:10px; box-shadow:0 2px 6px rgba(20,35,70,.16); }
+  .panelRow1 .btn.ghost{ background:#f4f6f9; color:#1a2233; border:1px solid #cfd7e3; box-shadow:none; }
+  .panelRow1 .btn svg{ width:20px; height:20px; flex:0 0 auto; }
+  .linkRow{ display:grid; grid-template-columns:repeat(4, 1fr); gap:18px; margin-top:18px; }
+  .linkRow a.zanpinLink{
+    border:1.5px solid #f0b47c; background:#fffaf4; color:#1a2233; border-radius:8px; box-shadow:none;
+    padding:12px 26px; font-size:16px; font-weight:700; display:flex; align-items:center; justify-content:space-between; gap:12px;
+  }
+  .linkRow a.zanpinLink:hover{ background:#fff1e2; border-color:#e67e22; box-shadow:0 3px 9px rgba(20,35,70,.10); }
+  .zlIcon{ width:28px; height:28px; flex:0 0 auto; color:#e67e22; }
+  .zlArrow{ color:#e67e22; font-weight:700; }
+  .zlText{ flex:1 1 auto; text-align:center; }
+
+  .filterRow{ width:calc(100% - 80px); max-width:1470px; margin:18px auto 0; display:flex; justify-content:center; }
+  .filterRow .quickLinks{ margin:0; gap:14px; }
+  .filterRow .quickLinks button{ min-width:186px; padding:12px 22px; font-size:15px; font-weight:700; border-radius:8px; color:#3a4a63; border-color:#e6eaf1; box-shadow:0 2px 6px rgba(20,35,70,.08); }
+  .filterRow .quickLinks button.active{ background:#173a68; color:#fff; border-color:#173a68; }
+
+  .resultsArea{ max-width:1550px; padding:18px 40px 60px; }
+  .resultsMetaRow{ margin:0 0 16px; }
+  .resultsMeta{ font-size:24px; font-weight:800; color:#3a4a63; letter-spacing:.02em; }
+  .resultsTools{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:flex-end; }
+  .resultsTools label{ font-size:13px; color:#3a4a63; }
+  #sortSel{ border:1px solid #cfd7e3; border-radius:8px; padding:9px 12px; font-size:13px; font-family:inherit; background:#fff; color:#1a2233; }
+  .viewToggle{ display:inline-flex; border:1px solid #cfd7e3; border-radius:8px; overflow:hidden; background:#fff; }
+  .viewToggle button{ border:none; background:#fff; width:46px; height:38px; cursor:pointer; color:#3a4a63; display:inline-flex; align-items:center; justify-content:center; }
+  .viewToggle button svg{ width:18px; height:18px; }
+  .viewToggle button.active{ background:#173a68; color:#fff; }
+  #exportCsvBtn{ border-radius:8px; padding:9px 14px; font-size:13px; }
+
+  .resultGrid{ grid-template-columns:repeat(3, minmax(0,1fr)); gap:18px; }
+  .card{ border-radius:10px; padding:20px 24px 18px; border-color:#e6eaf1; box-shadow:0 2px 10px rgba(20,35,70,.07); }
+  .card .productNo{ font-size:21px; font-weight:800; color:#1a2233; }
+  .card .modelName{ font-size:16px; font-weight:800; margin-top:2px; }
+  .card .itemNameRow, .card .meta{ font-size:13px; color:#3a4a63; margin-top:6px; }
+  .card .itemNameRow b, .card .meta b{ color:#5b6b84; font-weight:600; margin-right:4px; }
+  .badge{ font-size:12px; padding:4px 12px; border-radius:14px; }
+  .cardMainRow{ margin-top:14px; gap:12px; }
+  .cardMainBtn{ border-radius:8px; padding:10px 12px; font-size:14px; display:inline-flex; align-items:center; justify-content:center; gap:10px; }
+  .cardMainBtn svg{ width:18px; height:18px; }
+  .cardDetailLink{ border-radius:8px; padding:10px 22px; font-size:13px; }
+  /* 一覧表示（表示切替）：1 行 1 案件・内容は同じカード */
+  .resultGrid.listView{ grid-template-columns:1fr; gap:10px; }
+  .resultGrid.listView .card{ display:grid; grid-template-columns:minmax(220px,1.1fr) minmax(220px,1.4fr) minmax(320px,1.2fr); align-items:center; column-gap:24px; padding:12px 20px; }
+  .resultGrid.listView .card .cardTop{ grid-column:1; }
+  .resultGrid.listView .card .modelName, .resultGrid.listView .card .itemNameRow, .resultGrid.listView .card .meta{ grid-column:2; margin-top:0; }
+  .resultGrid.listView .card .cardMainRow{ grid-column:3; grid-row:1 / span 3; margin-top:0; }
+
+  /* タブレット・スマホ：操作は壊さない範囲で縦に並べる（全面再設計はしない） */
+  @media (max-width:1100px){
+    .panelRow1{ flex-direction:column; }
+    .panelRow1 .btnRow{ flex-wrap:wrap; }
+    .panelRow1 .btn{ min-width:0; flex:1 1 150px; }
+    .linkRow{ grid-template-columns:repeat(2, 1fr); }
+    .resultGrid{ grid-template-columns:repeat(2, minmax(0,1fr)); }
+    .heroTitle{ font-size:48px; }
+  }
+  @media (max-width:700px){
+    .topbar{ padding:10px 16px; flex-wrap:wrap; }
+    .tbCompany{ display:none; }
+    .heroText{ padding:28px 16px 80px; }
+    .heroTitle{ font-size:36px; }
+    .heroSub, .heroLead{ font-size:14px; letter-spacing:.04em; }
+    .mainPanel, .filterRow{ width:calc(100% - 32px); }
+    .mainPanel{ padding:16px; }
+    .linkRow{ grid-template-columns:1fr; }
+    .filterRow .quickLinks button{ min-width:0; }
+    .resultsArea{ padding:16px 16px 48px; }
+    .resultGrid{ grid-template-columns:1fr; }
+    .resultGrid.listView .card{ display:block; }
+  }
 </style>
 <script src="システムファイル/_sakaeSupabaseConfig.js"></script>
 <script src="システムファイル/_sakaeSync.js"></script>
@@ -380,35 +499,40 @@
 </head>
 <body>
 
-  <div class="topbar"><span id="lastUpdatedLabel"></span><span id="changePwLink" style="cursor:pointer; text-decoration:underline;" title="ログインパスワードを変更します">🔑 パスワード変更</span><span>榮製機㈱社内システム</span></div>
+  <!-- ★TOP デザイン刷新（2026-10-31）：ヘッダー → ヒーロー → 操作パネル → 案件フィルタ → 案件一覧。id・処理は従来どおり -->
+  <div class="topbar">
+    <div class="tbBrand"><span class="tbLogo">SAKAE SEIKI-<span class="os">OS</span></span><span class="tbCompany">榮製機株式会社　基本ソフトウェア</span></div>
+    <div class="tbRight"><span id="lastUpdatedLabel"></span><span id="changePwLink" class="tbItem" style="cursor:pointer;" title="ログインパスワードを変更します"><svg class="tbIcon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#173a68"/><text x="12" y="17" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" font-family="sans-serif">?</text></svg>パスワード変更</span><span class="tbItem"><svg class="tbIcon" viewBox="0 0 24 24" fill="#173a68"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>榮製機㈱社内システム</span><span class="tbAvatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="#fff"><circle cx="12" cy="8.5" r="4.2"/><path d="M3.8 21c.8-4.4 4.2-6.6 8.2-6.6s7.4 2.2 8.2 6.6z"/></svg></span></div>
+  </div>
 
   <div class="hero" id="hero">
-    <div class="logo"><img src="システムファイル/sakae_seiki_os_top2.jpg"
-         alt="SAKAE SEIKI-OS 榮製機株式会社 基本ソフトウェア"
-         width="1200" height="654" decoding="async"></div>
-    <div class="tagline">社内No.・受注案件をここから検索／新規作成</div>
-    <div class="searchWrap">
-      <div class="searchBox">
-        <span class="icon">&#128269;</span>
-        <input type="text" id="searchInput" placeholder="社内No.・客先名・型式名で検索" autocomplete="off">
-        <button class="clearBtn" id="clearBtn" title="クリア">&times;</button>
+    <div class="heroText">
+      <div class="heroSub">榮製機株式会社　基本ソフトウェア</div>
+      <h1 class="heroTitle">SAKAE SEIKI-<span class="os">OS</span></h1>
+      <div class="heroLead">現場の情報をつなぎ、ものづくりを支える業務基盤</div>
+    </div>
+  </div>
+
+  <div class="mainPanel">
+    <div class="panelRow1">
+      <div class="searchWrap">
+        <div class="searchBox">
+          <span class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#173a68" stroke-width="2.4" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21" stroke-linecap="round"/></svg></span>
+          <input type="text" id="searchInput" placeholder="社内No.・客先名・型式名で検索" autocomplete="off">
+          <button class="clearBtn" id="clearBtn" title="クリア">&times;</button>
+        </div>
+      </div>
+      <div class="btnRow">
+        <button class="btn primary" id="searchBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21" stroke-linecap="round"/></svg>検索</button>
+        <button class="btn accent" id="newBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>新規作成</button>
+        <button class="btn ghost" id="templateBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="8" y="3" width="12" height="15" rx="1.5"/><path d="M5 7v13.5a.5.5 0 0 0 .5.5H16"/><path d="M11 8h6M11 11.5h6M11 15h4"/></svg>ひな形から作成</button>
       </div>
     </div>
-    <div class="btnRow">
-      <button class="btn primary" id="searchBtn">検索</button>
-      <button class="btn accent" id="newBtn">＋ 新規作成</button>
-      <button class="btn ghost" id="templateBtn">📋 ひな形から作成</button>
-    </div>
     <div class="linkRow">
-      <a class="zanpinLink" href="システムファイル/残品表_モック.html">工程別残品表 →</a>
-      <a class="zanpinLink" href="システムファイル/支給納品一覧_モック.html">支給・納品一覧 →</a>
-      <a class="zanpinLink" href="システムファイル/実績入力_モック.html">実績入力 →</a>
-      <a class="zanpinLink" href="システムファイル/問題点対策表.html">問題点対策表 →</a>
-    </div>
-    <div class="quickLinks" id="quickLinks">
-      <button data-filter="all">すべて</button>
-      <button data-filter="inprogress" class="active">進行中案件</button>
-      <button data-filter="done">完了案件(CSV出力)</button>
+      <a class="zanpinLink" href="システムファイル/残品表_モック.html"><svg class="zlIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span class="zlText">工程別残品表</span><span class="zlArrow">→</span></a>
+      <a class="zanpinLink" href="システムファイル/支給納品一覧_モック.html"><svg class="zlIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M2 6.5A1.5 1.5 0 0 1 3.5 5h10A1.5 1.5 0 0 1 15 6.5V9h3.2a1.5 1.5 0 0 1 1.2.6l2.3 3.1a1.5 1.5 0 0 1 .3.9V16a1.5 1.5 0 0 1-1.5 1.5H20a2.5 2.5 0 0 1-5 0H9a2.5 2.5 0 0 1-5 0h-.5A1.5 1.5 0 0 1 2 16z"/></svg><span class="zlText">支給・納品一覧</span><span class="zlArrow">→</span></a>
+      <a class="zanpinLink" href="システムファイル/実績入力_モック.html"><svg class="zlIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M15.2 4.3l4.5 4.5-10.6 10.6-5.4 1 1-5.4z"/><path d="M16.6 2.9a1.5 1.5 0 0 1 2.1 0l2.4 2.4a1.5 1.5 0 0 1 0 2.1l-.9.9-4.5-4.5z"/></svg><span class="zlText">実績入力</span><span class="zlArrow">→</span></a>
+      <a class="zanpinLink" href="システムファイル/問題点対策表.html"><svg class="zlIcon" viewBox="0 0 24 24"><path d="M12 2.8 22.4 20.6H1.6z" fill="#e67e22"/><path d="M12 9v5.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="17.4" r="1.4" fill="#fff"/></svg><span class="zlText">問題点対策表</span><span class="zlArrow">→</span></a>
     </div>
     <div class="quickLinks" id="dataTransferRow" style="margin-top:6px;">
       <!-- 現場要望（D-12）：JSONの書き出し／読み込みは、誤操作の方がリスクが高いため通常の画面には出さない。
@@ -420,10 +544,27 @@
     </div>
   </div>
 
+  <div class="filterRow">
+    <div class="quickLinks" id="quickLinks">
+      <button data-filter="all">すべて<span class="qlCount" data-count="all"></span></button>
+      <button data-filter="inprogress" class="active">進行中案件<span class="qlCount" data-count="inprogress"></span></button>
+      <button data-filter="done">完了案件（CSV出力）</button>
+    </div>
+  </div>
+
   <div class="resultsArea">
     <div class="resultsMetaRow">
       <div class="resultsMeta" id="resultsMeta"></div>
-      <button type="button" id="exportCsvBtn" title="「完了（過去制作分）」になっている案件をまとめてCSVでダウンロード">📄 完了案件をCSV書き出し</button>
+      <div class="resultsTools">
+        <button type="button" id="exportCsvBtn" title="「完了（過去制作分）」になっている案件をまとめてCSVでダウンロード">📄 完了案件をCSV書き出し</button>
+        <label for="sortSel">表示順</label>
+        <select id="sortSel" title="案件一覧の並び順（表示だけ・保存データは変えません）">
+          <option value="standard">標準（進行中→納期の遅い順）</option>
+          <option value="dueAsc">納期の近い順</option>
+          <option value="noAsc">社内No.順</option>
+        </select>
+        <span class="viewToggle" id="viewToggle"><button type="button" data-view="card" class="active" title="カード表示"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg></button><button type="button" data-view="list" title="一覧表示"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="18" r="1" fill="currentColor"/></svg></button></span>
+      </div>
     </div>
     <div class="resultGrid" id="resultGrid"></div>
   </div>
@@ -1325,9 +1466,19 @@
     if(filterMode==='inprogress') list = list.filter(r=>r.status==='inprogress');
     if(filterMode==='done') list = list.filter(r=>r.status==='done');
 
+    // ★TOP デザイン刷新：表示順の切替（表示だけ・保存データは変えない）。標準は従来どおり（進行中→納期の遅い順）
+    const sortMode = (document.getElementById('sortSel') || {}).value || 'standard';
     list.sort((a,b)=>{
+      if(sortMode === 'dueAsc'){ const da = a.dueDate || '9999-99-99', db = b.dueDate || '9999-99-99'; return da.localeCompare(db); }
+      if(sortMode === 'noAsc') return String(a.orderNo || a.productNo || '').localeCompare(String(b.orderNo || b.productNo || ''), 'ja', { numeric:true });
       if(a.status!==b.status) return a.status==='inprogress' ? -1 : 1;
       return (b.dueDate||'').localeCompare(a.dueDate||'');
+    });
+    // 案件フィルタのボタンに件数（検索語で絞った件数）を出す
+    const qAll = records.filter(r=>matches(r,q));
+    quickLinks.querySelectorAll('.qlCount').forEach(el=>{
+      const n = el.dataset.count === 'inprogress' ? qAll.filter(r=>r.status==='inprogress').length : qAll.length;
+      el.textContent = '（' + n + '件）';
     });
 
     resultsMeta.textContent = '案件一覧 ' + list.length + '件';
@@ -1354,15 +1505,23 @@
         + '<div class="modelName">'+esc(r.modelName || r.itemName || '(名称未設定)')+'</div>'
         // 上の行が型式を出せている時だけ、その下に品名も出す。
         // 型式が空の案件では上の行が品名そのものになるため、二重に出さない。
-        + ((r.itemName && r.modelName) ? '<div class="itemNameRow"><b>品名：</b>'+esc(r.itemName)+'</div>' : '')
-        + '<div class="meta"><b>客先：</b>'+esc(r.customer||'-')+'　<b>納期：</b>'+esc(fmtDate(r.dueDate))+'</div>'
-        + '<div class="cardMainRow"><button type="button" class="cardMainBtn" data-role="openSagyohyo">'+mainLabel+' →</button>'
+        + ((r.itemName && r.modelName) ? '<div class="itemNameRow"><b>品名 ：</b>'+esc(r.itemName)+'</div>' : '')
+        + '<div class="meta"><b>客先 ：</b>'+esc(r.customer||'-')+'　　<b>納期 ：</b>'+esc(fmtDate(r.dueDate))+'</div>'
+        + '<div class="cardMainRow"><button type="button" class="cardMainBtn" data-role="openSagyohyo"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2.5 6.5A1.5 1.5 0 0 1 4 5h5l2 2h9a1.5 1.5 0 0 1 1.5 1.5V9H5.2a1.5 1.5 0 0 0-1.4 1L2.5 14z"/><path d="M4.6 10.5h18.2l-2.5 8.3a1.5 1.5 0 0 1-1.4 1.2H3.1z"/></svg>'+mainLabel+' →</button>'
         + '<button type="button" class="cardDetailLink" data-role="openDetail" title="受注に関する連絡書の詳細を見る">詳細</button></div>'
         + '</div>';
     }).join('');
   }
 
   searchInput.addEventListener('input', render);
+  // ★TOP デザイン刷新：表示順・カード表示／一覧表示の切替（表示だけ。保存はしない）
+  document.getElementById('sortSel').addEventListener('change', render);
+  document.getElementById('viewToggle').addEventListener('click', (e)=>{
+    const b = e.target.closest('button[data-view]');
+    if(!b) return;
+    document.querySelectorAll('#viewToggle button').forEach(x=>x.classList.toggle('active', x===b));
+    resultGrid.classList.toggle('listView', b.dataset.view === 'list');
+  });
   clearBtn.addEventListener('click', ()=>{ searchInput.value=''; render(); searchInput.focus(); });
   document.getElementById('searchBtn').addEventListener('click', render);
 
