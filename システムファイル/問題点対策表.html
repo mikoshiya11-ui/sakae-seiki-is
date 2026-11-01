@@ -8,14 +8,101 @@
      ★接続先は _issueTarget.js で固定（本番表のみ）。実行時の切替は持たない（DEV 表へは到達しない）。
      ★_sakaeSync.js は読み込まない（kv_store／localStorage の業務データに触れないため）。 -->
 <link rel="stylesheet" href="_issueCountermeasures.css">
+<style>
+  /* ==== 2026-11-01 問題点対策表 DESIGN 改修（この画面の見た目だけ・JS/登録/編集/状態/検索/CSV/保存は不変） ==== */
+  body{ background:#F3F6FA; color:#304861; }
+  .topbar{ height:62px; padding:0 30px; gap:0; flex-wrap:nowrap; background:#102F5F; }
+  .topbar .backLink{ color:#FFFFFF; font-size:15px; font-weight:600; }
+  .topbar .who{ margin-left:auto; margin-right:18px; font-size:12px; color:#BFD0E6; }
+  .topbar .brand{ display:flex; align-items:baseline; font-size:18px; font-weight:800; letter-spacing:.01em; white-space:nowrap; }
+  .topbar .brand .sakae{ color:#FFFFFF; }
+  .topbar .brand .os{ color:#F28A21; }
+  .topbar .sep{ display:inline-block; width:0; height:24px; border-left:1px solid #5D77A3; margin:0 18px; }
+  .topbar .pageName{ color:#FFFFFF; font-size:17px; font-weight:700; white-space:nowrap; }
+
+  .pageHead{ max-width:1600px; margin:0 auto; padding:22px 30px 0; text-align:left; display:flex; align-items:center; gap:14px; }
+  .pageHead .ptAccent{ width:7px; height:44px; background:#F28A21; border-radius:2px; flex:0 0 auto; }
+  .pageHead .ptIcon{ color:#173B6D; flex:0 0 auto; }
+  .pageTitle{ font-size:30px; font-weight:800; color:#102F5F; letter-spacing:.02em; line-height:1.2; }
+  .pageSub{ display:none; }
+  .wrap{ max-width:1600px; padding:18px 30px 48px; }
+
+  .summary{ gap:10px; margin-bottom:18px; }
+  .summary button{ width:116px; height:68px; padding:0 8px; border:1px solid #CBD6E2; border-radius:8px; background:#FFFFFF; color:#173B6D;
+    font-size:13px; font-weight:700; line-height:1.3; box-shadow:0 2px 6px rgba(20,45,80,.06); }
+  .summary button .n{ font-size:22px; font-weight:800; color:#173B6D; line-height:1.15; font-variant-numeric:tabular-nums; }
+  .summary button.active{ background:#173B6D; border-color:#173B6D; color:#FFFFFF; }
+  .summary button.active .n{ color:#FFFFFF; }
+
+  .filters{ background:#FFFFFF; border:1px solid #C9D5E1; border-radius:8px; padding:14px 16px; margin-bottom:18px; }
+  .filters .row{ gap:8px; }
+  .filters .row + .row{ margin-top:12px; }
+  .filters .row1{ flex-wrap:nowrap; }
+  .filters label{ font-size:12px; font-weight:700; color:#304861; white-space:nowrap; }
+  .filters input, .filters select{ height:42px; padding:0 12px; border:1px solid #C4D1DE; border-radius:6px; background:#FFFFFF;
+    font-size:13px; font-weight:500; color:#304861; min-width:0; }
+  .filters input:focus, .filters select:focus{ outline:none; border-color:#173B6D; box-shadow:0 0 0 3px rgba(23,59,109,.12); }
+  .filters #fStatus, .filters #fPriority{ flex:0 1 160px; }
+  .filters #fReportedBy, .filters #fOwner, .filters #fLocation{ flex:0 1 200px; }
+  .filters #fFrom{ flex:0 1 180px; }
+  .filters #fTo{ flex:0 0 180px; width:180px; }
+  .filters .grow{ flex:1 1 auto; min-width:200px; }
+  .filters #applyBtn{ width:120px; height:42px; padding:0 10px; border-radius:6px; border:1px solid #173B6D; background:#173B6D; color:#FFFFFF; font-size:13px; font-weight:700; }
+  .filters #clearBtn{ width:90px; height:42px; padding:0 10px; border-radius:6px; border:1px solid #173B6D; background:#FFFFFF; color:#173B6D; font-size:13px; font-weight:700; }
+
+  .toolRow{ min-height:46px; margin-bottom:18px; }
+  #newBtn{ width:210px; height:46px; padding:0 12px; border:0; border-radius:6px; background:#F28A21; color:#FFFFFF; font-size:14px; font-weight:800;
+    box-shadow:0 2px 6px rgba(150,85,15,.15); }
+  #newBtn:hover{ filter:brightness(1.05); }
+  #csvBtn{ width:120px; height:46px; padding:0 10px; border:1px solid #173B6D; border-radius:6px; background:#FFFFFF; color:#173B6D; font-size:14px; font-weight:700; }
+
+  .tableCard{ background:#FFFFFF; border:1px solid #C4D0DC; border-radius:8px; box-shadow:0 2px 7px rgba(20,45,80,.05); }
+  .badge{ display:inline-flex; align-items:center; height:26px; padding:0 10px; border-radius:13px; font-size:11px; font-weight:700; line-height:1; }
+  .pri-高{ background:#FFE4E2; color:#C8261E; border:1px solid #F5C4C0; }
+  .pri-中{ background:#FFF2DA; color:#A56610; border:1px solid #E9C488; }
+  .pri-低{ background:#EEF3F8; color:#3F5873; border:1px solid #CBD6E2; }
+  .st-未対応{ background:#FFE4E2; color:#C8261E; }
+  .st-調査中{ background:#FFF2DA; color:#A56610; }
+  .st-対策中{ background:#E6EFFA; color:#173B6D; }
+  .st-確認待ち{ background:#E4F3E8; color:#1F7A3D; }
+  .st-完了{ background:#EEF1F6; color:#58708A; }
+  .st-取消{ background:#F2F4F8; color:#9AA5B6; }
+  @media (min-width:769px){
+    thead th{ height:44px; padding:0 14px; background:#EEF3F8; border-bottom:1px solid #C2CFDC; font-size:12px; font-weight:700; color:#28425E; }
+    tbody td{ height:55px; padding:8px 14px; border-bottom:1px solid #E1E7EE; vertical-align:middle; font-size:13px; font-weight:500; color:#304861; line-height:1.45; }
+    tbody tr:nth-child(even){ background:#FAFCFE; }
+    tbody tr:hover{ background:#F1F6FB; }
+    tbody tr:last-child td{ border-bottom:0; }
+    .no{ font-size:14px; font-weight:800; color:#123F83; }
+    .pager{ background:#F7F9FC; border-top:1px solid #E1E7EE; padding:10px 14px; }
+    .pager .btn{ height:34px; padding:0 14px; border-radius:6px; font-size:13px; }
+  }
+  @media (max-width:1180px){
+    .filters .row1{ flex-wrap:wrap; }
+  }
+  @media (max-width:768px){
+    .topbar{ padding:0 16px; }
+    .topbar .brand, .topbar .sep{ display:none; }
+    .pageHead{ padding:16px 16px 0; }
+    .pageTitle{ font-size:24px; }
+    .wrap{ padding:14px 10px 32px; }
+    .summary button{ width:auto; min-width:84px; height:58px; }
+    .filters #fTo{ flex:1 1 140px; width:auto; }
+  }
+</style>
 </head>
 <body>
   <div class="topbar">
     <a class="backLink" href="../SAKAE SEIKI-iS.html" title="トップへ戻る">← トップへ</a>
     <span class="who" id="whoAmI"></span>
+    <span class="brand"><span class="sakae">SAKAE SEIKI-</span><span class="os">OS</span></span>
+    <span class="sep" aria-hidden="true"></span>
+    <span class="pageName">問題点対策表</span>
   </div>
   <!-- ★画面を開いた瞬間に「問題点対策表」と分かることを最優先（2026-09-28 UI 是正）。表記は SAKAE SEIKI-OS に統一 -->
   <header class="pageHead">
+    <span class="ptAccent" aria-hidden="true"></span>
+    <svg class="ptIcon" viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2.5" width="6" height="3" rx="1"/><path d="M8.5 10.5h7M8.5 14h7M8.5 17.5h4.5"/></svg>
     <h1 class="pageTitle">問題点対策表</h1>
     <p class="pageSub">SAKAE SEIKI-OS</p>
   </header>
@@ -25,7 +112,7 @@
 
     <div id="toolArea">
       <div class="filters">
-        <div class="row">
+        <div class="row row1">
           <label>状態</label>
           <select id="fStatus"><option value="">すべて</option><option>未対応</option><option>調査中</option><option>対策中</option><option>確認待ち</option><option>完了</option><option>取消</option></select>
           <label>優先度</label>
@@ -33,7 +120,10 @@
           <label>登録者</label><input type="text" id="fReportedBy" placeholder="部分一致">
           <label>担当者</label><input type="text" id="fOwner" placeholder="部分一致">
           <label>発生場所</label><input type="text" id="fLocation" list="placeList" placeholder="部分一致">
-          <label>登録日</label><input type="date" id="fFrom"><span>〜</span><input type="date" id="fTo">
+          <label>登録日</label><input type="date" id="fFrom"><span>〜</span>
+        </div>
+        <div class="row row2">
+          <input type="date" id="fTo">
           <input type="text" id="fQ" class="grow" placeholder="キーワード（No./問題内容/原因/恒久対策/備考）">
           <button class="btn" id="applyBtn">絞り込む</button>
           <button class="btn sub" id="clearBtn">解除</button>
