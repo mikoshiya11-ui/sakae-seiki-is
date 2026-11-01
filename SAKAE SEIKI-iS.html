@@ -2683,6 +2683,8 @@
       '<div class="card" data-id="'+r.id+'">'
       + '<div class="cardTop"><span class="productNo">'+esc(r.orderNo)+'</span><span class="badgeRow"><span class="badge template">⭐ ひな形</span><button type="button" class="cardDelBtn" data-role="untemplateCard" title="ひな形から外す（カードは削除されません）">✕</button></span></div>'
       + '<div class="modelName">'+esc(r.modelName || r.itemName || '(名称未設定)')+'</div>'
+      // PT-0028：案件カードと同じく、型式の下に品名も出す（型式が空なら上の行が品名なので出さない）
+      + ((r.itemName && r.modelName) ? '<div class="itemNameRow"><b>品名：</b>'+esc(r.itemName)+'</div>' : '')
       + '<div class="meta"><b>客先：</b>'+esc(r.customer||'-')+'　<b>品目：</b>'+esc(r.category||'-')+'</div>'
       + '</div>'
     ).join('');
