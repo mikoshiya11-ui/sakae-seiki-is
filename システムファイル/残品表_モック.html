@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>工程別残品表｜SAKAE SEIKI-iS</title>
+<title>工程別残品表｜SAKAE SEIKI-OS</title>
 <style>
   *{box-sizing:border-box;}
   body{
@@ -188,6 +188,105 @@
   #arrOk{ background:#173a68; color:#fff; border:1px solid #173a68; }
   #arrClose{ background:#fff; color:#173a68; border:1px solid #c3cddd; }
   @media print{ .arrBtn,.arrUndo,.arrOverlay{ display:none !important; } }
+
+  /* ==== 2026-11-01 工程別残品表 DESIGN 改修（表示だけ・抽出/判定/保存は不変） ==== */
+  @media screen{
+    body{ background:#F3F6FA; color:#24364D; }
+    .topbar{ height:62px; padding:0 32px; background:#102F5F; gap:0; }
+    .topbar .backLink{ color:#FFFFFF; font-size:15px; font-weight:600; }
+    .topbar .brand{ align-items:baseline; gap:0; font-size:18px; font-weight:800; letter-spacing:.01em; }
+    .topbar .brand .sakae{ color:#FFFFFF; }
+    .topbar .brand .is{ color:#F28A21; }
+    .topbar .sep{ display:inline-block; width:0; height:24px; border-left:1px solid #5D77A3; margin:0 18px; }
+    .topbar .pageName{ color:#FFFFFF; font-size:17px; font-weight:700; }
+
+    .wrap{ max-width:1600px; padding:0 32px 60px; }
+    .noteBar, .debugToggleBtn, .debugPanel, .footNote{ display:none !important; }
+
+    .pageTitleRow{ display:flex; align-items:center; gap:14px; margin:22px 0 18px; }
+    .ptAccent{ width:8px; height:44px; background:#F28A21; border-radius:2px; flex:0 0 auto; }
+    .ptIcon{ color:#173B6D; flex:0 0 auto; }
+    .ptTitle{ margin:0; font-size:32px; font-weight:800; color:#102F5F; line-height:1.2; letter-spacing:.02em; }
+
+    .procToggle{ display:flex; flex-wrap:wrap; gap:7px; background:transparent; box-shadow:none; padding:0; border-radius:0; margin:0; }
+    .procToggle button{ height:46px; padding:0 18px; font-size:14px; font-weight:700; border-radius:12px;
+      background:#FFFFFF; color:#173B6D; border:1px solid #CCD6E2; box-shadow:0 1px 3px rgba(20,45,80,.06); }
+    .procToggle button:hover:not(:disabled):not(.active){ border-color:#173B6D; }
+    .procToggle button.active{ background:#173B6D; color:#FFFFFF; border-color:#173B6D; }
+
+    .toolRow{ margin:20px 0 0; gap:12px; flex-wrap:nowrap; }
+    .searchWrap{ position:relative; display:block; width:410px; flex:0 1 410px; min-width:240px; }
+    .searchIcon{ position:absolute; left:16px; top:50%; transform:translateY(-50%); color:#155A9C; pointer-events:none; }
+    .searchBox{ display:block; width:100%; max-width:none; min-width:0; height:54px; padding:0 14px 0 50px; background:#FFFFFF;
+      border:1px solid #B8C7D9; border-radius:7px; font-size:14px; font-weight:500; color:#45566B; }
+    .searchBox::placeholder{ color:#7A8899; }
+    .searchBox:focus{ border-color:#173B6D; box-shadow:0 0 0 3px rgba(23,59,109,.12); }
+    .printBtn{ display:inline-flex; align-items:center; justify-content:center; gap:10px; width:210px; height:54px; flex:0 0 auto;
+      background:#FFFFFF; border:1px solid #B8C7D9; border-radius:7px; color:#173B6D; font-size:15px; font-weight:700; padding:0 14px; }
+    .printBtn:hover{ border-color:#173B6D; color:#173B6D; }
+    .printIcon{ color:#173B6D; flex:0 0 auto; }
+
+    .summaryRow{ gap:12px; flex-wrap:nowrap; }
+    .sumChip{ display:inline-flex; align-items:center; gap:6px; height:54px; padding:0 22px; background:#FFFFFF; border-radius:27px;
+      box-shadow:0 2px 8px rgba(20,45,80,.08); font-size:15px; font-weight:600; color:#24364D; white-space:nowrap; }
+    .sumChip b{ font-size:20px; font-weight:800; color:#173B6D; font-variant-numeric:tabular-nums; }
+    .sumChip.warn b{ color:#F28A21; }
+    .sumChip.danger b{ color:#E12D26; }
+
+    .orphanBar{ margin:20px 0 0; }
+    .tableCard{ margin-top:20px; background:#FFFFFF; border:1px solid #B8C7D9; border-radius:8px; box-shadow:0 2px 8px rgba(20,45,80,.05); }
+    table{ min-width:1180px; }
+    thead th{ height:50px; padding:0 8px; background:#EEF3F8; border-bottom:1px solid #AFBDCC; font-size:13px; font-weight:700; color:#213A59; }
+    thead th:hover{ color:#173B6D; }
+    tbody td{ height:51px; padding:0 8px; font-size:13px; font-weight:500; color:#24364D; border-bottom:1px solid #E2E8EF; }
+    tbody tr:nth-child(even){ background:#F8FBFE; }
+    tbody tr:hover{ background:#EEF4FB; }
+    tbody tr:last-child td{ border-bottom:none; }
+    tbody td:nth-child(2){ font-size:14px; font-weight:600; color:#173B6D; }
+    td.nameCell, th.nameCell{ min-width:128px; }
+    td.modelCell, th.modelCell{ min-width:80px; }
+    th.checkCol, td.checkCol{ width:36px; padding:0 0 0 10px; }
+
+    .procTag{ display:inline-flex; align-items:center; height:28px; padding:0 10px; font-size:12px; font-weight:700; border-radius:5px;
+      background:#173B6D; color:#FFFFFF; vertical-align:middle; }
+    .procTag.arrange{ background:#9B6413; }
+    .arrangeTag{ display:inline-flex; align-items:center; height:24px; padding:0 7px; font-size:11px; font-weight:700; border-radius:5px;
+      background:#FFF2DA; color:#A56610; border:1px solid #E9C488; margin-left:4px; vertical-align:middle; }
+
+    td.dueCell, th.dueCell{ min-width:0; }
+    td.dueCell{ font-size:14px; }
+    .dueCell.over{ color:#E12D26; font-weight:700; }
+    .dueCell.soon{ color:#F28A21; font-weight:700; }
+    .dueCell.over .dueAmpm{ color:#E12D26; }
+    .dueCell.soon .dueAmpm{ color:#F28A21; }
+    .dueAmpm{ font-size:12px; font-weight:600; margin-left:3px; }
+    .badge{ display:inline-flex; align-items:center; height:25px; padding:0 9px; font-size:11px; font-weight:700; border-radius:12px; margin-left:4px; vertical-align:middle; }
+    .badge.over{ background:#FFE4E2; color:#E12D26; }
+    .badge.soon{ background:#FFF1E2; color:#F28A21; }
+    .needCheck{ font-size:13px; font-weight:700; color:#A56610; }
+
+    .arrBtn{ display:inline-flex; align-items:center; height:30px; padding:0 10px; border:1px solid #9EB5D0; border-radius:15px;
+      background:#FFFFFF; color:#173B6D; font-size:12px; font-weight:600; }
+    .arrBtn:hover{ border-color:#173B6D; }
+    .checkCol input{ width:18px; height:18px; accent-color:#173B6D; }
+  }
+  /* タブレット：工程タブは横スクロール・検索/印刷と件数は 2 段まで */
+  @media screen and (max-width:1180px){
+    .procToggle{ flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
+    .procToggle button{ flex:0 0 auto; }
+    .toolRow{ flex-wrap:wrap; }
+    .summaryRow{ margin-left:0; flex-wrap:wrap; }
+  }
+  @media screen and (max-width:640px){
+    .topbar{ padding:0 16px; }
+    .topbar .brand, .topbar .sep{ display:none; }
+    .wrap{ padding:0 16px 40px; }
+    .ptTitle{ font-size:24px; }
+    .searchWrap{ width:100%; flex:1 1 100%; min-width:0; }
+    .printBtn{ width:100%; }
+    .sumChip{ height:44px; padding:0 16px; }
+  }
+  @media print{ .pageTitleRow, .procToggle{ display:none !important; } }
 </style>
 <!-- PT-0001：手配完了／取消の入力画面。押したときだけ開き、確定したときだけ保存する -->
 <div id="arrModal" class="arrOverlay" style="display:none">
@@ -214,19 +313,29 @@
 <body>
 
   <div class="topbar">
-    <a class="backLink" href="../SAKAE SEIKI-iS.html" title="SAKAE SEIKI-iSトップへ">← トップへ</a>
-    <span class="brand"><span class="sakae">SAKAE SEIKI</span><span class="is">-iS</span></span>
-    <span class="sep">｜</span>
-    <span class="pageName" id="pageName">工程別残品表（モック：工程ごとの未完了部品一覧）</span>
+    <a class="backLink" href="../SAKAE SEIKI-iS.html" title="SAKAE SEIKI-OSトップへ">← トップへ</a>
+    <span class="brand"><span class="sakae">SAKAE SEIKI-</span><span class="is">OS</span></span>
+    <span class="sep" aria-hidden="true"></span>
+    <span class="pageName" id="pageName">工程別残品表</span>
   </div>
 
   <div class="wrap">
 
+    <div class="pageTitleRow">
+      <span class="ptAccent" aria-hidden="true"></span>
+      <svg class="ptIcon" viewBox="0 0 24 24" width="32" height="32" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><rect x="9" y="2.5" width="6" height="3" rx="1"/><path d="M8.5 10.5h7M8.5 14h7M8.5 17.5h4.5"/></svg>
+      <h1 class="ptTitle">工程別残品表</h1>
+    </div>
+
+    <!-- 説明文は画面に出さない（2026-11-01 デザイン改修・内容は残す）
     <div class="noteBar">
       「残品表（マクロ有効）.xlsm」から工程でフィルタして各工程日程表（EW／LA／MI／NCなど）に貼り付けている運用を、1枚のページで工程切替できる形にしたものです。<br>
       各部品に登録されている工程を、既存の工程グループごとに表示します。<br>
       工程タブは特定の4つに絞らず、実際に部品が待っている工程コードごとに自動で出てきます（NC1〜NC5はまとめて「NC工程」として扱い、NCMはそれとは別に「NCM工程」タブとして分けています）。
     </div>
+    -->
+
+    <div class="procToggle" id="procToggle"></div>
 
     <div class="orphanBar" id="orphanBar" style="display:none;">
       <div class="orphanTitle">⚠ 案件一覧にカードが無いのに、作業票データだけ残っている品番があります</div>
@@ -238,9 +347,8 @@
     <div class="debugPanel" id="debugPanel" style="display:none;"></div>
 
     <div class="toolRow">
-      <div class="procToggle" id="procToggle"></div>
-      <input type="text" class="searchBox" id="searchBox" placeholder="社内№・客先・品名で検索">
-      <button type="button" class="printBtn" id="printBtn" title="今開いているタブの一覧をA4横で印刷します">🖨 印刷する（A4横）</button>
+      <label class="searchWrap"><svg class="searchIcon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg><input type="text" class="searchBox" id="searchBox" placeholder="社内No.・客先・品名で検索"></label>
+      <button type="button" class="printBtn" id="printBtn" title="今開いているタブの一覧をA4横で印刷します"><svg class="printIcon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="currentColor"><path d="M7 3h10v4H7z"/><path d="M5 8h14a3 3 0 0 1 3 3v6h-4v4H6v-4H2v-6a3 3 0 0 1 3-3zm3 8v3h8v-3zm10-5.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>印刷する（A4横）</button>
       <div class="summaryRow" id="summaryRow"></div>
     </div>
 
@@ -252,7 +360,7 @@
           <thead>
             <tr>
               <th class="checkCol"></th>
-              <th data-key="orderNo">社内№</th>
+              <th data-key="orderNo">社内No.</th>
               <th data-key="customer">客先</th>
               <th class="modelCell" data-key="model">型式名</th>
               <th data-key="due">納期</th>
