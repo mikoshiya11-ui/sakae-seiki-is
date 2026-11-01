@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>作業票｜SAKAE SEIKI-iS</title>
+<title>作業票｜SAKAE SEIKI-OS</title>
 <style>
   *{box-sizing:border-box;}
   body{
@@ -263,6 +263,415 @@
     border-radius:6px; cursor:pointer; font-family:inherit; flex:0 0 auto;
   }
   .undoToast button:hover{ filter:brightness(1.1); }
+
+  /* =====================================================================
+     ★作業票画面 デザイン改修（2026-11-01・最終調整）。精密機械メーカーが毎日使う上質なデジタル作業票。
+     画面全体を 1 枚の帳票として設計する：文字（大・中・小の 3 段）・細い線・明度差・余白で階層をつくる。
+     最重要 4 情報（社内No.・品名・客先名・納期）＝1 枚の情報パネル → 補助情報 → 操作 → 工程・納期 → 部品一覧（主役）。
+     見た目だけを上書きする。id・data-of・ボタンの処理・保存・工程・日付・印刷は従来どおり。
+     ===================================================================== */
+  :root{
+    --os-header:#102a54; --os-page-bg:#eef1f5; --os-surface:#ffffff;
+    --os-primary:#14305e; --os-text:#15203a; --os-sub:#5a6a82; --os-faint:#8e99ab;
+    --os-border:#dde2ea; --os-line:#e7ebf1; --os-accent:#e8892c; --os-success:#1f8a4c;
+  }
+  body{ background:var(--os-page-bg); color:var(--os-text); font-weight:400; letter-spacing:0;
+    font-family:"Noto Sans JP","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; }
+  input, select, button, textarea{ font-family:inherit; letter-spacing:0; }
+
+  /* 共通ヘッダー：左＝ブランド・中＝製造業務システム・右＝作業票／社内No. */
+  .topbar{ background:var(--os-header); padding:13px 36px; gap:14px; font-size:13px; box-shadow:none; }
+  .topbar .brand{ font-family:"Segoe UI","Hiragino Sans","Yu Gothic",sans-serif; font-size:24px; font-weight:800; letter-spacing:.04em; gap:0; }
+  .topbar .brand .is{ color:var(--os-accent); }
+  .topbar .sep{ color:#5d77a3; font-weight:300; font-size:20px; }
+  .topbar .sysName{ font-size:15px; font-weight:700; color:#fff; letter-spacing:0; }
+  .topbar .pageName{ margin-left:auto; font-size:13px; color:#dbe4f1; font-weight:500; font-variant-numeric:tabular-nums; }
+
+  .wrap{ max-width:1600px; padding:24px 36px 44px; }
+  .card{ background:transparent; border:none; border-radius:0; box-shadow:none; margin:0; }
+  .docHead{ padding:0; border:none; }
+
+  /* タイトルライン：← 案件一覧へ ｜ 作業票（大）  社内No.（一段弱く） */
+  .pageTitleRow{ display:flex; align-items:center; gap:22px; margin:0 0 20px; flex-wrap:wrap; }
+  .pageTitleRow .backLink{ display:inline-flex; align-items:center; gap:6px; color:var(--os-text); font-size:14px; font-weight:600; padding:9px 18px; border:1px solid #c9d1dd; background:var(--os-surface); border-radius:4px; text-decoration:none; box-shadow:0 1px 1px rgba(20,40,80,.04); }
+  .pageTitleRow .backLink:hover{ border-color:var(--os-primary); }
+  .pageTitleRow .titleSep{ display:block; width:1px; height:40px; background:#cdd4df; }
+  .pageTitle{ margin:0; font-size:32px; font-weight:800; color:var(--os-text); letter-spacing:0; line-height:1.15; }
+  .pageTitle svg{ display:none; }
+  .noPill{ background:none; color:var(--os-sub); font-size:13px; font-weight:500; padding:0; margin:0 0 0 14px; letter-spacing:0; }
+  .pageTitleNo{ font-size:26px; font-weight:700; color:var(--os-text); letter-spacing:.02em; font-variant-numeric:tabular-nums; margin-left:-12px; }
+
+  /* 作業票情報：12 列。最重要 4 情報＝各 3 列の 1 枚パネル／補助 6 情報＝各 2 列で一直線 */
+  .infoCard{ padding:0; }
+  .cardHead{ display:none; }
+  .infoCard .orderCard{ background:transparent; box-shadow:none; border:none; border-radius:0; margin:0; padding:0; display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:0; }
+  .infoCard .oField{ position:relative; min-width:0; gap:6px; order:5; grid-column:span 2; padding:18px 14px 18px 0; border-bottom:1px solid #d3d9e3; }
+  .oField label{ display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:var(--os-sub); letter-spacing:0; }
+  .oField input, .oField select{ width:100%; min-width:0 !important; height:38px; font-size:15px; font-weight:600; color:var(--os-text); font-variant-numeric:tabular-nums; background:var(--os-surface); border:1px solid #cfd6e1; border-radius:4px; padding:0 12px; font-family:inherit; }
+  .oField input:hover, .oField select:hover{ border-color:#aab5c6; }
+  .oField input:focus, .oField select:focus{ outline:none; border-color:var(--os-primary); box-shadow:0 0 0 2px rgba(20,48,94,.10); }
+  .oField input[readonly]{ background:#f3f5f8; color:var(--os-sub); }
+  .oField input[type=date]::-webkit-calendar-picker-indicator{ opacity:.6; cursor:pointer; }
+  .oField select{ cursor:pointer; }
+  /* 最重要 4 情報パネル：白・左端に細いオレンジ線・細い縦区切りだけ（カード感は出さない） */
+  .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="itemName"]),
+  .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){
+    grid-column:span 3; background:var(--os-surface); padding:20px 26px 20px 30px; gap:4px; border-bottom:none;
+    border-top:1px solid var(--os-border); border-bottom:1px solid var(--os-border); box-shadow:0 1px 2px rgba(20,40,80,.05); }
+  .infoCard .oField:has([data-of="orderNo"]){ order:1; border-left:4px solid var(--os-accent); border-radius:6px 0 0 6px; }
+  .infoCard .oField:has([data-of="itemName"]){ order:2; }
+  .infoCard .oField:has([data-of="customer"]){ order:3; }
+  .infoCard .oField:has([data-of="dueDate"]){ order:4; border-right:1px solid var(--os-border); border-radius:0 6px 6px 0; }
+  .infoCard .oField:has([data-of="itemName"])::after, .infoCard .oField:has([data-of="customer"])::after, .infoCard .oField:has([data-of="dueDate"])::after{
+    content:""; position:absolute; left:0; top:20px; bottom:20px; width:1px; background:#d6dce5; }
+  .oField:has([data-of="orderNo"]) label, .oField:has([data-of="itemName"]) label, .oField:has([data-of="customer"]) label, .oField:has([data-of="dueDate"]) label{ font-size:13px; font-weight:500; }
+  .oField:has([data-of="orderNo"]) label::before, .oField:has([data-of="itemName"]) label::before,
+  .oField:has([data-of="customer"]) label::before, .oField:has([data-of="dueDate"]) label::before{ content:""; width:20px; height:20px; flex:0 0 auto; background:center / contain no-repeat; margin-right:4px; }
+  .oField:has([data-of="orderNo"]) label::before{ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6a82' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 12.5V4.5a1 1 0 0 1 1-1h8l8 8-9 9z'/%3E%3Ccircle cx='8' cy='8' r='1.5'/%3E%3C/svg%3E"); }
+  .oField:has([data-of="itemName"]) label::before{ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6a82' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 3 8 4.5v9L12 21l-8-4.5v-9z'/%3E%3Cpath d='m4 7.5 8 4.5 8-4.5M12 12v9'/%3E%3C/svg%3E"); }
+  .oField:has([data-of="customer"]) label::before{ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6a82' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4.5 20.5c1.2-4 4-6 7.5-6s6.3 2 7.5 6'/%3E%3C/svg%3E"); }
+  .oField:has([data-of="dueDate"]) label::before{ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6a82' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='5' width='17' height='15.5' rx='2'/%3E%3Cpath d='M3.5 10h17M8 3v4M16 3v4'/%3E%3C/svg%3E"); }
+  /* 値は通常テキストとして大きく。触れた時だけ入力欄の形になる */
+  .oField [data-of="orderNo"], .oField [data-of="itemName"], .oField [data-of="customer"], .oField [data-of="dueDate"]{
+    height:42px; font-size:24px; font-weight:700; color:var(--os-text); background:transparent; border-color:transparent; padding:0 0 0 28px; letter-spacing:0; }
+  .oField [data-of="orderNo"]{ font-size:26px; }
+  .oField [data-of="orderNo"], .oField [data-of="dueDate"]{ font-variant-numeric:tabular-nums; }
+  .oField [data-of="orderNo"]:hover, .oField [data-of="itemName"]:hover, .oField [data-of="customer"]:hover, .oField [data-of="dueDate"]:hover{ border-color:var(--os-border); }
+  .oField [data-of="orderNo"]:focus, .oField [data-of="itemName"]:focus, .oField [data-of="customer"]:focus, .oField [data-of="dueDate"]:focus{ background:#f7f9fc; }
+  .oField input[data-of="dueDate"]::-webkit-calendar-picker-indicator{ opacity:0; }
+  .oField input[data-of="dueDate"]:hover::-webkit-calendar-picker-indicator, .oField input[data-of="dueDate"]:focus::-webkit-calendar-picker-indicator{ opacity:.5; }
+  /* 補助 6 情報：パネルの下に一直線（一段弱く） */
+  .infoCard .oField:has([data-of="orderDate"]){ padding-left:18px; }
+  .infoCard .oField:has([data-of="orderDate"]), .infoCard .oField:has([data-of="createdBy"]), .infoCard .oField:has([data-of="shipDate"]),
+  .infoCard .oField:has([data-of="model"]), .infoCard .oField:has([data-of="qty"]), .infoCard .oField:has([data-of="assembly"]){ margin-top:10px; }
+
+  /* 操作：主操作だけ濃紺／他は白＋濃紺枠 */
+  .mainActionCard{ display:block; padding:18px 0 16px 18px; margin:0; }
+  .mainActionRow{ gap:16px; flex-wrap:wrap; }
+  .mainActionBtn{ min-width:238px; justify-content:center; gap:12px; font-size:16px; font-weight:700; padding:12px 26px; border-radius:4px; letter-spacing:0; border:1px solid var(--os-primary); box-shadow:0 1px 2px rgba(20,40,80,.08); }
+  .mainActionBtn svg{ width:22px; height:22px; flex:0 0 auto; }
+  #startPrintSetBtn{ background:var(--os-primary) !important; color:#fff; min-width:296px; }
+  #startPrintSetBtn:hover{ background:#0d2347 !important; filter:none; }
+  #toKobetsuBtn, #toOrderNoticeBtn, #toSagyohyoBtn, .mainActionBtn.outline{ background:var(--os-surface) !important; color:var(--os-primary); border-color:var(--os-primary); }
+  #toKobetsuBtn:hover, #toOrderNoticeBtn:hover, #toSagyohyoBtn:hover{ background:#f1f4f9 !important; filter:none; }
+
+  /* 工程・納期：1 行で完結（左端に細い緑線・状態・日時・右端に編集） */
+  .confirmRow{ background:var(--os-surface); border:1px solid var(--os-border); border-left:4px solid var(--os-faint); border-radius:4px; padding:10px 18px 10px 26px; gap:22px; margin:0 0 24px; box-shadow:none; min-height:62px; }
+  .confirmRow::before{ content:"工程・納期"; flex:0 0 auto; font-size:18px; font-weight:800; color:var(--os-text); letter-spacing:0; padding-right:26px; border-right:1px solid #cfd6e1; line-height:1.3; }
+  .confirmRow .confirmPlanBtn{ background:var(--os-surface); color:var(--os-primary); border:1px solid var(--os-primary); font-size:15px; font-weight:700; padding:8px 16px; border-radius:4px; }
+  .confirmRow .confirmPlanBtn:hover{ background:#f1f4f9; filter:none; }
+  .confirmRow .confirmHint{ font-size:12px; font-weight:400; color:var(--os-sub); }
+  .confirmRow:has(.confirmBadge){ border-left-color:var(--os-success); background:#f7fbf8; }
+  .confirmRow .confirmBadge{ display:inline-flex; align-items:baseline; gap:20px; padding:0; border:none; background:transparent; border-radius:0; font-size:18px; font-weight:700; color:var(--os-success); }
+  .confirmBadge .cbAt{ font-size:16px; font-weight:500; color:var(--os-sub); font-variant-numeric:tabular-nums; }
+  .confirmRow .confirmUnlockBtn{ margin-left:auto; font-size:15.5px; font-weight:700; color:var(--os-primary); padding:8px 18px; border-radius:4px; border:1px solid var(--os-primary); background:var(--os-surface); }
+  .confirmRow .confirmUnlockBtn::before{ content:"✎"; margin-right:8px; }
+  .confirmRow .confirmUnlockBtn:hover{ background:#f1f4f9; }
+
+  /* 部品一覧：主役。濃紺ヘッダー・薄く精密な罫線・揃った縦位置 */
+  .partsCard{ padding:0; margin:0; }
+  .partsCardHead{ padding:0 0 14px; align-items:center; }
+  .partsCardHead .title{ display:inline-flex; align-items:center; gap:10px; font-size:24px; font-weight:800; color:var(--os-text); letter-spacing:0; margin-right:18px; }
+  .partsCardHead .title svg{ display:inline; width:28px; height:28px; margin:0 !important; vertical-align:middle !important; }
+  .partsCardHead .title svg *{ stroke:var(--os-primary); }
+  .addPartBtn{ font-size:16px; font-weight:700; padding:10px 22px; border-radius:4px; background:var(--os-primary); border:1px solid var(--os-primary); box-shadow:0 1px 2px rgba(20,40,80,.08); }
+  .addPartBtn:hover{ background:#0d2347; }
+  #memoVerticalToggleBtn{ background:var(--os-surface) !important; color:var(--os-primary); border:1px solid var(--os-primary); }
+  #memoVerticalToggleBtn:hover{ background:#f1f4f9 !important; }
+  .partsScroll{ padding:0; background:var(--os-surface); border:1px solid var(--os-border); border-radius:4px; box-shadow:0 1px 2px rgba(20,40,80,.05); }
+  table.partsTable th{ background:var(--os-primary) !important; color:#fff !important; font-size:14px; font-weight:700; padding:12px 12px; text-align:left; border:none !important; border-right:1px solid rgba(255,255,255,.14) !important; white-space:nowrap; letter-spacing:0; }
+  table.partsTable th:first-child{ text-align:center; border-top-left-radius:3px; }
+  table.partsTable th:last-child{ border-right:none !important; border-top-right-radius:3px; }
+  table.partsTable td{ height:58px; padding:6px 12px; font-size:15px; border-bottom:1px solid var(--os-line); border-right:1px solid var(--os-line); vertical-align:middle; }
+  table.partsTable td:last-child{ border-right:none; }
+  table.partsTable tbody tr:last-child td{ border-bottom:none; }
+  table.partsTable tbody tr:nth-child(even) td{ background:#f8f9fb; }
+  table.partsTable tbody tr:hover td{ background:#f2f5f9; }
+  table.partsTable col.colNo{ width:60px; } table.partsTable col.colSubNo{ width:88px; } table.partsTable col.colCode{ width:112px; } table.partsTable col.colName{ width:180px; }
+  table.partsTable col.colMaterial{ width:84px; } table.partsTable col.colFinishedSize{ width:98px; } table.partsTable col.colHeatTreat{ width:90px; } table.partsTable col.colSurfaceTreat{ width:100px; } table.partsTable col.colQty{ width:68px; } table.partsTable col.colMemo{ width:116px; }
+  .noCell{ padding-top:6px !important; }
+  .noWrap{ gap:0; }
+  .noNum{ font-size:15px; font-weight:600; color:var(--os-text); font-variant-numeric:tabular-nums; }
+  .delBtn{ opacity:.35; font-size:11px; line-height:1; }
+  .delBtn:hover{ opacity:1; }
+  .cellInput{ font-size:15px; font-weight:600; color:var(--os-text); font-variant-numeric:tabular-nums; border:none; border-bottom:1px solid transparent; background:transparent; padding:4px 0; }
+  .cellInput:hover{ border-bottom-color:#cfd6e1; }
+  .cellInput:focus{ border-bottom-color:var(--os-primary); background:#f6f8fb; }
+  .procChips{ gap:12px; align-items:center; }
+  .procUnit{ gap:3px; }
+  .procChip{ font-size:12.5px; font-weight:800; padding:1px 8px; line-height:1.45; border-radius:3px; min-width:42px; letter-spacing:.02em; }
+  .procDate{ font-size:12px; color:var(--os-sub); font-weight:500; font-variant-numeric:tabular-nums; }
+  .procEditBtn{ display:inline-flex; align-items:center; gap:6px; border:1px solid #b9c3d2; color:var(--os-text); background:var(--os-surface); font-size:13px; font-weight:600; padding:6px 13px; border-radius:4px; margin-right:6px; box-shadow:0 1px 1px rgba(20,40,80,.05); }
+  .procEditBtn::before{ content:"⚙"; font-size:14px; }
+  .procEditBtn:hover{ border-color:var(--os-primary); color:var(--os-primary); }
+
+  /* この画面について：最下部の補助情報（小さく・高さを取りすぎない） */
+  .footNote{ display:flex; gap:30px; align-items:center; text-align:left; background:var(--os-surface); border:1px solid var(--os-border); border-radius:4px; padding:16px 30px; margin-top:34px; color:var(--os-sub); font-size:12px; font-weight:400; line-height:1.8; box-shadow:none; }
+  .footNote .fnHead{ flex:0 0 auto; display:inline-flex; align-items:center; gap:10px; font-size:15px; font-weight:700; color:var(--os-text); padding-right:30px; border-right:1px solid #cfd6e1; white-space:nowrap; align-self:stretch; }
+  .footNote .fnHead .chIcon{ display:inline-flex; width:20px; height:20px; border-radius:50%; border:1.5px solid var(--os-text); background:transparent; color:var(--os-text); font-size:11.5px; font-weight:800; align-items:center; justify-content:center; font-family:Georgia,serif; }
+
+  /* タブレット */
+  @media (max-width:1100px){
+    .wrap{ padding:16px 16px 40px; }
+    .topbar{ padding:11px 16px; }
+    .pageTitle{ font-size:32px; }
+    .pageTitleNo{ font-size:22px; }
+    .infoCard .orderCard{ grid-template-columns:repeat(6, minmax(0, 1fr)); }
+    .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="itemName"]),
+    .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){ padding:14px 14px 14px 18px; }
+    .oField [data-of="orderNo"], .oField [data-of="itemName"], .oField [data-of="customer"], .oField [data-of="dueDate"]{ font-size:20px; padding-left:0; }
+    .mainActionCard{ padding-left:0; }
+    .mainActionBtn, #startPrintSetBtn{ min-width:0; flex:1 1 calc(50% - 16px); }
+  }
+  /* スマホ */
+  @media (max-width:700px){
+    .topbar .brand{ font-size:19px; }
+    .topbar .sysName, .topbar .sep, .topbar .pageName{ display:none; }
+    .wrap{ padding:12px 12px 32px; }
+    .pageTitleRow{ gap:12px; }
+    .pageTitleRow .titleSep{ display:none; }
+    .pageTitle{ font-size:28px; }
+    .infoCard .orderCard{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    .infoCard .oField{ grid-column:span 1; padding:10px 8px 10px 0; }
+    .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="itemName"]),
+    .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){ grid-column:1 / -1; border-radius:0; border-right:1px solid var(--os-border); }
+    .infoCard .oField:has([data-of="itemName"])::after, .infoCard .oField:has([data-of="customer"])::after, .infoCard .oField:has([data-of="dueDate"])::after{ display:none; }
+    .infoCard .oField:has([data-of="orderDate"]){ padding-left:0; }
+    .mainActionBtn, #startPrintSetBtn{ flex:1 1 100%; }
+    .confirmRow{ flex-wrap:wrap; padding-left:16px; }
+    .confirmRow::before{ border-right:none; padding-right:0; flex-basis:100%; }
+    .footNote{ flex-direction:column; align-items:flex-start; gap:8px; padding:14px 16px; }
+    .footNote .fnHead{ border-right:none; padding-right:0; }
+  }
+  /* ── 面の前後関係（Elevation 3 段階）と線の強弱（3 段階） ──
+     Level 0＝ページ背景・補助情報／Level 1＝入力・状態・通常操作（影なし・線と背景差だけ）／Level 2＝最重要 4 情報・部品一覧（ごく弱い影で前に出す）。
+     線：強＝セクション境界・表ヘッダー下（#9AA9BD・1.5px）／中＝入力欄・主要情報の区切り・外枠（#C7D0DC）／弱＝表の行・補助区切り（#E3E8EF）。 */
+  :root{
+    --os-page-bg:#e6eaf0; --line-strong:#9aa9bd; --line-mid:#c7d0dc; --line-weak:#e3e8ef;
+    --elev-2:0 1px 2px rgba(15,23,42,.05), 0 6px 18px rgba(15,23,42,.06);
+    --elev-1p:0 1px 2px rgba(15,23,42,.10), 0 3px 8px rgba(15,23,42,.08);
+  }
+  /* Level 0 */
+  .pageTitleRow .backLink{ border-color:var(--line-mid); box-shadow:none; }
+  .pageTitleRow .titleSep{ background:var(--line-mid); }
+  .footNote{ background:rgba(255,255,255,.55); border-color:var(--line-weak); box-shadow:none; }
+  .footNote .fnHead{ border-right-color:var(--line-mid); }
+  /* Level 2：最重要 4 情報（少し高さを持たせる） */
+  .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="itemName"]),
+  .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){
+    padding-top:24px; padding-bottom:24px; border-top-color:var(--line-mid); border-bottom-color:var(--line-mid); box-shadow:var(--elev-2); clip-path:inset(-24px 0 -24px 0); }
+  .infoCard .oField:has([data-of="orderNo"]){ clip-path:inset(-24px 0 -24px -24px); }
+  .infoCard .oField:has([data-of="dueDate"]){ border-right-color:var(--line-mid); clip-path:inset(-24px -24px -24px 0); }
+  .infoCard .oField:has([data-of="itemName"])::after, .infoCard .oField:has([data-of="customer"])::after, .infoCard .oField:has([data-of="dueDate"])::after{ background:var(--line-mid); top:22px; bottom:22px; }
+  /* 補助情報の下＝セクション境界（強い線） */
+  .infoCard .oField:has([data-of="orderDate"]), .infoCard .oField:has([data-of="createdBy"]), .infoCard .oField:has([data-of="shipDate"]),
+  .infoCard .oField:has([data-of="model"]), .infoCard .oField:has([data-of="qty"]), .infoCard .oField:has([data-of="assembly"]){ border-bottom:1.5px solid var(--line-strong); margin-top:14px; }
+  /* Level 1：入力（影なし・枠を一段濃く） */
+  .oField input, .oField select{ border-color:var(--line-mid); }
+  .oField input:hover, .oField select:hover{ border-color:var(--line-strong); }
+  /* 操作：主操作だけ少し影 */
+  .mainActionBtn{ box-shadow:none; }
+  #startPrintSetBtn{ box-shadow:var(--elev-1p); }
+  .addPartBtn{ box-shadow:var(--elev-1p); }
+  /* 状態：影なし・線と背景差だけ */
+  .confirmRow{ border-color:var(--line-mid); box-shadow:none; }
+  .confirmRow::before{ border-right-color:var(--line-mid); }
+  /* Level 2：部品一覧（外枠＝中・ヘッダー下＝強・内部＝弱） */
+  .partsScroll{ border-color:var(--line-mid); box-shadow:var(--elev-2); }
+  table.partsTable thead th{ border-bottom:1.5px solid var(--line-strong) !important; }
+  table.partsTable td{ border-bottom-color:var(--line-weak); border-right-color:var(--line-weak); }
+  .procEditBtn{ border-color:var(--line-mid); box-shadow:none; }
+  /* ── 最終質感調整（数値指定・2026-11-01）：レイアウトは維持し、背景明度・境界線・影・文字・余白だけを指定値にする ── */
+  :root{
+    --os-page-bg:#eef2f6; --t-main:#0d274b; --t-body:#24364d; --t-sub:#64748b; --t-faint:#8391a3;
+    --ln-strong:#9eacbd; --ln-mid:#c3cdd9; --ln-light:#e1e6ed;
+    --lv1:0 1px 2px rgba(15,35,65,.06);
+    --lv2:0 1px 2px rgba(15,35,65,.06), 0 6px 16px rgba(15,35,65,.07);
+  }
+  body{ background:var(--os-page-bg); color:var(--t-body); }
+  /* タイトル */
+  .pageTitle{ font-size:30px; font-weight:800; line-height:1.25; color:var(--t-main); }
+  .pageTitleNo{ font-size:25px; font-weight:700; color:var(--t-main); }
+  .noPill{ color:var(--t-sub); }
+  .pageTitleRow .backLink{ color:var(--t-main); box-shadow:var(--lv1); }
+  /* 主要情報パネル（Level 2・白・外周 #C7D0DC・角丸 6・左オレンジ 3px・均等 4 分割・高さ 112） */
+  .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="itemName"]),
+  .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){
+    background:#fff; min-height:112px; padding:20px 28px; gap:6px; justify-content:center;
+    border-top:1px solid #c7d0dc; border-bottom:1px solid #c7d0dc; box-shadow:var(--lv2); }
+  .infoCard .oField:has([data-of="orderNo"]){ border-left:3px solid #e97a1c; border-radius:6px 0 0 6px; }
+  .infoCard .oField:has([data-of="dueDate"]){ border-right:1px solid #c7d0dc; border-radius:0 6px 6px 0; }
+  .infoCard .oField:has([data-of="itemName"])::after, .infoCard .oField:has([data-of="customer"])::after, .infoCard .oField:has([data-of="dueDate"])::after{ background:var(--ln-mid); top:20px; bottom:20px; }
+  .oField:has([data-of="orderNo"]) label, .oField:has([data-of="itemName"]) label, .oField:has([data-of="customer"]) label, .oField:has([data-of="dueDate"]) label{ font-size:12px; font-weight:500; color:#52657d; }
+  .oField:has([data-of="orderNo"]) label::before, .oField:has([data-of="itemName"]) label::before,
+  .oField:has([data-of="customer"]) label::before, .oField:has([data-of="dueDate"]) label::before{ width:17px; height:17px; opacity:.75; }
+  .oField [data-of="orderNo"], .oField [data-of="itemName"], .oField [data-of="customer"], .oField [data-of="dueDate"]{ height:auto; font-size:23px; font-weight:700; line-height:1.35; color:var(--t-main); padding:0 0 0 27px; }
+  /* 補助情報（パネルとの間 24・列間 14・下の主要区切りまで 18・区切り＝Strong 1.5px） */
+  .infoCard .oField:has([data-of="orderDate"]), .infoCard .oField:has([data-of="createdBy"]), .infoCard .oField:has([data-of="shipDate"]),
+  .infoCard .oField:has([data-of="model"]), .infoCard .oField:has([data-of="qty"]), .infoCard .oField:has([data-of="assembly"]){
+    margin-top:24px; padding-top:0; padding-bottom:18px; padding-right:14px; border-bottom:1.5px solid var(--ln-strong); }
+  .oField label{ font-size:12px; font-weight:500; color:#56687f; }
+  /* 入力欄（影なし） */
+  .oField input, .oField select{ height:38px; border-radius:4px; border:1px solid #bcc8d6; background:#fff; padding:0 12px; font-size:15px; font-weight:600; color:var(--t-main); box-shadow:none; }
+  .oField input:hover, .oField select:hover{ border-color:var(--ln-strong); }
+  .oField input:focus, .oField select:focus{ border-color:#234c82; box-shadow:0 0 0 2px rgba(35,76,130,.10); }
+  /* 操作エリア（上 16・間 12・下 16・高さ 44・Level 1） */
+  .mainActionCard{ padding-top:16px; padding-bottom:16px; }
+  .mainActionRow{ gap:12px; }
+  .mainActionBtn{ height:44px; padding:0 20px; border-radius:4px; font-size:15px; font-weight:700; box-shadow:var(--lv1); }
+  #startPrintSetBtn{ background:#173b6d !important; border:1px solid #173b6d; color:#fff; box-shadow:var(--lv1); }
+  #startPrintSetBtn:hover{ background:#12305a !important; }
+  #toKobetsuBtn, #toOrderNoticeBtn, #toSagyohyoBtn, .mainActionBtn.outline{ background:#fff !important; border:1px solid #315681; color:#143966; }
+  .addPartBtn{ height:44px; padding:0 20px; border-radius:4px; font-size:15px; font-weight:700; background:#173b6d; border:1px solid #173b6d; box-shadow:var(--lv1); }
+  #memoVerticalToggleBtn{ border:1px solid #315681; color:#143966; }
+  .confirmRow .confirmPlanBtn, .confirmRow .confirmUnlockBtn{ height:38px; padding:0 20px; border-radius:4px; font-size:14px; font-weight:700; border:1px solid #315681; color:#143966; background:#fff; box-shadow:var(--lv1); }
+  .procEditBtn{ border-color:#bcc8d6; color:var(--t-body); box-shadow:var(--lv1); }
+  /* 工程・納期（高さ 58・白・#C7D0DC・左緑 3px のみ・影なし） */
+  .confirmRow, .confirmRow:has(.confirmBadge){ min-height:58px; padding-top:0; padding-bottom:0; background:#fff; border:1px solid #c7d0dc; box-shadow:none; }
+  .confirmRow{ border-left:3px solid var(--t-faint); }
+  .confirmRow:has(.confirmBadge){ border-left:3px solid var(--os-success); }
+  .confirmRow::before{ font-size:17px; font-weight:700; color:var(--t-main); border-right-color:var(--ln-mid); }
+  .confirmRow .confirmBadge{ font-size:15px; font-weight:700; }
+  .confirmBadge .cbAt{ font-size:13px; font-weight:500; color:var(--t-sub); }
+  .confirmRow .confirmHint{ color:var(--t-sub); }
+  /* 部品一覧（タイトル→表 10・白・外周 #B8C4D2・角丸 4・Level 2） */
+  .partsCardHead{ padding-bottom:10px; }
+  .partsCardHead .title{ font-size:22px; font-weight:800; color:var(--t-main); }
+  .partsScroll{ background:#fff; border:1px solid #b8c4d2; border-radius:4px; box-shadow:var(--lv2); }
+  table.partsTable thead th{ height:44px; padding-top:0; padding-bottom:0; background:#173b6d !important; color:#fff !important; font-size:13px; font-weight:700; border-bottom:1.5px solid var(--ln-strong) !important; }
+  table.partsTable td{ height:58px; font-size:14px; border-bottom:1px solid var(--ln-light); border-right:1px solid var(--ln-light); color:var(--t-body); }
+  table.partsTable tbody tr:nth-child(odd) td{ background:#fff; }
+  table.partsTable tbody tr:nth-child(even) td{ background:#f8fafc; }
+  .cellInput{ font-size:14px; font-weight:600; color:var(--t-main); }
+  .noNum{ font-size:14px; font-weight:600; color:var(--t-main); }
+  .procUnit{ gap:3px; }
+  .procChip{ height:22px; min-width:36px; padding:0 8px; border-radius:3px; font-size:11px; font-weight:700; line-height:22px; }
+  .procDate{ font-size:11px; font-weight:500; color:var(--t-sub); }
+  /* この画面について（上 28・上境界のみ・影なし） */
+  .footNote{ margin-top:28px; background:transparent; border:none; border-top:1px solid #c7d0dc; border-radius:0; box-shadow:none; padding:16px 0 0; font-size:11.5px; line-height:1.7; color:var(--t-sub); align-items:flex-start; }
+  .footNote .fnHead{ color:var(--t-main); border-right-color:var(--ln-mid); align-self:auto; }
+  @media (max-width:1100px){
+    .oField [data-of="orderNo"], .oField [data-of="itemName"], .oField [data-of="customer"], .oField [data-of="dueDate"]{ font-size:20px; padding-left:0; }
+    .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="itemName"]),
+    .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){ padding:16px 16px; min-height:96px; }
+  }
+  @media (max-width:700px){
+    .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="itemName"]),
+    .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){ min-height:0; border-right:1px solid #c7d0dc; border-radius:0; }
+    .infoCard .oField:has([data-of="orderDate"]), .infoCard .oField:has([data-of="createdBy"]), .infoCard .oField:has([data-of="shipDate"]),
+    .infoCard .oField:has([data-of="model"]), .infoCard .oField:has([data-of="qty"]), .infoCard .oField:has([data-of="assembly"]){ margin-top:12px; padding-bottom:10px; }
+    .confirmRow, .confirmRow:has(.confirmBadge){ padding:10px 14px; }
+  }
+  /* ── 最終1段調整（2026-11-01）：上部の縦間隔を詰める・補助情報を一段弱く・操作を少し小さく・主要パネルと部品一覧を同じ前面レベルに ── */
+  :root{ --os-page-bg:#f1f4f7; }
+  body{ background:var(--os-page-bg); }
+  .pageTitleRow{ margin-bottom:14px; }
+  /* 主要 4 情報パネル：外枠 #B7C3D1・影・縦区切り #BFCAD7・値 24/700 */
+  .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="itemName"]),
+  .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){
+    border-top-color:#b7c3d1; border-bottom-color:#b7c3d1; box-shadow:0 2px 4px rgba(15,35,65,.07), 0 8px 20px rgba(15,35,65,.06); }
+  .infoCard .oField:has([data-of="dueDate"]){ border-right-color:#b7c3d1; }
+  .infoCard .oField:has([data-of="itemName"])::after, .infoCard .oField:has([data-of="customer"])::after, .infoCard .oField:has([data-of="dueDate"])::after{ background:#bfcad7; }
+  .oField [data-of="orderNo"], .oField [data-of="itemName"], .oField [data-of="customer"], .oField [data-of="dueDate"]{ font-size:24px; font-weight:700; }
+  /* 補助 6 項目：パネルとの間 18・一段弱く */
+  .infoCard .oField:has([data-of="orderDate"]), .infoCard .oField:has([data-of="createdBy"]), .infoCard .oField:has([data-of="shipDate"]),
+  .infoCard .oField:has([data-of="model"]), .infoCard .oField:has([data-of="qty"]), .infoCard .oField:has([data-of="assembly"]){ margin-top:18px; padding-bottom:14px; }
+  .infoCard .oField:has([data-of="orderDate"]) label, .infoCard .oField:has([data-of="createdBy"]) label, .infoCard .oField:has([data-of="shipDate"]) label, .infoCard .oField:has([data-of="model"]) label, .infoCard .oField:has([data-of="qty"]) label, .infoCard .oField:has([data-of="assembly"]) label{ font-size:11.5px; font-weight:500; color:#607086; }
+  .infoCard .oField:has([data-of="orderDate"]) input, .infoCard .oField:has([data-of="orderDate"]) select, .infoCard .oField:has([data-of="createdBy"]) input, .infoCard .oField:has([data-of="createdBy"]) select, .infoCard .oField:has([data-of="shipDate"]) input, .infoCard .oField:has([data-of="shipDate"]) select, .infoCard .oField:has([data-of="model"]) input, .infoCard .oField:has([data-of="model"]) select, .infoCard .oField:has([data-of="qty"]) input, .infoCard .oField:has([data-of="qty"]) select, .infoCard .oField:has([data-of="assembly"]) input, .infoCard .oField:has([data-of="assembly"]) select{ height:36px; font-size:14px; font-weight:600; border:1px solid #c5cfda; }
+  /* 操作ボタン：補助 6 項目から 18・少し小さく・影は主操作だけ */
+  .mainActionCard{ padding-top:18px; }
+  .mainActionRow{ gap:10px; }
+  .mainActionBtn{ height:42px; font-size:14px; font-weight:700; padding:0 18px; gap:10px; min-width:212px; box-shadow:none; }
+  #startPrintSetBtn{ min-width:264px; box-shadow:0 2px 5px rgba(15,35,65,.12); }
+  #toKobetsuBtn, #toOrderNoticeBtn, #toSagyohyoBtn{ box-shadow:none; }
+  .mainActionBtn svg{ width:19px; height:19px; }
+  /* 部品一覧：主要パネルと同じ前面レベル・タイトルを少し締める */
+  .partsScroll{ border:1px solid #b7c3d1; box-shadow:0 2px 4px rgba(15,35,65,.06), 0 6px 16px rgba(15,35,65,.05); }
+  .partsCardHead{ padding-bottom:10px; }
+  .partsCardHead .title{ font-size:21px; font-weight:800; }
+  .addPartBtn, #memoVerticalToggleBtn{ height:40px; }
+  /* この画面について：さらに弱く */
+  .footNote{ font-size:11px; color:#6e7c8e; line-height:1.65; }
+  /* ── 最終質感調整 vFinal（2026-11-01）：コントラスト・境界線・微影・文字の強弱・余白・表の密度だけ ── */
+  :root{ --os-page-bg:#edf1f5; }
+  body{ background:var(--os-page-bg); }
+  /* タイトル行 */
+  .pageTitleRow{ margin-bottom:14px; gap:18px; }
+  .pageTitle{ font-size:30px; font-weight:800; }
+  .pageTitleNo{ font-size:24px; font-weight:700; }
+  /* 主要 4 情報パネル：さらに前へ */
+  .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="itemName"]), .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){ border-top-color:#aebccb; border-bottom-color:#aebccb; box-shadow:0 2px 4px rgba(15,35,65,.08), 0 10px 24px rgba(15,35,65,.08); }
+  .infoCard .oField:has([data-of="orderNo"]){ border-left:3px solid #e47a1c; }
+  .infoCard .oField:has([data-of="dueDate"]){ border-right-color:#aebccb; }
+  .infoCard .oField:has([data-of="itemName"])::after, .infoCard .oField:has([data-of="customer"])::after, .infoCard .oField:has([data-of="dueDate"])::after{ background:#b8c4d1; }
+  .oField:has([data-of="orderNo"]) label, .oField:has([data-of="itemName"]) label, .oField:has([data-of="customer"]) label, .oField:has([data-of="dueDate"]) label{ font-size:11.5px; font-weight:500; color:#5b6b80; }
+  .oField [data-of="orderNo"], .oField [data-of="itemName"], .oField [data-of="customer"], .oField [data-of="dueDate"]{ font-size:24px; font-weight:750; line-height:1.3; color:#0b2547; }
+  .oField [data-of="orderNo"]{ font-size:25px; font-weight:750; }
+  /* 補助 6 項目：第二階層 */
+  .infoCard .oField:has([data-of="orderDate"]), .infoCard .oField:has([data-of="createdBy"]), .infoCard .oField:has([data-of="shipDate"]), .infoCard .oField:has([data-of="model"]), .infoCard .oField:has([data-of="qty"]), .infoCard .oField:has([data-of="assembly"]){ margin-top:16px; padding-bottom:12px; }
+  .infoCard .oField:has([data-of="orderDate"]) label, .infoCard .oField:has([data-of="createdBy"]) label, .infoCard .oField:has([data-of="shipDate"]) label, .infoCard .oField:has([data-of="model"]) label, .infoCard .oField:has([data-of="qty"]) label, .infoCard .oField:has([data-of="assembly"]) label{ font-size:11px; font-weight:500; color:#66768a; }
+  .infoCard .oField:has([data-of="orderDate"]) input, .infoCard .oField:has([data-of="orderDate"]) select, .infoCard .oField:has([data-of="createdBy"]) input, .infoCard .oField:has([data-of="createdBy"]) select, .infoCard .oField:has([data-of="shipDate"]) input, .infoCard .oField:has([data-of="shipDate"]) select, .infoCard .oField:has([data-of="model"]) input, .infoCard .oField:has([data-of="model"]) select, .infoCard .oField:has([data-of="qty"]) input, .infoCard .oField:has([data-of="qty"]) select, .infoCard .oField:has([data-of="assembly"]) input, .infoCard .oField:has([data-of="assembly"]) select{ height:35px; border-radius:3px; border:1px solid #c3cdd8; background:#fff; font-size:14px; font-weight:600; box-shadow:none; }
+  .infoCard .oField:has([data-of="orderDate"]) input:focus, .infoCard .oField:has([data-of="orderDate"]) select:focus, .infoCard .oField:has([data-of="createdBy"]) input:focus, .infoCard .oField:has([data-of="createdBy"]) select:focus, .infoCard .oField:has([data-of="shipDate"]) input:focus, .infoCard .oField:has([data-of="shipDate"]) select:focus, .infoCard .oField:has([data-of="model"]) input:focus, .infoCard .oField:has([data-of="model"]) select:focus, .infoCard .oField:has([data-of="qty"]) input:focus, .infoCard .oField:has([data-of="qty"]) select:focus, .infoCard .oField:has([data-of="assembly"]) input:focus, .infoCard .oField:has([data-of="assembly"]) select:focus{ border-color:#234c82; box-shadow:0 0 0 2px rgba(35,76,130,.08); }
+  /* 操作列：もう一段抑える */
+  .mainActionCard{ padding-top:16px; padding-bottom:12px; }
+  .mainActionRow{ gap:10px; }
+  .mainActionBtn{ height:40px; font-size:13.5px; font-weight:700; padding:0 16px; min-width:200px; }
+  #startPrintSetBtn{ background:#183c6d !important; border-color:#183c6d; box-shadow:0 2px 5px rgba(15,35,65,.12); min-width:250px; }
+  #toKobetsuBtn, #toOrderNoticeBtn, #toSagyohyoBtn{ background:#fff !important; border:1px solid #315681; box-shadow:none; }
+  .mainActionBtn svg{ width:18px; height:18px; }
+  /* 工程・納期：さらに締める */
+  .confirmRow, .confirmRow:has(.confirmBadge){ min-height:54px; background:#fff; border-top:1px solid #bfcad6; border-right:1px solid #bfcad6; border-bottom:1px solid #bfcad6; }
+  .confirmRow::before{ font-size:17px; font-weight:750; }
+  .confirmRow .confirmBadge{ font-size:14px; font-weight:700; }
+  .confirmBadge .cbAt{ font-size:12.5px; font-weight:500; color:#68778b; }
+  .confirmRow .confirmPlanBtn, .confirmRow .confirmUnlockBtn{ height:36px; font-size:13px; }
+  /* 部品一覧：主役 */
+  .partsCardHead{ padding-bottom:8px; }
+  .partsCardHead .title{ font-size:21px; font-weight:800; }
+  .addPartBtn, #memoVerticalToggleBtn{ height:38px; font-size:13px; }
+  .partsScroll{ border:1px solid #afbdcb; box-shadow:0 2px 4px rgba(15,35,65,.06), 0 8px 18px rgba(15,35,65,.05); }
+  table.partsTable thead th{ height:42px; background:#163b6d !important; font-size:12.5px; font-weight:700; border-bottom:1.5px solid #8799ae !important; }
+  table.partsTable td{ border-right:1px solid #d5dde6; border-bottom:1px solid #dce3ea; font-size:13.5px; font-weight:500; }
+  table.partsTable tbody tr:nth-child(odd) td{ background:#fff; }
+  table.partsTable tbody tr:nth-child(even) td{ background:#f6f8fa; }
+  .cellInput{ font-size:13.5px; font-weight:500; }
+  .cellInput[data-field="subNo"], .cellInput[data-field="name"], .cellInput[data-field="qty"]{ font-size:14px; font-weight:600; }
+  .procDate{ font-size:10.5px; font-weight:500; color:#7a8797; }
+  .procChip{ height:20px; min-width:34px; padding:0 7px; border-radius:3px; font-size:10.5px; font-weight:700; line-height:20px; }
+  /* この画面について：さらに沈める */
+  .footNote{ margin-top:24px; border-top:1px solid #c5cfda; font-size:10.5px; font-weight:400; line-height:1.65; color:#758397; }
+  .footNote .fnHead{ font-size:12px; font-weight:700; }
+  /* ── 主要4情報BOXの縦幅調整（2026-11-01）：横長・高密度の情報帯にする（高さだけ） ── */
+  .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="itemName"]), .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){ min-height:96px; padding:18px 28px 16px; gap:0; }
+  .infoCard .oField:has([data-of="orderNo"]) label, .infoCard .oField:has([data-of="itemName"]) label, .infoCard .oField:has([data-of="customer"]) label, .infoCard .oField:has([data-of="dueDate"]) label{ font-size:11.5px; font-weight:500; line-height:1.2; margin-bottom:8px; }
+  .oField [data-of="orderNo"], .oField [data-of="itemName"], .oField [data-of="customer"], .oField [data-of="dueDate"]{ font-size:24px; font-weight:750; line-height:1.25; }
+  .infoCard .oField:has([data-of="itemName"])::after, .infoCard .oField:has([data-of="customer"])::after, .infoCard .oField:has([data-of="dueDate"])::after{ top:18px; bottom:18px; }
+  /* ── タイトル行・個別日程表ボタン 最終調整（2026-11-01）：← 案件一覧へ ｜ 作業票 …… ［個別日程表を開く］（オレンジ塗りはこの 1 個だけ） ── */
+  .pageTitleRow{ min-height:56px; display:flex; align-items:center; gap:20px; margin-bottom:14px; flex-wrap:wrap; }
+  .pageTitleRow .backLink{ height:40px; padding:0 16px; font-size:13px; font-weight:600; border-radius:4px; }
+  .pageTitleRow .titleSep{ width:0; height:28px; background:none; border-left:1px solid #c3cdd8; }
+  .pageTitle{ font-size:30px; font-weight:800; line-height:1.2; color:#0d274b; }
+  .pageTitleRow #toKobetsuBtn{ margin-left:auto; height:42px; padding:0 22px; min-width:0; font-size:14px; font-weight:700; border-radius:4px; gap:10px;
+    background:#e88622 !important; border:1px solid #d97816; color:#fff;
+    box-shadow:0 2px 4px rgba(136,77,17,.16), 0 6px 12px rgba(136,77,17,.10); }
+  .pageTitleRow #toKobetsuBtn:hover{ background:#dc7a18 !important; filter:none; }
+  .pageTitleRow #toKobetsuBtn svg{ width:20px; height:20px; }
+  /* 通常操作 3 つ：同じ強さ（白＋濃紺枠・影なし） */
+  .mainActionCard{ padding-top:14px; padding-bottom:14px; }
+  .mainActionRow{ gap:10px; }
+  .mainActionRow .mainActionBtn, .mainActionRow #startPrintSetBtn{ height:40px; padding:0 16px; min-width:200px; font-size:13px; font-weight:700; border-radius:4px;
+    background:#fff !important; border:1px solid #315681; color:#143966; box-shadow:none; }
+  .mainActionRow .mainActionBtn:hover, .mainActionRow #startPrintSetBtn:hover{ background:#f1f4f9 !important; filter:none; }
+  @media (max-width:700px){
+    .pageTitleRow #toKobetsuBtn{ margin-left:0; flex:1 1 100%; justify-content:center; }
+  }
+  /* ── 微調整（個別日程表の位置・通常 3 ボタン・部品一覧の開始位置）2026-11-01 ── */
+  .pageTitleRow #toKobetsuBtn{ align-self:center; margin-top:0; margin-bottom:0; margin-right:8px; }
+  .mainActionRow .mainActionBtn, .mainActionRow #startPrintSetBtn{ height:36px; font-size:12.5px; padding:0 14px; min-width:186px; }
+  .mainActionRow .mainActionBtn svg{ width:17px; height:17px; }
+  .confirmRow, .confirmRow:has(.confirmBadge){ margin-bottom:15px; }
+  @media (max-width:700px){ .pageTitleRow #toKobetsuBtn{ margin-right:0; } }
+  @media print{ .docHead .pageTitleRow{ display:none !important; } }
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
@@ -271,36 +680,47 @@
 <body>
 
   <div class="topbar">
-    <a class="backLink" href="../SAKAE SEIKI-iS.html" title="案件一覧（TOP画面）に戻る">← 案件一覧へ</a>
-    <span class="brand"><span class="sakae">SAKAE SEIKI</span><span class="is">-iS</span></span>
+    <span class="brand"><span class="sakae">SAKAE SEIKI-</span><span class="is">OS</span></span>
     <span class="sep">｜</span>
+    <span class="sysName">製造業務システム</span>
     <span class="pageName" id="pageName">作業票（モック：受注1件分・編集可能）</span>
   </div>
 
   <div class="wrap">
+
+    <!-- ★デザイン改修（帳票UI）：帳票の頭＝← 案件一覧へ・作業票・社内No.・品名／客先／納期（強）・その他（補助） -->
+    <div class="docHead">
+    <div class="pageTitleRow">
+      <a class="backLink" href="../SAKAE SEIKI-iS.html" title="案件一覧（TOP画面）に戻る">← 案件一覧へ</a>
+      <span class="titleSep"></span>
+      <h1 class="pageTitle"><svg viewBox="0 0 24 24" fill="none" stroke="#143466" stroke-width="2" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2.8h6V4M8.5 10.5h7M8.5 14h7M8.5 17.5h4"/></svg>作業票</h1>
+      <a class="mainActionBtn" id="toKobetsuBtn" href="#" style="background:#f0861f;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7 14h2M11 14h2M15 14h2M7 17h2M11 17h2"/></svg>個別日程表を開く</a>
+    </div>
+    <div class="card infoCard">
+      <div class="cardHead"><span class="chIcon">i</span><span class="chTitle">作業票情報</span></div>
+      <div class="orderCard" id="orderCard"></div>
+    </div>
+    </div>
+
+    <div class="card mainActionCard" id="mainActionCard">
+      <div class="mainActionRow">
+        <button type="button" class="mainActionBtn" id="toOrderNoticeBtn" style="background:#143466;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M8 13h8M8 17h6"/></svg>受注に関する連絡書</button>
+        <a class="mainActionBtn outline" id="toSagyohyoBtn" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 8V3h10v5"/><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 14h10v7H7z"/></svg>現行の作業票印刷</a>
+        <a class="mainActionBtn" id="startPrintSetBtn" href="#" style="background:#d6402f;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 8V3h10v5"/><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 14h10v7H7z"/></svg>作業開始印刷セット</a>
+      </div>
+    </div>
 
     <div class="saveErrorBar" id="saveErrorBar" role="alert">
       <span><span id="saveErrorMain">保存できませんでした。</span>入力した内容はまだ保存されていません（画面の値は残っています）。<span class="saveErrorDetail" id="saveErrorDetail"></span></span>
       <button type="button" id="saveErrorRetryBtn">もう一度保存</button>
     </div>
 
-    <div class="card mainActionCard" id="mainActionCard">
-      <div class="mainActionRow">
-        <a class="mainActionBtn" id="startPrintSetBtn" href="#" style="background:#c0392b;">🖨 作業開始印刷セット</a>
-        <a class="mainActionBtn" id="toKobetsuBtn" href="#" style="background:#e67e22;">📅 個別日程表を開く</a>
-        <button type="button" class="mainActionBtn" id="toOrderNoticeBtn" style="background:#173a68;">📄 受注に関する連絡書</button>
-        <a class="mainActionBtn" id="toSagyohyoBtn" href="#" style="background:#5b6b84;">🖨 現行の作業票印刷</a>
-      </div>
-    </div>
-
-    <div class="card orderCard" id="orderCard"></div>
-
     <div class="confirmRow" id="confirmRow"></div>
 
-    <div class="card">
+    <div class="card partsCard">
       <div class="partsCardHead">
         <div style="display:flex; align-items:center; gap:12px;">
-          <div class="title">部品一覧</div>
+          <div class="title"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#143466" stroke-width="2" aria-hidden="true" style="vertical-align:-5px;margin-right:8px"><path d="M12 3 3 8l9 5 9-5z"/><path d="m3 13 9 5 9-5"/></svg>部品一覧</div>
           <button class="addPartBtn" id="addPartBtn">＋ 部品を追加</button>
           <button type="button" class="addPartBtn" id="memoVerticalToggleBtn" style="background:#8592a6;">📐 注記を畳む</button>
         </div>
@@ -331,12 +751,6 @@
           <tbody id="partsBody"></tbody>
         </table>
       </div>
-    </div>
-
-    <div class="footNote">
-      元データ：部品表（例１）.xlsm「入力」シート／1部品＝5行構成（工程ルート／材質／社内№・日付／作業内容／数量・手配先）を1行に要約して再現<br>
-      案件一覧の「新規作成」から開いた場合、社内No.（品番）だけで新規受注として開始します（品番ごとに保存）。客先名・型式・受注日・納期などはここで入力すると、上部の「受注に関する連絡書を開く」から確認できる受注に関する連絡書にも自動反映されます（どちらで編集しても双方向に反映）。個別日程表とは同じデータを共有しており、双方向にリンクしています（個別日程表でバーを動かすとここの工程日付も自動で更新され、逆にここで日付を変えると開いている個別日程表にも反映されます）。<br>
-      仕上寸法・熱処理・表面処理・工程ごとの予定工数（LA・MI・NC系のみ）は、作業票.xlsmと同じ内容をこの作業票側にまとめて入力できるように追加した項目です（作業票の印刷機能は今後追加予定）。工程ごとの「メモ」欄は作業内容・支給材・手配先などを自由記入する用途で、従来から使えます。工程ごとの「日数」は、その工程が何日間かかるかを表す項目で、個別日程表・工程別日程表のガントバーの幅（左右のハンドルで伸縮可能）と直接連動しています。
     </div>
 
   </div>
@@ -461,7 +875,7 @@
     const el = document.getElementById('confirmRow');
     if(!el) return;
     if(isConfirmed()){
-      el.innerHTML = '<span class="confirmBadge">🔒 工程と納期　確定済み（'+esc(fmtConfirmedAt(confirmState.confirmedAt))+'確定）</span>'
+      el.innerHTML = '<span class="confirmBadge"><span class="cbState">● 確定済み</span><span class="cbAt">'+esc(fmtConfirmedAt(confirmState.confirmedAt))+'</span></span>'
         + '<button type="button" class="confirmUnlockBtn" id="confirmUnlockBtn">編集する（確定を解除）</button>';
     }else{
       el.innerHTML = '<button type="button" class="confirmPlanBtn" id="confirmPlanBtn">✅ 工程と納期を確定する</button>'
