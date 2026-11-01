@@ -573,6 +573,14 @@
     html:not(.p8print) .shiftToggle .shiftLabel{ font-size:12px; }
     html:not(.p8print) .monthToggle{ gap:3px; }
   }
+  @media screen{
+    /* DE/SU/PN 欄は中身に押されて広がらないよう 156px に固定（広がると日程表の本体だけ横幅が増え、右端で進捗欄・日付欄とずれる） */
+    html:not(.p8print) .ganttDatesHead, html:not(.p8print) .ganttDatesCell{ width:var(--kb-dates); min-width:var(--kb-dates); max-width:var(--kb-dates); }
+    html:not(.p8print) .ganttDatesCell{ padding:4px 6px 4px 8px; overflow:hidden; }
+    html:not(.p8print) .ganttDatesCell .dateTagRow{ min-width:0; }
+    html:not(.p8print) .ganttDatesCell .dateTagCode{ flex:0 0 26px; }
+    html:not(.p8print) .ganttSideHead, html:not(.p8print) .ganttSideCell{ min-width:var(--kb-left); max-width:var(--kb-left); }
+  }
   @media print{ .checkMonthRow{ display:none !important; } }
   html.p8print .checkMonthRow{ display:none !important; }
   /* 画面だけの要素は印刷に出さない */
