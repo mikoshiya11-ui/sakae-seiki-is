@@ -495,6 +495,133 @@
     .resultGrid{ grid-template-columns:1fr; }
     .resultGrid.listView .card{ display:block; }
   }
+
+  /* =====================================================================
+     ★TOP 業務ホーム化（2026-11-01）：企業 HP 風の TOP → 製造業向け業務 OS のホーム。見た目だけ（検索・フィルタ・並び順・新規作成・ひな形・
+     各メニュー・作業票への遷移・CSV・カード/一覧切替の処理は従来どおり）。一覧表示を初期表示にし、カード表示は切替で残す。
+     ===================================================================== */
+  body{ background:#f1f4f7; font-family:"Noto Sans JP","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; }
+  .topbar{ height:64px; padding:0 24px; box-shadow:none; background:#102a54; }
+  .tbBrand{ align-items:center; gap:0; }
+  .tbLogo{ font-family:"Segoe UI","Hiragino Sans","Yu Gothic",sans-serif; font-size:27px; font-weight:800; letter-spacing:.02em; }
+  .tbLogo .os, .heroTitle .os{ color:#f28a21; }
+  .tbCompany{ display:inline-flex; align-items:center; height:26px; border-left:1px solid #5d77a3; margin:0 22px; padding-left:22px; font-size:15px; font-weight:700; letter-spacing:0; }
+  .tbRight{ font-size:13px; }
+
+  /* ヒーロー＝業務 OS のブランド帯（実写の工場写真はそのまま・高さ 170px） */
+  .hero{ width:calc(100% - 48px); max-width:1552px; margin:22px auto 0; min-height:170px; border-radius:6px; overflow:hidden; border:1px solid #d3dbe5;
+    background:#eef3f9 url("システムファイル/top_hero.jpg") right 58% / 64% auto no-repeat; }
+  .hero::before{ background:linear-gradient(90deg, #f4f7fb 0%, #f4f7fb 36%, rgba(244,247,251,.85) 44%, rgba(244,247,251,0) 58%); }
+  .heroText{ max-width:none; margin:0; padding:28px 42px; display:grid; grid-template-columns:auto auto; grid-template-rows:auto auto; column-gap:34px; align-items:center; justify-content:start; }
+  .heroSub{ grid-column:1; grid-row:1; font-size:16px; font-weight:700; color:#0d274b; letter-spacing:.04em; text-shadow:none; }
+  .heroTitle{ grid-column:1; grid-row:2; margin:4px 0 0; font-family:"Segoe UI","Hiragino Sans","Yu Gothic",sans-serif; font-size:42px; font-weight:800; line-height:1.1; color:#0d274b; letter-spacing:.01em; text-shadow:none; }
+  .heroLead{ grid-column:2; grid-row:1 / span 2; padding-left:34px; border-left:1px solid #c3cdd8; font-size:17px; font-weight:700; line-height:1.55; color:#0d274b; letter-spacing:.04em; text-shadow:none; }
+  .hero.compact{ min-height:0; }
+  .hero.compact .heroText{ padding:14px 42px; }
+  .hero.compact .heroTitle{ font-size:26px; }
+  .hero.compact .heroSub, .hero.compact .heroLead{ font-size:13px; }
+
+  /* 検索・作成（パネルにせずページの上に 1 行） */
+  .mainPanel{ width:calc(100% - 48px); max-width:1552px; margin:22px auto 0; padding:0; background:transparent; border-radius:0; box-shadow:none; }
+  .panelRow1{ gap:14px; }
+  .searchBox{ height:56px; min-height:56px; padding:0 18px; border:1px solid #c1cbd7; border-radius:5px; background:#fff; }
+  .searchBox input{ font-size:15px; font-weight:500; }
+  .panelRow1 .btnRow{ gap:14px; }
+  .panelRow1 .btn{ min-height:56px; height:56px; border-radius:5px; font-size:16px; font-weight:700; box-shadow:none; }
+  .panelRow1 #searchBtn{ width:180px; min-width:180px; background:#173b6d; color:#fff; border:0; }
+  .panelRow1 #newBtn{ width:200px; min-width:200px; background:#e88622; color:#fff; border:0; box-shadow:0 3px 8px rgba(136,77,17,.15); }
+  .panelRow1 #newBtn:hover{ background:#dc7a18; }
+  .panelRow1 #templateBtn{ width:220px; min-width:220px; background:#fff; color:#173b6d; border:1px solid #b8c4d2; font-size:15px; }
+  .panelRow1 #templateBtn:hover{ border-color:#173b6d; }
+
+  /* 業務ショートカット 4 件 */
+  .linkRow{ gap:16px; margin-top:16px; }
+  .linkRow a.zanpinLink{ height:58px; padding:0 22px; background:#fff; border:1px solid #aebccb; border-radius:5px; box-shadow:none; color:#0d274b; font-size:15px; font-weight:700; }
+  .linkRow a.zanpinLink:hover{ background:#fff; border-color:#e88622; box-shadow:none; }
+  .zlIcon{ width:22px; height:22px; color:#173b6d; }
+  .zlArrow{ color:#173b6d; font-size:16px; }
+
+  /* 案件一覧セクション */
+  .filterRow{ display:none; }
+  .resultsArea{ width:calc(100% - 48px); max-width:1552px; margin:28px auto 0; padding:24px 0 48px; border-top:1px solid #ccd5df; }
+  .resultsMetaRow{ display:flex; align-items:center; gap:24px; margin:0 0 16px; flex-wrap:wrap; }
+  .resultsMeta{ display:inline-flex; align-items:baseline; gap:14px; color:#0d274b; }
+  .resultsMeta .rmTitle{ position:relative; padding-left:16px; font-size:27px; font-weight:800; letter-spacing:.02em; }
+  .resultsMeta .rmTitle::before{ content:""; position:absolute; left:0; top:50%; width:4px; height:30px; margin-top:-15px; background:#173b6d; }
+  .resultsMeta .rmCount{ font-size:16px; font-weight:500; color:#56687f; }
+  .resultsMetaRow .quickLinks{ margin:0; gap:12px; display:flex; flex-wrap:wrap; }
+  .resultsMetaRow .quickLinks button{ height:48px; min-width:170px; padding:0 20px; border-radius:5px; font-size:15px; font-weight:700; background:#fff; border:1px solid #c3cdd8; color:#173b6d; box-shadow:none; }
+  .resultsMetaRow .quickLinks button.active{ background:#173b6d; border-color:#173b6d; color:#fff; }
+  .resultsTools{ margin-left:auto; gap:10px; }
+  .resultsTools label{ font-size:13px; color:#56687f; }
+  #sortSel{ height:46px; min-width:300px; padding:0 12px; border:1px solid #c3cdd8; border-radius:5px; font-size:13px; font-weight:500; color:#0d274b; }
+  .viewToggle{ height:46px; border:1px solid #c3cdd8; border-radius:5px; }
+  .viewToggle button{ width:48px; height:44px; }
+  .viewToggle button.active{ background:#173b6d; }
+  #exportCsvBtn{ height:46px; border-radius:5px; }
+
+  /* 一覧表示（初期表示）：社内No.・品名・客先・納期・状態・備考・操作 */
+  .card .lvCell{ display:none; }
+  .lvHead{ display:none; }
+  @media (min-width:701px){
+    .resultsArea{ --lv-cols:180px minmax(180px,1.6fr) minmax(130px,1fr) 118px 104px minmax(140px,1.2fr) 262px 30px; }
+    .resultsArea:has(.resultGrid.listView) .lvHead{ display:grid; grid-template-columns:var(--lv-cols); align-items:center; column-gap:18px; height:44px; padding:0 18px;
+      background:#eef2f6; border:1px solid #b8c4d2; border-bottom:1px solid #bfcad6; border-radius:5px 5px 0 0; font-size:13px; font-weight:700; color:#24364d; }
+    .resultGrid.listView{ display:block; background:#fff; border:1px solid #b8c4d2; border-top:none; border-radius:0 0 5px 5px; box-shadow:0 2px 5px rgba(15,35,65,.05); overflow:hidden; }
+    .resultGrid.listView .card{ display:grid; grid-template-columns:var(--lv-cols); align-items:center; column-gap:18px; min-height:52px; padding:0 18px; margin:0;
+      border:none; border-bottom:1px solid #e0e6ed; border-radius:0; box-shadow:none; background:#fff; }
+    .resultGrid.listView .card:nth-child(even){ background:#fafbfc; }
+    .resultGrid.listView .card:last-child{ border-bottom:none; }
+    .resultGrid.listView .card .cardTop, .resultGrid.listView .card .badgeRow{ display:contents; }
+    .resultGrid.listView .card .productNo{ grid-column:1; grid-row:1; font-size:15px; font-weight:700; color:#123f83; text-decoration:underline; text-underline-offset:3px; }
+    .resultGrid.listView .card .lvCell{ display:block; grid-row:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:14px; font-weight:500; color:#24364d; }
+    .resultGrid.listView .card .lvItem{ grid-column:2; font-weight:600; color:#0d274b; }
+    .resultGrid.listView .card .lvCustomer{ grid-column:3; }
+    .resultGrid.listView .card .lvDue{ grid-column:4; font-weight:600; font-variant-numeric:tabular-nums; }
+    .resultGrid.listView .card .lvNote{ grid-column:6; color:#56687f; }
+    .resultGrid.listView .card .badge.inprogress, .resultGrid.listView .card .badge.done{ grid-column:5; grid-row:1; justify-self:start; }
+    .resultGrid.listView .card .badge.template{ display:none; }
+    .resultGrid.listView .card .cardDelBtn{ grid-column:8; grid-row:1; justify-self:end; }
+    .resultGrid.listView .card .modelName, .resultGrid.listView .card .itemNameRow, .resultGrid.listView .card .meta{ display:none; }
+    .resultGrid.listView .card .cardMainRow{ grid-column:7; grid-row:1; margin:0; display:flex; gap:8px; justify-content:flex-end; }
+    .resultGrid.listView .card .cardMainBtn{ height:36px; padding:0 14px; border-radius:4px; background:#fff; color:#173b6d; border:1px solid #9fb0c4; font-size:13px; font-weight:700; gap:8px; box-shadow:none; white-space:nowrap; }
+    .resultGrid.listView .card .cardMainBtn:hover{ border-color:#173b6d; background:#f6f8fb; }
+    .resultGrid.listView .card .cardDetailLink{ height:36px; padding:0 12px; border-radius:4px; font-size:12.5px; }
+  }
+  /* タブレット幅の一覧：列を詰め、備考は出さない（はみ出し防止） */
+  @media (min-width:701px) and (max-width:1100px){
+    .resultsArea{ --lv-cols:118px minmax(100px,1.4fr) minmax(80px,1fr) 92px 76px 214px 28px; }
+    .resultsArea:has(.resultGrid.listView) .lvHead, .resultGrid.listView .card{ column-gap:12px; padding:0 12px; }
+    .lvHead span:nth-child(6){ display:none; }
+    .resultGrid.listView .card .lvNote{ display:none; }
+    .resultGrid.listView .card .cardMainRow{ grid-column:6; }
+    .resultGrid.listView .card .cardDelBtn{ grid-column:7; }
+    .resultGrid.listView .card .productNo{ font-size:14px; }
+    .resultGrid.listView .card .cardMainBtn{ padding:0 10px; font-size:12.5px; }
+    .resultGrid.listView .card .cardMainBtn svg{ display:none; }
+  }
+  /* 状態 */
+  .badge{ display:inline-flex; align-items:center; height:28px; padding:0 14px; border-radius:14px; font-size:12px; font-weight:700; }
+  .badge.inprogress{ background:#fff0d9; color:#d96b0b; }
+
+  /* タブレット：主要操作は 2 段まで */
+  @media (max-width:1100px){
+    .panelRow1 #searchBtn, .panelRow1 #newBtn, .panelRow1 #templateBtn{ width:auto; min-width:0; flex:1 1 150px; }
+    .heroText{ grid-template-columns:auto; }
+    .heroLead{ grid-column:1; grid-row:3; border-left:none; padding-left:0; margin-top:8px; font-size:15px; }
+    .hero{ background-size:cover; }
+    .resultsTools{ margin-left:0; }
+    #sortSel{ min-width:220px; }
+  }
+  /* スマホ：検索 → 新規作成 → 主要メニュー → 案件一覧 の縦積み（一覧はカード表示の形） */
+  @media (max-width:700px){
+    .topbar{ height:auto; min-height:56px; padding:8px 16px; }
+    .tbCompany{ display:none; }
+    .hero, .mainPanel, .resultsArea{ width:calc(100% - 24px); }
+    .heroText{ padding:20px 18px; }
+    .heroTitle{ font-size:32px; }
+    #sortSel{ min-width:0; }
+  }
 </style>
 <script src="システムファイル/_sakaeSupabaseConfig.js"></script>
 <script src="システムファイル/_sakaeSync.js"></script>
@@ -504,15 +631,15 @@
 
   <!-- ★TOP デザイン刷新（2026-10-31）：ヘッダー → ヒーロー → 操作パネル → 案件フィルタ → 案件一覧。id・処理は従来どおり -->
   <div class="topbar">
-    <div class="tbBrand"><span class="tbLogo">SAKAE SEIKI-<span class="os">OS</span></span><span class="tbCompany">榮製機株式会社　基本ソフトウェア</span></div>
+    <div class="tbBrand"><span class="tbLogo">SAKAE SEIKI-<span class="os">OS</span></span><span class="tbCompany">製造業務システム</span></div>
     <div class="tbRight"><span id="lastUpdatedLabel"></span><span id="changePwLink" class="tbItem" style="cursor:pointer;" title="ログインパスワードを変更します"><svg class="tbIcon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#fff"/><text x="12" y="17" text-anchor="middle" font-size="14" font-weight="700" fill="#143466" font-family="sans-serif">?</text></svg>パスワード変更</span><span class="tbItem"><svg class="tbIcon" viewBox="0 0 24 24" fill="#fff"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>榮製機㈱社内システム</span><span class="tbAvatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="#fff"><circle cx="12" cy="8.5" r="4.2"/><path d="M3.8 21c.8-4.4 4.2-6.6 8.2-6.6s7.4 2.2 8.2 6.6z"/></svg></span></div>
   </div>
 
   <div class="hero" id="hero">
     <div class="heroText">
-      <div class="heroSub">榮製機株式会社　基本ソフトウェア</div>
+      <div class="heroSub">榮製機株式会社</div>
       <h1 class="heroTitle">SAKAE SEIKI-<span class="os">OS</span></h1>
-      <div class="heroLead">現場の情報をつなぎ、ものづくりを支える業務基盤</div>
+      <div class="heroLead">現場の情報をつなぎ、<br>ものづくりを支える業務基盤</div>
     </div>
   </div>
 
@@ -547,17 +674,16 @@
     </div>
   </div>
 
-  <div class="filterRow">
-    <div class="quickLinks" id="quickLinks">
-      <button data-filter="all">すべて<span class="qlCount" data-count="all"></span></button>
-      <button data-filter="inprogress" class="active">進行中案件<span class="qlCount" data-count="inprogress"></span></button>
-      <button data-filter="done">完了案件（CSV出力）</button>
-    </div>
-  </div>
+  <div class="filterRow"></div>
 
   <div class="resultsArea">
     <div class="resultsMetaRow">
       <div class="resultsMeta" id="resultsMeta"></div>
+      <div class="quickLinks" id="quickLinks">
+      <button data-filter="all">すべて<span class="qlCount" data-count="all"></span></button>
+      <button data-filter="inprogress" class="active">進行中案件<span class="qlCount" data-count="inprogress"></span></button>
+      <button data-filter="done">完了案件（CSV出力）</button>
+      </div>
       <div class="resultsTools">
         <button type="button" id="exportCsvBtn" title="「完了（過去制作分）」になっている案件をまとめてCSVでダウンロード">📄 完了案件をCSV書き出し</button>
         <label for="sortSel">表示順</label>
@@ -566,10 +692,12 @@
           <option value="dueAsc">納期の近い順</option>
           <option value="noAsc">社内No.順</option>
         </select>
-        <span class="viewToggle" id="viewToggle"><button type="button" data-view="card" class="active" title="カード表示"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg></button><button type="button" data-view="list" title="一覧表示"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="18" r="1" fill="currentColor"/></svg></button></span>
+        <span class="viewToggle" id="viewToggle"><button type="button" data-view="card" title="カード表示"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg></button><button type="button" data-view="list" class="active" title="一覧表示"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="18" r="1" fill="currentColor"/></svg></button></span>
       </div>
     </div>
-    <div class="resultGrid" id="resultGrid"></div>
+    <!-- ★TOP 業務ホーム化（2026-11-01）：一覧表示の列見出し（一覧表示の時だけ出す） -->
+    <div class="lvHead" aria-hidden="true"><span>社内No.</span><span>品名</span><span>客先</span><span>納期</span><span>状態</span><span>備考</span><span></span></div>
+    <div class="resultGrid listView" id="resultGrid"></div>
   </div>
 
   <!-- 新規作成モーダル：受注連絡書(改)様式（紙帳票レイアウト再現） -->
@@ -1484,7 +1612,7 @@
       el.textContent = '（' + n + '件）';
     });
 
-    resultsMeta.textContent = '案件一覧 ' + list.length + '件';
+    resultsMeta.innerHTML = '<span class="rmTitle">案件一覧</span> <span class="rmCount">' + list.length + '件</span>';   // 文字は従来どおり「案件一覧 N件」（見た目だけ分ける）
     document.getElementById('exportCsvBtn').style.display = (filterMode==='done') ? 'inline-block' : 'none';
     if(list.length===0){
       resultGrid.innerHTML = '';
@@ -1503,7 +1631,9 @@
       const tplBadge = r.isTemplate ? '<span class="badge template">⭐ ひな形</span>' : '';
       const buhinExists = !!loadBuhinState(r.productNo);
       const mainLabel = buhinExists ? '作業票を開く' : '作業票を作成する';
+      const lvNote = (r.isTemplate ? '⭐ ひな形　' : '') + String(r.note || '').split(/\r?\n/)[0];
       return '<div class="card" data-id="'+r0.id+'">'
+        + '<span class="lvCell lvItem">'+esc(r.itemName || r.modelName || '(名称未設定)')+'</span><span class="lvCell lvCustomer">'+esc(r.customer||'—')+'</span><span class="lvCell lvDue">'+esc(r.dueDate ? String(fmtDate(r.dueDate)).replace(/-/g,'/') : '—')+'</span><span class="lvCell lvNote">'+esc(lvNote || '—')+'</span>'
         + '<div class="cardTop"><span class="productNo">'+esc(r.orderNo)+'</span><span class="badgeRow">'+tplBadge+statusBadge+'<button type="button" class="cardDelBtn" data-role="delCard" title="削除">✕</button></span></div>'
         + '<div class="modelName">'+esc(r.modelName || r.itemName || '(名称未設定)')+'</div>'
         // 上の行が型式を出せている時だけ、その下に品名も出す。
