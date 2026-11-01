@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>実績入力｜SAKAE SEIKI-iS</title>
+<title>実績入力｜SAKAE SEIKI-OS</title>
 <style>
   *{box-sizing:border-box;}
   body{
@@ -180,6 +180,108 @@
   .emptyRow{ padding:30px 20px; text-align:center; color:#a4adbc; font-size:12.5px; }
 
   .footNote{ font-size:12.5px; color:#a4adbc; text-align:center; margin-top:20px; line-height:1.7; }
+
+  /* ==== 2026-11-01 実績入力 DESIGN 改修（表示だけ・読取/完了/登録/保存は不変） ==== */
+  @media screen{
+    body{ background:#F3F6FA; color:#24364D; }
+    .topbar{ height:62px; padding:0 28px; background:#102F5F; gap:0; }
+    .topbar .backLink{ color:#FFFFFF; font-size:15px; font-weight:600; }
+    .topbar .brand{ align-items:baseline; gap:0; font-size:18px; font-weight:800; letter-spacing:.01em; }
+    .topbar .brand .sakae{ color:#FFFFFF; }
+    .topbar .brand .is{ color:#F28A21; }
+    .topbar .sep{ display:inline-block; width:0; height:24px; border-left:1px solid #5D77A3; margin:0 18px; }
+    .topbar .pageName{ color:#FFFFFF; font-size:16px; font-weight:700; }
+
+    .wrap{ max-width:1600px; padding:0 28px 48px; }
+    .noteBar, .footNote{ display:none !important; }
+
+    .pageTitleRow{ display:flex; align-items:center; gap:14px; margin:22px 0 18px; }
+    .ptAccent{ width:7px; height:44px; background:#F28A21; border-radius:2px; flex:0 0 auto; }
+    .ptIcon{ color:#173B6D; flex:0 0 auto; }
+    .ptTitle{ margin:0; font-size:30px; font-weight:800; color:#102F5F; line-height:1.2; letter-spacing:.02em; }
+
+    .scanCard{ min-height:82px; padding:0 24px; margin-bottom:0; gap:18px; background:#123E73; border-radius:8px;
+      box-shadow:0 3px 9px rgba(20,45,80,.10); flex-wrap:nowrap; }
+    .scanCard .scanLabel{ display:inline-flex; align-items:center; gap:10px; color:#FFFFFF; font-size:16px; font-weight:700; flex:0 0 auto; }
+    .scanIcon{ color:#FFFFFF; flex:0 0 auto; }
+    .scanCard input#scanInput{ flex:1 1 600px; min-width:600px; height:48px; padding:0 14px; background:#FFFFFF; border:1px solid #D5DEE9;
+      border-radius:6px; font-size:14px; font-weight:500; color:#24364D; }
+    .scanCard input#scanInput.flash{ background:#d7ecd9; }
+    .scanCard .manualToggleBtn{ flex:0 0 230px; width:230px; height:48px; padding:0 12px; background:transparent; border:1px solid #8EACCA;
+      border-radius:6px; color:#FFFFFF; font-size:14px; font-weight:700; }
+    .scanCard .manualToggleBtn:hover{ border-color:#FFFFFF; background:rgba(255,255,255,.06); }
+
+    .manualCard, .candCard{ margin:16px 0 0; border-radius:8px; }
+    .manualCard{ border:1px solid #D7E0EA; box-shadow:0 2px 7px rgba(20,45,80,.05); }
+
+    .entryCard{ margin:18px 0 0; padding:20px 22px; background:#FFFFFF; border:1px solid #D7E0EA; border-radius:8px; box-shadow:0 2px 7px rgba(20,45,80,.05); }
+    .entryCard.detailCard{ margin-top:16px; }
+    .entryCard .curTitle{ font-size:17px; font-weight:800; color:#173B6D; margin-bottom:12px; }
+    .curInfo{ grid-template-columns:repeat(5, minmax(0,1fr)); gap:0; min-height:70px; margin-bottom:0; padding:0; background:#F2F6FA; border-radius:6px; }
+    .curInfo .ciItem{ padding:14px 16px; gap:6px; min-width:0; }
+    .curInfo .ciItem .ciLabel{ font-size:11px; font-weight:700; color:#67809B; }
+    .curInfo .ciItem .ciVal{ font-size:14px; font-weight:700; color:#173B6D; overflow-wrap:anywhere; }
+    .curInfo .ciItem .ciVal.muted{ color:#8FA2B6; font-weight:500; }
+    .curInfo .ciItem .ciVal.ident{ color:#A56610; }
+
+    .doneRow{ min-height:46px; margin:12px 0 0; padding:6px 8px 6px 20px; background:#F8FAFC; border:1px solid #CBD8E5; border-radius:6px; }
+    .doneRow .doneState{ font-size:13px; font-weight:700; color:#166534; }
+    .doneRow.noTarget{ background:#F8FAFC; border-color:#CBD8E5; }
+    .doneRow.noTarget .doneState{ color:#58708A; font-weight:500; }
+    .doneRow.isDone{ background:#EEF4FB; border-color:#C9DAEC; }
+    .doneRow.isDone .doneState{ color:#173B6D; }
+    .doneRow button{ height:34px; padding:0 16px; border-radius:6px; font-size:13px; }
+
+    .detailTitle{ font-size:16px; font-weight:800; color:#173B6D; margin-bottom:14px; }
+    .fieldRow{ gap:14px 10px; flex-wrap:wrap; }
+    .fieldRow .rowBreak{ flex:0 0 100%; height:0; }
+    .fieldRow .fItem{ gap:6px; }
+    .fieldRow .fItem label{ font-size:12px; font-weight:700; color:#304861; }
+    .fieldRow input, .fieldRow select{ height:46px; padding:0 12px; font-size:14px; font-weight:500; color:#24364D; background:#FFFFFF;
+      border:1px solid #C6D3E0; border-radius:6px; width:130px; }
+    .fieldRow input:focus, .fieldRow select:focus{ border-color:#173B6D; background:#FFFFFF; box-shadow:0 0 0 3px rgba(23,59,109,.12); }
+    .fieldRow input#dateInput{ width:180px; }
+    .fieldRow input#employeeNo{ width:120px; }
+    .fieldRow select#defectFlag{ width:130px; }
+    .fieldRow input#equipmentInput{ width:150px; }
+    .fieldRow input#otherInput{ width:300px; }
+    .fieldRow select#completionSel{ width:140px; }
+    .fieldRow .commitBtn{ width:190px; height:46px; padding:0 12px; background:#F28A21; border:0; border-radius:6px; color:#FFFFFF;
+      font-size:14px; font-weight:800; box-shadow:0 2px 5px rgba(150,85,15,.15); }
+    .fieldRow .clearBtn{ width:150px; height:46px; padding:0 12px; background:#FFFFFF; border:1px solid #B8C7D9; border-radius:6px;
+      color:#173B6D; font-size:14px; font-weight:700; }
+    .fieldRow .clearBtn:hover{ border-color:#173B6D; }
+
+    .listCard{ overflow-x:auto; margin-top:18px; background:#FFFFFF; border:1px solid #D7E0EA; border-radius:8px; box-shadow:0 2px 7px rgba(20,45,80,.05); }
+    .listHead{ min-height:58px; padding:9px 22px; gap:10px; border-bottom:0; }
+    .listHead .lTitle{ font-size:17px; font-weight:800; color:#173B6D; }
+    .listHead .lCount{ font-size:14px; font-weight:500; color:#9AADBF; }
+    .listHead select#filterEmployee{ width:390px; height:40px; padding:0 12px; border:1px solid #C6D3E0; border-radius:6px; font-size:13px; color:#24364D; background:#FFFFFF; }
+    .listHead input#filterDate{ width:180px; height:40px; padding:0 12px; border:1px solid #C6D3E0; border-radius:6px; font-size:13px; color:#24364D; }
+    table.logTable th{ height:42px; padding:0 12px; background:#EEF3F8; border-top:1px solid #C8D4E0; border-bottom:1px solid #C8D4E0; font-size:12px; font-weight:700; color:#28425E; }
+    table.logTable td{ height:44px; padding:0 12px; font-size:13px; font-weight:500; color:#304861; border-bottom:1px solid #E2E8EF; }
+    table.logTable tbody tr:nth-child(even) td{ background:#FAFCFE; }
+    table.logTable tr:hover td{ background:#F1F6FB; }
+    table.logTable td:nth-child(3){ font-size:13px; font-weight:700; color:#173B6D; }
+    .procChip{ display:inline-flex; align-items:center; height:26px; padding:0 10px; border-radius:5px; background:#173B6D; color:#FFFFFF; font-size:12px; font-weight:700; }
+  }
+  /* タブレット：バーコード帯・入力欄は 2 段まで */
+  @media screen and (max-width:1180px){
+    .scanCard{ flex-wrap:wrap; padding:16px 20px; }
+    .scanCard input#scanInput{ min-width:0; flex:1 1 100%; order:3; }
+    .fieldRow .rowBreak{ display:none; }
+    .listHead select#filterEmployee{ width:240px; }
+  }
+  @media screen and (max-width:640px){
+    .topbar{ padding:0 16px; }
+    .topbar .brand, .topbar .sep{ display:none; }
+    .wrap{ padding:0 16px 32px; }
+    .ptTitle{ font-size:20px; }
+    .scanCard .manualToggleBtn{ flex:1 1 100%; width:100%; }
+    .curInfo{ grid-template-columns:repeat(2, minmax(0,1fr)); }
+    .listHead select#filterEmployee{ width:100%; margin-left:0; }
+    .listCard{ overflow-x:auto; }
+  }
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
@@ -188,12 +290,18 @@
 
   <div class="topbar">
     <a class="backLink" href="../SAKAE SEIKI-iS.html">← トップへ</a>
-    <span class="brand"><span class="sakae">SAKAE SEIKI</span><span class="is">-iS</span></span>
-    <span class="sep">｜</span>
+    <span class="brand"><span class="sakae">SAKAE SEIKI-</span><span class="is">OS</span></span>
+    <span class="sep" aria-hidden="true"></span>
     <span class="pageName">実績入力（モック：バーコード連続入力）</span>
   </div>
 
   <div class="wrap">
+
+    <div class="pageTitleRow">
+      <span class="ptAccent" aria-hidden="true"></span>
+      <svg class="ptIcon" viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M7.5 8v8M10 8v8M12.5 8v8M15 8v8M16.5 8v8"/></svg>
+      <h1 class="ptTitle">実績入力（モック：バーコード連続入力）</h1>
+    </div>
 
     <div class="noteBar">
       <b>工程が終わったこと</b>と<b>実績の詳細（工数・数量など）</b>は別々に扱います。<br>
@@ -203,7 +311,7 @@
     </div>
 
     <div class="scanCard">
-      <span class="scanLabel">📷 ここにカーソルを置いてバーコードを読み取ってください</span>
+      <span class="scanLabel"><svg class="scanIcon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2.5" y="4.5" width="19" height="15" rx="1.5"/><path d="M6.5 8v8M9 8v8M11 8v8M14 8v8M16 8v8M17.5 8v8"/></svg>バーコードをスキャンしてください</span>
       <input type="text" id="scanInput" placeholder="バーコードをスキャン（テスト時は P+工程ID、または旧形式の 社内No.-工程コード を入力してEnter）" autocomplete="off">
       <button type="button" class="manualToggleBtn" id="manualToggleBtn">社内No.から選ぶ（手動）</button>
     </div>
@@ -237,6 +345,9 @@
         <button type="button" class="undoneBtn" id="undoneBtn">完了を取り消す</button>
       </div>
 
+    </div>
+
+    <div class="entryCard detailCard">
       <div class="detailTitle">実績詳細（工数・数量など。工程完了とは別の操作で、後から入力できます）</div>
       <div class="fieldRow">
         <div class="fItem"><label>日付</label><input type="date" id="dateInput"></div>
@@ -250,6 +361,7 @@
           <select id="defectFlag"><option value="良">良</option><option value="否">否</option></select>
         </div>
         <div class="fItem"><label>設備</label><input type="text" id="equipmentInput" placeholder="例）NC-3"></div>
+        <div class="rowBreak" aria-hidden="true"></div>
         <div class="fItem"><label>その他</label><input type="text" id="otherInput" placeholder="備考など"></div>
         <div class="fItem"><label>状況</label>
           <select id="completionSel"><option value="完了">完了</option><option value="未完">未完</option></select>
@@ -802,7 +914,7 @@
         + '<td class="codeCell">'+esc(e.displayNo||e.productNo)+'</td>'
         + '<td>'+esc(e.customerName)+' / '+esc(e.modelName)+'</td>'
         + '<td>'+esc(e.partCode)+' '+esc(e.partName)+'</td>'
-        + '<td class="codeCell">'+esc((e.processCode||'')+(e.processIdent||''))+'</td>'
+        + '<td class="codeCell procCell">'+((e.processCode||e.processIdent) ? '<span class="procChip">'+esc((e.processCode||'')+(e.processIdent||''))+'</span>' : '')+'</td>'
         + '<td class="numCell">'+esc(e.setupHours||0)+'</td>'
         + '<td class="numCell">'+esc(e.mannedHours||0)+'</td>'
         + '<td class="numCell">'+esc(e.unmannedHours||0)+'</td>'
