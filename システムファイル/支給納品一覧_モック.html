@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>支給・納品一覧｜SAKAE SEIKI-iS</title>
+<title>支給・納品一覧｜SAKAE SEIKI-OS</title>
 <style>
   *{box-sizing:border-box;}
   body{
@@ -148,6 +148,109 @@
   .emptyState a{ color:#173a68; font-weight:700; }
 
   .footNote{ font-size:12.5px; color:#a4adbc; text-align:center; margin-top:20px; line-height:1.7; }
+
+  /* ==== 2026-11-01 支給・納品一覧（週間）DESIGN 改修（表示だけ・週/検索/印刷/入力/保存は不変） ==== */
+  @media screen{
+    body{ background:#F3F6FA; color:#24364D; }
+    .topbar{ height:62px; padding:0 24px; background:#102F5F; gap:0; }
+    .topbar .backLink{ color:#FFFFFF; font-size:15px; font-weight:600; }
+    .topbar .brand{ align-items:baseline; gap:0; font-size:18px; font-weight:800; letter-spacing:.01em; }
+    .topbar .brand .sakae{ color:#FFFFFF; }
+    .topbar .brand .is{ color:#F28A21; }
+    .topbar .sep{ display:inline-block; width:0; height:24px; border-left:1px solid #5D77A3; margin:0 18px; }
+    .topbar .pageName{ color:#FFFFFF; font-size:17px; font-weight:700; }
+
+    .wrap{ max-width:1600px; padding:0 24px 48px; }
+    .noteBar, .footNote{ display:none !important; }
+
+    .pageTitleRow{ display:flex; align-items:center; gap:14px; margin:22px 0 18px; }
+    .ptAccent{ width:7px; height:44px; background:#F28A21; border-radius:2px; flex:0 0 auto; }
+    .ptIcon{ color:#173B6D; flex:0 0 auto; }
+    .ptTitle{ margin:0; font-size:30px; font-weight:800; color:#102F5F; line-height:1.2; letter-spacing:.02em; }
+
+    .toolRow{ min-height:48px; gap:10px; margin-bottom:0; flex-wrap:wrap; }
+    .weekNav{ background:transparent; box-shadow:none; padding:0; gap:6px; border-radius:0; }
+    .weekNav button{ height:44px; padding:0 16px; border:1px solid #C4D0DD; border-radius:6px; background:#FFFFFF;
+      color:#173B6D; font-size:14px; font-weight:700; }
+    .weekNav button:hover{ border-color:#173B6D; color:#173B6D; }
+    .weekNav button.thisWeek{ background:#173B6D; border-color:#173B6D; color:#FFFFFF; }
+    .weekLabel{ display:inline-flex; align-items:center; height:44px; padding:0 14px; margin-left:0; background:#FFFFFF;
+      border:1px solid #CDD7E2; border-radius:6px; color:#173B6D; font-size:15px; font-weight:700; }
+    .searchWrap{ position:relative; display:block; flex:0 1 300px; min-width:200px; }
+    .searchIcon{ position:absolute; left:13px; top:50%; transform:translateY(-50%); color:#155A9C; pointer-events:none; }
+    .searchBox{ display:block; width:100%; min-width:0; height:44px; padding:0 12px 0 42px; background:#FFFFFF;
+      border:1px solid #B8C7D9; border-radius:6px; font-size:13px; font-weight:500; color:#45566B; }
+    .searchBox::placeholder{ color:#7A8899; }
+    .searchBox:focus{ border-color:#173B6D; box-shadow:0 0 0 3px rgba(23,59,109,.12); }
+    .printBtn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; width:190px; height:44px; padding:0 12px;
+      background:#FFFFFF; border:1px solid #B8C7D9; border-radius:6px; color:#173B6D; font-size:14px; font-weight:700; }
+    .printBtn:hover{ border-color:#173B6D; color:#173B6D; }
+    .printIcon{ color:#173B6D; flex:0 0 auto; }
+    .summaryRow{ gap:8px; flex-wrap:wrap; }
+    .sumChip{ display:inline-flex; align-items:center; gap:4px; height:44px; padding:0 14px; background:#FFFFFF; border-radius:22px;
+      box-shadow:0 2px 8px rgba(20,45,80,.07); font-size:13px; font-weight:600; color:#24364D; white-space:nowrap; }
+    .sumChip b{ font-size:16px; font-weight:800; color:#173B6D; font-variant-numeric:tabular-nums; }
+
+    .legendRow{ min-height:32px; margin:10px 0 8px; gap:24px; font-size:13px; color:#45566B; }
+    .legendRow .lgNouhin{ color:#173B6D; font-weight:700; }
+    .legendRow .lgShikyu{ color:#E23A2E; font-weight:700; }
+    .legendRow .lgFree{ color:#45566B; }
+
+    .boardCard{ background:#FFFFFF; border:1px solid #C3CFDC; border-radius:8px; box-shadow:0 2px 7px rgba(20,45,80,.05); }
+    .board th, .board td{ border-bottom:1px solid #DCE4ED; border-right:1px solid #DCE4ED; color:#24364D; font-size:13px; }
+    .board td.frozen, .board thead th.frozen{ padding:6px 12px; }
+    .board thead th{ background:#EEF3F8; color:#213A59; font-size:13px; font-weight:700; }
+    .board thead .frozen{ background:#EEF3F8; }
+    .board thead tr.dateRow th{ height:42px; vertical-align:bottom; padding-bottom:2px; }
+    .board thead tr.dateRow th.frozen{ vertical-align:bottom; padding-bottom:0; border-bottom-color:transparent; text-align:left; }
+    .board thead tr.dowRow th.frozen{ text-align:left; }
+    .board thead tr.dowRow th{ top:42px; height:24px; padding-top:0; padding-bottom:4px; vertical-align:top; }
+    .board thead th:not(.frozen){ font-size:15px; color:#173B6D; }
+    .board thead tr.dowRow th:not(.frozen){ font-size:12px; font-weight:500; color:#45566B; }
+    .board thead tr.dowRow th.frozen{ border-top:0; }
+    .board .frozen.lastFrozen{ box-shadow:2px 0 5px rgba(20,45,80,.10); border-right:1px solid #C3CFDC; }
+
+    tr.nouhinRow td, tr.nouhinRow td.frozen, tr.nouhinRow td.dayCell{ background:#FFFFFF; border-bottom:1px solid #DCE4ED; }
+    tr.nouhinRow td{ height:70px; }
+    tr.nouhinRow td.dayCell.weekend{ background:#F7F9FC; }
+    tr.shikyuRow td, tr.shikyuRow td.frozen, tr.shikyuRow td.dayCell{ background:#F8FBFE; border-bottom:1px solid #DCE4ED; }
+    tr.shikyuRow td{ height:68px; }
+    tr.shikyuRow td.dayCell.weekend{ background:#F2F6FA; }
+    tr.nouhinRow td.dayCell.today, tr.shikyuRow td.dayCell.today{ background:rgba(243,191,65,.22); }
+    tr.shikyuRow td.orderNoCol{ border-left:3px solid #E53A30; padding-left:10px; }
+
+    .prodNo{ font-size:14px; font-weight:700; color:#123F83; }
+    .addShikyuBtn{ margin-top:6px; }
+    .miniBtn{ height:28px; padding:0 10px; font-size:11px; font-weight:700; background:#FFFFFF; border:1px solid #BCD0E5;
+      border-radius:7px; color:#173B6D; }
+    .miniBtn:hover{ border-color:#173B6D; color:#173B6D; }
+    .shikyuTag{ font-size:13px; font-weight:800; color:#E53A30; }
+    .shikyuDateWrap input[type=date]{ border:1px solid #C4D0DD; }
+    .shikyuOffBtn{ color:#5E7FA8; }
+    .shikyuOffBtn:hover{ color:#E53A30; }
+
+    .autoLine + .dayInput{ height:38px; }
+    .autoLine.nouhinAuto{ color:#173B6D; }
+    .autoLine.shikyuAuto{ color:#E23A2E; }
+  }
+  /* PC（1400px 以上）は操作バーを 1 行に固定し、足りない分は検索欄だけが縮む */
+  @media screen and (min-width:1400px){
+    .toolRow{ flex-wrap:nowrap; }
+    .weekNav, .printBtn, .summaryRow{ flex-shrink:0; }
+    .summaryRow{ flex-wrap:nowrap; }
+  }
+  @media screen and (max-width:1180px){
+    .summaryRow{ margin-left:0; }
+  }
+  @media screen and (max-width:640px){
+    .topbar{ padding:0 16px; }
+    .topbar .brand, .topbar .sep{ display:none; }
+    .wrap{ padding:0 16px 32px; }
+    .ptTitle{ font-size:22px; }
+    .weekNav{ flex-wrap:wrap; }
+    .searchWrap{ flex:1 1 100%; min-width:0; }
+    .printBtn{ width:100%; }
+  }
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
@@ -155,13 +258,19 @@
 <body>
 
   <div class="topbar">
-    <a class="backLink" href="../SAKAE SEIKI-iS.html" title="SAKAE SEIKI-iSトップへ">← トップへ</a>
-    <span class="brand"><span class="sakae">SAKAE SEIKI</span><span class="is">-iS</span></span>
-    <span class="sep">｜</span>
+    <a class="backLink" href="../SAKAE SEIKI-iS.html" title="SAKAE SEIKI-OSトップへ">← トップへ</a>
+    <span class="brand"><span class="sakae">SAKAE SEIKI-</span><span class="is">OS</span></span>
+    <span class="sep" aria-hidden="true"></span>
     <span class="pageName">支給・納品一覧（週間）</span>
   </div>
 
   <div class="wrap">
+
+    <div class="pageTitleRow">
+      <span class="ptAccent" aria-hidden="true"></span>
+      <svg class="ptIcon" viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+      <h1 class="ptTitle">支給・納品一覧（週間）</h1>
+    </div>
 
     <div class="noteBar">
       客先とのやり取りに関わる<b>「納品」（客先へ納める）</b>と<b>「支給」（客先から材料等を引き取る）</b>を、案件ごとに1週間単位で見る一覧です。<br>
@@ -176,15 +285,15 @@
         <button type="button" data-move="next">翌週 ＞</button>
         <span class="weekLabel" id="weekLabel"></span>
       </div>
-      <input type="text" class="searchBox" id="searchBox" placeholder="社内No・客先・型式・品名で検索">
-      <button type="button" class="printBtn" id="printBtn" title="いま画面に出ている1週間をそのまま印刷します">🖨 印刷（この週）</button>
+      <label class="searchWrap"><svg class="searchIcon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg><input type="text" class="searchBox" id="searchBox" placeholder="社内No.・客先・型式・品名で検索"></label>
+      <button type="button" class="printBtn" id="printBtn" title="いま画面に出ている1週間をそのまま印刷します"><svg class="printIcon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor"><path d="M7 3h10v4H7z"/><path d="M5 8h14a3 3 0 0 1 3 3v6h-4v4H6v-4H2v-6a3 3 0 0 1 3-3zm3 8v3h8v-3zm10-5.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>印刷する（この週）</button>
       <div class="summaryRow" id="summaryRow"></div>
     </div>
 
     <div class="legendRow">
-      <span><b style="color:#1a2233;">型式 品名 納品</b>　＝ 納期の日に自動で出ます（消せません）</span>
-      <span><b style="color:#c0392b;">型式 品名 支給</b>　＝ 支給日に自動で出ます（消せません）</span>
-      <span style="color:#a4adbc;">その下の欄は自由入力です</span>
+      <span><b class="lgNouhin">型式 品名 納品</b>　＝ 納期の日に自動で出ます（消せません）</span>
+      <span><b class="lgShikyu">型式 品名 支給</b>　＝ 支給日に自動で出ます（消せません）</span>
+      <span class="lgFree">その他の欄は自由入力です</span>
     </div>
 
     <div class="boardCard">
@@ -386,11 +495,11 @@
   // ※ 固定列の left は CSS に数値を直書きせず、ここの幅から積み上げて計算する。
   // 現場要望（2026-08-27）により、左に残すのは次の5項目だけ。案件品番は出さない。
   const FIXED_COLS = [
-    { key:'orderNo',  w:130, label:'社内No.' },
-    { key:'customer', w:100, label:'客先' },
-    { key:'model',    w:110, label:'型式' },
-    { key:'due',      w:84,  label:'納期' },
-    { key:'itemName', w:180, label:'品名' }
+    { key:'orderNo',  w:150, label:'社内No.' },
+    { key:'customer', w:145, label:'客先' },
+    { key:'model',    w:155, label:'型式' },
+    { key:'due',      w:90,  label:'納期' },
+    { key:'itemName', w:190, label:'品名' }
   ];
   const COL_LEFT = (function(){
     const m = {}; let acc = 0;
@@ -399,7 +508,7 @@
   })();
   const FIXED_TOTAL_W = FIXED_COLS.reduce((s,c)=>s+c.w, 0);
   const LAST_FIXED = FIXED_COLS[FIXED_COLS.length-1].key;
-  const DAY_COL_W = 150;
+  const DAY_COL_W = 150;   // 2026-11-01 デザイン改修：1 日＝150px（最低 135px）
 
   function fx(key, extraCls, extraStyle){
     const cls = 'frozen ' + key + 'Col' + (key===LAST_FIXED ? ' lastFrozen' : '') + (extraCls ? ' '+extraCls : '');
@@ -459,7 +568,7 @@
     boardTable.style.minWidth = totalW+'px';
 
     let dateHtml = FIXED_COLS.map(c=>'<th '+fx(c.key)+'>'+esc(c.label)+'</th>').join('');
-    let dowHtml = FIXED_COLS.map(c=>'<th class="frozen '+c.key+'Col'+(c.key===LAST_FIXED?' lastFrozen':'')+'" style="left:'+COL_LEFT[c.key]+'px; top:27px;"></th>').join('');
+    let dowHtml = FIXED_COLS.map(c=>'<th class="frozen '+c.key+'Col'+(c.key===LAST_FIXED?' lastFrozen':'')+'" style="left:'+COL_LEFT[c.key]+'px; top:42px;"></th>').join('');
 
     const dow = ['日','月','火','水','木','金','土'];
     days.forEach(d=>{
@@ -467,7 +576,7 @@
       const isWeekend = d.getDay()===0 || d.getDay()===6;
       const thCls = isToday ? 'today' : '';
       dateHtml += '<th class="'+thCls+'">'+(d.getMonth()+1)+'/'+d.getDate()+'</th>';
-      dowHtml += '<th class="'+thCls+'" style="'+(isWeekend?'color:'+(d.getDay()===0?'#c0392b':'#2563eb')+';':'')+'">'+dow[d.getDay()]+'</th>';
+      dowHtml += '<th class="'+thCls+'" style="'+(isWeekend?'color:'+(d.getDay()===0?'#E33B32':'#1464D2')+';':'')+'">'+dow[d.getDay()]+'</th>';
     });
     dateHeadRow.innerHTML = dateHtml;
     dowHeadRow.innerHTML = dowHtml;
