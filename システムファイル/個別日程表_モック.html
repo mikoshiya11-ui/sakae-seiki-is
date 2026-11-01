@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>個別日程表｜SAKAE SEIKI-iS</title>
+<title>個別日程表｜SAKAE SEIKI-OS</title>
 <style>
   *{box-sizing:border-box;}
   body{
@@ -429,6 +429,155 @@
   html.p8hd .p8date.empty{ color:#a4adbc; }
   html.p8hd .ganttRow.p8empty{ display:none !important; }
   html.p8hd .ganttPartGroup{ border-bottom:1px solid #d5dbe5 !important; }
+
+  /* =====================================================================
+     ★個別日程表 デザイン改修（2026-11-01・作業票 5fec82a の帳票UIを継承）。高密度な工程管理 UI として見せる。
+     画面だけに効かせる（@media screen かつ html:not(.p8print)）。印刷（p8print）の見た目・実測は従来どおり。
+     日付の位置：進捗チェック欄と日程表は 左固定 414px（担当者 414 ／ 部品 258＋DE/SU/PN 156）＋ 1 日幅 --day-w を共通で使う。
+     ===================================================================== */
+  @media screen{
+    html:not(.p8print){ --kb-left:258px; --kb-dates:156px; }
+    html:not(.p8print) body{ background:#eef2f6; color:#24364d; font-family:"Noto Sans JP","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; }
+    html:not(.p8print) .topbar{ height:58px; background:#102a54; padding:0 32px; gap:14px; }
+    html:not(.p8print) .topbar .brand{ font-family:"Segoe UI","Hiragino Sans","Yu Gothic",sans-serif; font-size:27px; font-weight:800; letter-spacing:.02em; gap:0; }
+    html:not(.p8print) .topbar .brand .sakae{ color:#fff; }
+    html:not(.p8print) .topbar .brand .is{ color:#f28a21; }
+    html:not(.p8print) .topbar .sep, html:not(.p8print) .topbar .pageName{ display:none; }
+    html:not(.p8print) .wrap{ max-width:1680px; padding:0 12px 40px; }
+
+    /* タイトル行 */
+    html:not(.p8print) .pageTitleRow{ display:flex; align-items:center; height:72px; padding:0 12px; }
+    html:not(.p8print) .pageTitleRow .backLink{ display:inline-flex; align-items:center; height:42px; padding:0 20px; font-size:14px; font-weight:700; border-radius:4px; border:0;
+      background:#e88622; color:#fff; text-decoration:none; box-shadow:0 2px 4px rgba(136,77,17,.16), 0 6px 12px rgba(136,77,17,.10); }
+    html:not(.p8print) .pageTitleRow .backLink:hover{ background:#dc7a18; }
+    html:not(.p8print) .pageTitleRow .titleSep{ height:30px; border-left:1px solid #c3cdd8; margin:0 18px; }
+    html:not(.p8print) .pageTitle{ margin:0; font-size:30px; font-weight:800; line-height:1.2; color:#0d274b; }
+
+    /* 案件情報帯 */
+    html:not(.p8print) .orderCard{ position:relative; min-height:88px; margin:0 0 12px; padding:0 28px 0 0; gap:0; flex-wrap:nowrap; align-items:stretch; background:#fff; border:1px solid #c1cbd7; border-radius:6px;
+      box-shadow:0 2px 4px rgba(15,35,65,.06), 0 8px 18px rgba(15,35,65,.05); }
+    html:not(.p8print) .orderCard > div:not(.shipBadge):not(.dueBadge){ position:relative; display:flex; flex-direction:column; justify-content:center; padding:14px 28px; min-width:0; }
+    html:not(.p8print) .orderCard > div:not(.shipBadge):not(.dueBadge) + div:not(.shipBadge):not(.dueBadge)::before{ content:""; position:absolute; left:0; top:18px; bottom:18px; border-left:1px solid #bfc9d5; }
+    html:not(.p8print) .orderCard > div:nth-child(1){ min-width:240px; }
+    html:not(.p8print) .orderCard > div:nth-child(2){ min-width:300px; }
+    html:not(.p8print) .orderCard > div:nth-child(3){ min-width:260px; }
+    html:not(.p8print) .orderCard .oMeta{ font-size:12px; font-weight:500; color:#607086; line-height:1.3; margin-bottom:4px; }
+    html:not(.p8print) .orderCard .oNo, html:not(.p8print) .orderCard .oModel{ font-size:21px; font-weight:700; color:#0d274b; line-height:1.3; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    /* 作成日・作成者は補助（一段弱く） */
+    html:not(.p8print) .orderCard > div:nth-child(4) .oModel, html:not(.p8print) .orderCard > div:nth-child(5) .oModel{ font-size:15px; font-weight:600; color:#24364d; }
+    html:not(.p8print) .orderCard .shipBadge, html:not(.p8print) .orderCard .dueBadge{ align-self:center; display:inline-flex; align-items:center; height:38px; padding:0 20px; border-radius:20px; font-size:16px; font-weight:700; }
+    html:not(.p8print) .orderCard .shipBadge{ margin-left:auto; margin-right:14px; background:#e9f2ff; color:#1461b9; }
+    html:not(.p8print) .orderCard .dueBadge{ background:#fff0df; color:#e46f10; }
+
+    /* 操作バー（計画の確定＋操作）：白・上下の線だけ */
+    html:not(.p8print) .opBar{ display:flex; align-items:center; gap:10px; min-height:58px; padding:9px 14px; margin:0 -12px 12px; background:#fff; border-top:1px solid #d8dfe8; border-bottom:1px solid #d8dfe8; flex-wrap:wrap; }
+    html:not(.p8print) .opBar .confirmRow, html:not(.p8print) .opBar .toolRow{ margin:0; gap:10px; flex-wrap:wrap; }
+    /* 操作列は 1 本の並びとして折り返す（確定・表示期間・倍率・一括移動・部品・メモ・印刷） */
+    html:not(.p8print) .opBar .toolRow{ display:contents; }
+    html:not(.p8print) .opBar .confirmRow{ flex-wrap:nowrap; }
+    html:not(.p8print) .opBar .toolHelp{ display:none; }
+    html:not(.p8print) .confirmPlanBtn{ height:42px; padding:0 22px; font-size:15px; font-weight:700; border-radius:4px; background:#fff; border:1px solid #173b6d; color:#0d274b; }
+    html:not(.p8print) .confirmPlanBtn:hover{ background:#f1f4f9; filter:none; }
+    html:not(.p8print) .confirmHint{ font-size:11.5px; color:#64748b; max-width:330px; line-height:1.4; }
+    html:not(.p8print) .confirmBadge{ display:inline-flex; align-items:center; height:42px; padding:0 16px; border-radius:4px; background:#fff; border:1px solid #c7d0dc; border-left:3px solid #1e7b46; color:#1e7b46; font-size:14px; font-weight:700; }
+    html:not(.p8print) .confirmUnlockBtn{ height:38px; padding:0 14px; font-size:13px; font-weight:600; border-radius:4px; border:1px solid #c3cdd8; background:#fff; color:#173b6d; }
+    html:not(.p8print) .rangeToggle, html:not(.p8print) .monthToggle{ background:transparent; box-shadow:none; padding:0; border-radius:0; gap:6px; }
+    html:not(.p8print) .rangeToggle{ font-size:13px; font-weight:600; color:#173b6d; }
+    html:not(.p8print) .rangeToggle input[type=date]{ height:38px; border:1px solid #c3cdd8; border-radius:4px; padding:0 8px; font-size:13px; font-weight:600; color:#0d274b; background:#fff; font-variant-numeric:tabular-nums; }
+    html:not(.p8print) .rangeToggle .rangeTilde{ color:#64748b; }
+    html:not(.p8print) .rangeToggle .rangeResetBtn, html:not(.p8print) .monthToggle button, html:not(.p8print) .opBar .addMemoBtn, html:not(.p8print) .opBar .printBtn{
+      height:38px; padding:0 12px; font-size:13px; font-weight:600; border-radius:4px; background:#fff; border:1px solid #c3cdd8; color:#173b6d; box-shadow:none; }
+    html:not(.p8print) .rangeToggle .rangeResetBtn:hover, html:not(.p8print) .monthToggle button:hover, html:not(.p8print) .opBar .addMemoBtn:hover, html:not(.p8print) .opBar .printBtn:hover{ border-color:#173b6d; background:#f6f8fb; }
+    html:not(.p8print) .monthToggle button.active{ background:#173b6d; color:#fff; border-color:#173b6d; }
+    html:not(.p8print) .shiftToggle .shiftLabel{ font-size:13px; font-weight:600; color:#173b6d; padding:0 2px 0 6px; }
+
+    /* 進捗チェック欄・個別日程：同じ視覚ルールのパネル */
+    html:not(.p8print) .checkCard, html:not(.p8print) .ganttCard{ background:#fff; border:1px solid #c1cbd7; border-radius:6px; box-shadow:0 2px 4px rgba(15,35,65,.05), 0 6px 14px rgba(15,35,65,.04); margin-bottom:12px; }
+    html:not(.p8print) .checkCard{ overflow:hidden; }
+    html:not(.p8print) .checkCardTitle, html:not(.p8print) .ganttCardTitle{ display:flex; align-items:center; gap:14px; padding:0; margin:0; font-size:17px; }
+    html:not(.p8print) .checkCardTitle .ctMain, html:not(.p8print) .ganttCardTitle .ctMain{ display:inline-flex; align-items:center; height:40px; width:188px; padding:0 18px; background:#173b6d; color:#fff; font-size:17px; font-weight:800; border-radius:5px 0 4px 0; }
+    html:not(.p8print) .checkCardTitle .ctSub{ display:none; }
+    html:not(.p8print) .checkCardTitle #addCheckNameBtn{ height:30px; padding:0 12px; font-size:12px; font-weight:600; border-radius:4px; border:1px solid #c3cdd8; background:#fff; color:#173b6d; }
+    html:not(.p8print) .ganttCardTitle{ border-radius:6px 6px 0 0; }
+
+    /* 左固定領域：進捗チェック＝担当者 414px／個別日程＝部品 258px＋DE/SU/PN 156px＝414px（日付の開始 X をそろえる） */
+    html:not(.p8print) .checkSideHead, html:not(.p8print) .checkNameCell, html:not(.p8print) .ganttSideHead, html:not(.p8print) .ganttSideCell{ flex-basis:var(--kb-left); }
+    html:not(.p8print) .checkInner.withDates .checkSideHead, html:not(.p8print) .checkInner.withDates .checkNameCell{ flex-basis:calc(var(--kb-left) + var(--kb-dates)); }
+    html:not(.p8print) .ganttDatesHead, html:not(.p8print) .ganttDatesCell{ flex-basis:var(--kb-dates); left:var(--kb-left); }
+
+    /* 日付ヘッダー（進捗チェック欄と日程表で同じ部品＝.ganttDayCell） */
+    html:not(.p8print) .ganttMonthRow{ height:30px; background:#f3f6fa; border-bottom:1px solid #d8dfe8; }
+    html:not(.p8print) .ganttMonthRow .ganttSideHead, html:not(.p8print) .ganttMonthRow .ganttDatesHead{ background:#f3f6fa; }
+    html:not(.p8print) .ganttMonthRow .ganttSideHead, html:not(.p8print) .ganttMonthRow .ganttDatesHead{ border-right-color:#9aa9bb !important; }
+    html:not(.p8print) .monthCell{ display:flex; align-items:center; justify-content:center; padding:0; font-size:14px; font-weight:700; color:#173b6d; border-right:1.5px solid #9aa9bb; }
+    html:not(.p8print) .ganttHeaderRow, html:not(.p8print) .checkHeaderRow{ height:32px; background:#f8fafc; border-bottom:1.5px solid #9aa9bb; }
+    html:not(.p8print) .checkSideHead, html:not(.p8print) .ganttSideHead, html:not(.p8print) .ganttDatesHead{ font-size:13px; font-weight:700; color:#173b6d; background:#f8fafc; border-right:1.5px solid #9aa9bb; }
+    html:not(.p8print) .ganttDayCell{ display:flex; align-items:center; justify-content:center; padding:0; font-size:12px; font-weight:500; color:#34475e; font-variant-numeric:tabular-nums; }
+    html:not(.p8print) .ganttDayCell.sat{ color:#1464d2; background:rgba(70,130,210,.08); }
+    html:not(.p8print) .ganttDayCell.sun{ color:#e33b32; background:rgba(220,70,70,.07); }
+    html:not(.p8print) .ganttDayCell.today{ background:#173b6d; color:#fff; font-weight:700; border-radius:0; }
+
+    /* 進捗チェック欄の行 */
+    html:not(.p8print) .checkNameRow{ height:26px; border-bottom:1px solid #e1e7ee; }
+    html:not(.p8print) .checkNameCell{ padding:0 12px 0 22px; font-size:13px; font-weight:600; color:#0d274b; border-right:1.5px solid #9aa9bb; box-shadow:none; }
+    html:not(.p8print) .checkNameCell .checkNameDelBtn{ color:#e94b35; font-size:13px; }
+    html:not(.p8print) .checkCell{ border-right:1px solid #e1e7ee; }
+    html:not(.p8print) .checkCell.sat{ background:rgba(70,130,210,.08); }
+    html:not(.p8print) .checkCell.sun{ background:rgba(220,70,70,.07); }
+    html:not(.p8print) .checkCell.today{ background:rgba(243,191,65,.28); }
+
+    /* 個別日程の行 */
+    html:not(.p8print) .ganttHeaderScroll{ border-radius:0; }
+    html:not(.p8print) .ganttScroll{ border-radius:0 0 6px 6px; }
+    html:not(.p8print) .ganttPartGroup{ border-bottom:1px solid #c9d2dd; }
+    html:not(.p8print) .ganttPartGroup:nth-child(even){ background:#fff; }
+    html:not(.p8print) .ganttSideCell{ padding:8px 22px; border-right:1.5px solid #9aa9bb; box-shadow:none; }
+    html:not(.p8print) .ganttPartGroup:nth-child(even) .ganttSideCell, html:not(.p8print) .ganttPartGroup:nth-child(even) .ganttDatesCell{ background:#fff; }
+    html:not(.p8print) .ganttSideCell .pNo{ font-size:13px; font-weight:700; color:#e88622; }
+    html:not(.p8print) .ganttSideCell .pName{ font-size:15px; font-weight:700; color:#0d274b; }
+    html:not(.p8print) .ganttSideCell .pQty{ font-size:11px; font-weight:500; color:#64748b; }
+    html:not(.p8print) .ganttDatesCell{ padding:4px 8px 4px 10px; border-right:1.5px solid #9aa9bb; box-shadow:none; }
+    html:not(.p8print) .ganttDatesCell .dateTagRow{ min-height:28px; font-size:12px; font-weight:600; }
+    html:not(.p8print) .ganttDatesCell .dateTagCode{ flex:0 0 30px; color:#173b6d; font-weight:700; }
+    html:not(.p8print) .ganttDatesCell .dateTagInput{ font-size:12px; font-weight:600; color:#0d274b; font-variant-numeric:tabular-nums; }
+    html:not(.p8print) .ganttRow{ border-bottom:1px solid #e1e7ee; }
+    html:not(.p8print) .track .bar{ border-radius:2px; box-shadow:0 1px 2px rgba(15,35,65,.18); }
+    html:not(.p8print) .track .bar .barLabel{ font-size:11px; font-weight:700; }
+  }
+  @media screen{
+    /* 2026-11-01 追加調整：操作列を 1 段に・案件情報帯を詰める・確定の説明文は触れた時だけ出す・進捗チェック欄の月帯 */
+    html:not(.p8print) .opBar{ gap:5px; padding:9px 10px; flex-wrap:nowrap; }
+    html:not(.p8print) .opBar .confirmRow{ position:relative; gap:6px; }
+    html:not(.p8print) .confirmPlanBtn{ padding:0 14px; font-size:14px; }
+    html:not(.p8print) .opBar .confirmHint{ position:absolute; left:0; top:calc(100% + 6px); z-index:30; display:none; width:320px; max-width:none; padding:8px 10px; font-size:11.5px; line-height:1.5; color:#24364d; background:#fff; border:1px solid #c3cdd8; border-radius:4px; box-shadow:0 4px 12px rgba(15,35,65,.12); }
+    html:not(.p8print) .opBar .confirmRow:hover .confirmHint, html:not(.p8print) .opBar .confirmRow:focus-within .confirmHint{ display:block; }
+    html:not(.p8print) .rangeToggle{ gap:4px; font-size:12.5px; white-space:nowrap; }
+    html:not(.p8print) .rangeToggle input[type=date]{ width:112px; padding:0 2px 0 6px; font-size:12.5px; }
+    html:not(.p8print) .rangeToggle .rangeResetBtn, html:not(.p8print) .monthToggle button, html:not(.p8print) .opBar .addMemoBtn, html:not(.p8print) .opBar .printBtn{ padding:0 7px; font-size:12.5px; white-space:nowrap; }
+    html:not(.p8print) .monthToggle{ gap:4px; }
+    html:not(.p8print) .shiftToggle .shiftLabel{ font-size:12.5px; padding:0 2px 0 4px; }
+    html:not(.p8print) .orderCard{ min-height:76px; }
+    html:not(.p8print) .orderCard > div:not(.shipBadge):not(.dueBadge){ padding:9px 28px; }
+    html:not(.p8print) .orderCard > div:not(.shipBadge):not(.dueBadge) + div:not(.shipBadge):not(.dueBadge)::before{ top:14px; bottom:14px; }
+    html:not(.p8print) .orderCard .oMeta{ margin-bottom:2px; }
+    html:not(.p8print) .orderCard .shipBadge, html:not(.p8print) .orderCard .dueBadge{ height:36px; }
+    html:not(.p8print) .checkMonthRow .checkSideHead{ background:#f3f6fa; border-right:1.5px solid #9aa9bb; }
+  }
+  @media screen{
+    html:not(.p8print) .opBar > *, html:not(.p8print) .opBar .toolRow > *{ flex-shrink:0; }
+    html:not(.p8print) .confirmPlanBtn{ white-space:nowrap; padding:0 12px; font-size:13.5px; }
+    html:not(.p8print) .opBar{ gap:4px; padding:9px 8px; }
+    html:not(.p8print) .rangeToggle .rangeResetBtn, html:not(.p8print) .monthToggle button, html:not(.p8print) .opBar .addMemoBtn, html:not(.p8print) .opBar .printBtn{ padding:0 6px; font-size:12px; }
+    html:not(.p8print) .rangeToggle{ font-size:12px; }
+    html:not(.p8print) .rangeToggle input[type=date]{ width:108px; font-size:12px; }
+    html:not(.p8print) .shiftToggle .shiftLabel{ font-size:12px; }
+    html:not(.p8print) .monthToggle{ gap:3px; }
+  }
+  @media print{ .checkMonthRow{ display:none !important; } }
+  html.p8print .checkMonthRow{ display:none !important; }
+  /* 画面だけの要素は印刷に出さない */
+  @media print{ .pageTitleRow, .ganttCardTitle, .opBar{ display:none !important; } }
+  html.p8print .pageTitleRow, html.p8print .ganttCardTitle, html.p8print .opBar{ display:none !important; }
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
@@ -437,14 +586,38 @@
 <body>
 
   <div class="topbar">
-    <a class="backLink" id="backLink" href="作業票_モック.html" title="作業票に戻る">← 作業票へ</a>
-    <span class="brand"><span class="sakae">SAKAE SEIKI</span><span class="is">-iS</span></span>
+    <span class="brand"><span class="sakae">SAKAE SEIKI-</span><span class="is">OS</span></span>
     <span class="sep">｜</span>
     <span class="pageName" id="pageName">個別日程表（モック：受注1件分・編集可能）</span>
   </div>
 
   <div class="wrap">
 
+    <!-- ★デザイン改修（2026-11-01）：タイトル行＝← 作業票へ移動 ｜ 個別日程表。リンク先（id=backLink）は従来どおり -->
+    <div class="pageTitleRow">
+      <a class="backLink" id="backLink" href="作業票_モック.html" title="作業票に戻る">← 作業票へ移動</a>
+      <span class="titleSep"></span>
+      <h1 class="pageTitle">個別日程表</h1>
+    </div>
+
+    <!-- ★デザイン改修（2026-11-01）：案件情報帯 → 操作バー（計画の確定＋操作）→ 進捗チェック欄 → 個別日程 の順（PT-0025 の「進捗チェック欄と日程表の日付を上下に並べる」は維持） -->
+    <div class="orderCard" id="orderCard">
+      <div>
+        <div class="oMeta">社内№</div>
+        <div class="oNo">35481000-11</div>
+      </div>
+      <div>
+        <div class="oMeta">型式・図番</div>
+        <div class="oModel">MKS(-)</div>
+      </div>
+      <div>
+        <div class="oMeta">客先</div>
+        <div class="oModel">株式会社ミコシヤ</div>
+      </div>
+      <div class="dueBadge">納期：9/18</div>
+    </div>
+
+    <div class="opBar">
     <div class="confirmRow" id="confirmRow"></div>
 
     <div class="toolRow">
@@ -471,28 +644,12 @@
       <button type="button" class="addMemoBtn" id="addPartBtn2" title="作業票に戻らず、この日程表から新しい部品を追加します">＋ 部品を追加</button>
       <button type="button" class="addMemoBtn" id="addMemoBtn">＋ メモを追加</button>
       <button type="button" class="printBtn" id="printBtn" title="A3サイズで印刷します（印刷前に表示期間・ズームを整えてください）">🖨 印刷する（A3）</button>
-      <span style="font-size:12.5px; color:#a4adbc;">土日はグレー表示／バーの右端の位置が作業票の工程日付（終了・納期）になります（ドラッグで移動、右クリックで新規設置・編集・削除）／各日の中央の縦線が午前・午後の区切りです／付箋メモは自由な位置・サイズで配置できます（ハンドルをドラッグで移動、右下でリサイズ、クリックで編集、右クリックで削除）</span>
+      <span class="toolHelp" style="font-size:12.5px; color:#a4adbc;">土日はグレー表示／バーの右端の位置が作業票の工程日付（終了・納期）になります（ドラッグで移動、右クリックで新規設置・編集・削除）／各日の中央の縦線が午前・午後の区切りです／付箋メモは自由な位置・サイズで配置できます（ハンドルをドラッグで移動、右下でリサイズ、クリックで編集、右クリックで削除）</span>
     </div>
-
-    <!-- ★PT-0025：上から 確定・操作と表示期間・説明 → 案件情報 → 進捗チェック欄 → 日程表 の順（進捗チェック欄と日程表の日付を上下に並べる） -->
-    <div class="orderCard" id="orderCard">
-      <div>
-        <div class="oMeta">社内№</div>
-        <div class="oNo">35481000-11</div>
-      </div>
-      <div>
-        <div class="oMeta">型式・図番</div>
-        <div class="oModel">MKS(-)</div>
-      </div>
-      <div>
-        <div class="oMeta">客先</div>
-        <div class="oModel">株式会社ミコシヤ</div>
-      </div>
-      <div class="dueBadge">納期：9/18</div>
     </div>
 
     <div class="checkCard">
-      <div class="checkCardTitle">進捗チェック欄（担当者×日付でチェック）
+      <div class="checkCardTitle"><span class="ctMain">進捗チェック欄</span><span class="ctSub">（担当者×日付でチェック）</span>
         <button type="button" id="addCheckNameBtn" title="担当者をこの案件に追加します">＋担当者を追加</button>
       </div>
       <div class="checkScroll" id="checkScroll">
@@ -501,6 +658,7 @@
     </div>
 
     <div class="ganttCard">
+      <div class="ganttCardTitle"><span class="ctMain">個別日程</span></div>
       <div class="ganttHeaderScroll" id="ganttHeaderScroll">
         <div class="ganttHeaderInner" id="ganttHeaderInner"></div>
       </div>
@@ -1442,7 +1600,13 @@
   function buildCheckGrid(){
     const unitCount = currentUnitCount();
     const baseIdx = viewStartIdx();
-    let html = '<div class="checkHeaderRow">';
+    // デザイン改修：日程表と同じ月帯を進捗チェック欄にも出す（同じ区切り・同じ幅。表示だけ）
+    let html = '<div class="ganttMonthRow checkMonthRow"><div class="checkSideHead"></div>';
+    getMonthSegments().forEach(seg=>{
+      html += '<div class="monthCell" style="width:'+(seg.days*DAY_W)+'px;flex:0 0 '+(seg.days*DAY_W)+'px;">'+esc(seg.label)+'</div>';
+    });
+    html += '</div>';
+    html += '<div class="checkHeaderRow">';
     html += '<div class="checkSideHead">担当者</div>';
     for(let i=0;i<unitCount;i++){
       const absIdx = baseIdx+i;
@@ -1464,7 +1628,9 @@
         const absIdx = baseIdx+i;
         const done = !!checksData[name+'_'+absIdx];
         const todayCls = (absIdx===TODAY_IDX) ? ' today' : '';
-        html += '<div class="checkCell'+(done?' done':'')+todayCls+'" data-name="'+esc(name)+'" data-day="'+absIdx+'"><span class="checkMark"></span></div>';
+        const cdw = dateForIdx(absIdx).getDay();
+        const wkCls = cdw===0 ? ' sun' : (cdw===6 ? ' sat' : '');   // デザイン改修：土日の背景（表示だけ）
+        html += '<div class="checkCell'+(done?' done':'')+wkCls+todayCls+'" data-name="'+esc(name)+'" data-day="'+absIdx+'"><span class="checkMark"></span></div>';
       }
       html += '</div>';
     });
@@ -1612,7 +1778,7 @@
   // 週末の縞は7日周期のrepeating-linear-gradientだが、月境界はカレンダー月ごとの不定間隔なので、表の全幅ぶんの通常のlinear-gradientを別レイヤーとして重ねる。 ----
   function buildMonthBoundaryStops(){
     const segs = getMonthSegments();
-    const lineColor = '#8592a6';
+    const lineColor = '#9aa9bb';
     const lineW = 1.5;
     const stops = [];
     let cumulative = 0;
@@ -1630,7 +1796,7 @@
     const offset = TODAY_IDX - viewStartIdx();
     const totalDays = currentUnitCount();
     if(offset < 0 || offset >= totalDays) return [];
-    const color = 'rgba(250,204,21,.28)'; // 黄色系の半透明で、少し目立つようにする
+    const color = 'rgba(243,191,65,.28)'; // 黄色系の半透明で、少し目立つようにする
     const pos = offset*DAY_W, posEnd = pos+DAY_W;
     return [ 'transparent '+pos+'px', color+' '+pos+'px', color+' '+posEnd+'px', 'transparent '+posEnd+'px' ];
   }
@@ -1642,7 +1808,7 @@
     const halfColor = 'rgba(20,35,70,.06)'; // 午前／午後の境界線（薄め）
     for(let i=0;i<7;i++){
       const dow = (dow0+i)%7;
-      const color = dow===0 ? 'rgba(220,38,38,.06)' : (dow===6 ? 'rgba(37,99,235,.06)' : 'transparent');
+      const color = dow===0 ? 'rgba(220,70,70,.07)' : (dow===6 ? 'rgba(70,130,210,.08)' : 'transparent');
       const dayStart = i*DAY_W, mid = dayStart+half, dayEnd = (i+1)*DAY_W;
       stops.push(boundaryColor+' '+dayStart+'px', boundaryColor+' '+(dayStart+1)+'px');
       stops.push(color+' '+(dayStart+1)+'px', color+' '+(mid-0.5)+'px');
