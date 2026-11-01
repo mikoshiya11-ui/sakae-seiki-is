@@ -538,6 +538,11 @@
   .linkRow{ gap:16px; margin-top:16px; }
   .linkRow a.zanpinLink{ height:58px; padding:0 22px; background:#fff; border:1px solid #aebccb; border-radius:5px; box-shadow:none; color:#0d274b; font-size:15px; font-weight:700; }
   .linkRow a.zanpinLink:hover{ background:#fff; border-color:#e88622; box-shadow:none; }
+  /* 2026-11-01 業務メニュー 4 件を「押せるボタン」に見せる（色・枠の色・影・hover/active/focus だけ。位置・大きさ・間隔・アイコン・文言は不変） */
+  .linkRow a.zanpinLink{ background:#EAF3FC; border-color:#8FAAC8; box-shadow:0 2px 5px rgba(20,55,95,.13); font-weight:700; transition:background-color .12s, border-color .12s, box-shadow .12s, transform .08s; }
+  .linkRow a.zanpinLink:hover{ background:#DDECF9; border-color:#527CA8; box-shadow:0 4px 8px rgba(20,55,95,.17); transform:translateY(-1px); }
+  .linkRow a.zanpinLink:active{ background:#DDEBF8; box-shadow:0 1px 3px rgba(20,55,95,.12); transform:translateY(1px); }
+  .linkRow a.zanpinLink:focus-visible{ outline:2px solid rgba(23,59,109,.30); outline-offset:2px; }
   .zlIcon{ width:22px; height:22px; color:#173b6d; }
   .zlArrow{ color:#173b6d; font-size:16px; }
 
