@@ -1738,7 +1738,7 @@
     render();
   });
 
-  // ---- 別タブを開くボタン共通処理（個別日程表・作業票印刷・作業開始印刷セット）----
+  // ---- 別タブを開くボタン共通処理（作業票印刷・作業開始印刷セット＝印刷系だけ。個別日程表は PT-0026 で同じタブへ）----
   // 作業票と別画面は同じlocalStorage（品番ごとのキー）を直接共有して常に最新のデータを参照するため、
   // URLでは品番だけ渡せばよい（その時点のスナップショットをURLに埋め込む必要はない）。
   // 遷移前にSupabaseへのflush（await）を挟む都合上、2つの制約に同時に対応する必要がある：
@@ -1761,10 +1761,20 @@
   }
 
   // ---- 個別日程表へ ----
+  // ★PT-0026（2026-11-01）：個別日程表は SAKAE SEIKI-OS 内部の業務画面なので、新しいタブではなく同じタブで移動する
+  //   （移動のたびにタブが増えていた）。受注に関する連絡書と同じく、今の内容を確定・保存・送信してから移動する。
+  //   新しいタブで開くのは印刷（作業票印刷・作業開始印刷セット）だけ。
   const toKobetsuLink = document.getElementById('toKobetsuBtn');
-  toKobetsuLink.addEventListener('click', (e)=>{
+  toKobetsuLink.addEventListener('click', async (e)=>{
     e.preventDefault();
-    openInNewTabAfterFlush(()=> window.sakaeCase.withCase('個別日程表_モック.html', caseCtx));
+    if(document.activeElement && typeof document.activeElement.blur === 'function'){
+      document.activeElement.blur();
+    }
+    save();
+    if(window.sakaeSyncFlush){
+      try{ await window.sakaeSyncFlush(); }catch(e){}
+    }
+    location.href = window.sakaeCase.withCase('個別日程表_モック.html', caseCtx);
   });
 
   // ---- 作業票印刷へ ----
