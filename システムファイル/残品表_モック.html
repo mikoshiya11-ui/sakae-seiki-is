@@ -691,17 +691,11 @@
     renderDebugPanel();
   });
 
-  // ---- 実際の社内No.採番規則：紙の社内No.（例：35481012-11）は「品番＋枝番」の単純な連結ではなく、
-  // [5桁の基準番号][部品ごとの3桁subNo]-[2桁の任意の枝番] という構成（基準番号と末尾の枝番は同じ受注内の全部品で共通）。
-  // 作業票印刷・実績入力と同じロジックで、部品ごとの正しい社内No.を組み立てる ----
+  // ---- ★PT-0023（テンチョー裁定 A 案）：社内No.は登録された値を一切加工せずそのまま出す。
+  //   部品の枝番（subNo）で書き換えない（5 桁の社内No. 60061-31 が 60001-31 になっていた）。社内No.と部品No.は別情報。
+  //   作業票印刷と同じ表示ルール ----
   function partOrderNo(order, part){
-    const base = ((order && (order.orderNo || order.productNo)) || '').trim();
-    if(!part) return base;
-    const m = base.match(/^(\d+?)(\d{3})-(\d{2})$/);
-    if(m && part.subNo){
-      return m[1] + String(part.subNo).padStart(3,'0') + '-' + m[3];
-    }
-    return base + (part.subNo ? ('-'+part.subNo) : '');
+    return ((order && (order.orderNo || order.productNo)) || '').trim();
   }
 
   // ---- 納品完了にした案件は、残品として追いかける必要がなくなるので残品表から丸ごと外す。
