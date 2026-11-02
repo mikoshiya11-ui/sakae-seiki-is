@@ -674,6 +674,60 @@
   /* 部品表の外枠 1px ぶん、上の横スクロールバーにも同じ幅の透明な枠を付けて、両者の表示幅（スクロールできる量）をそろえる */
   .partsTopScroll{ border-left:1px solid transparent; border-right:1px solid transparent; }
   @media print{ .docHead .pageTitleRow{ display:none !important; } }
+  /* ★PT-0029（2026-11-02 裁定）：型式・型番を最重要の帯へ。表示順は TOP 案件一覧と同じ ①社内№ ②型式・型番 ③品名 ④客先 ⑤納期。
+     強さ：最重要＝社内№・型式・型番／重要＝品名／補助＝客先・納期。値・保存・入力の働きは変えない（表示だけ） */
+  .infoCard .oField:has([data-of="model"]){
+    order:2; grid-column:span 3; position:relative; background:#fff; min-height:112px; padding:20px 28px; gap:6px; justify-content:center; margin-top:0;
+    border-top:1px solid #c7d0dc; border-bottom:1px solid #c7d0dc; box-shadow:var(--lv2); clip-path:inset(-24px 0 -24px 0); }
+  .infoCard .oField:has([data-of="itemName"]){ order:3; }
+  .infoCard .oField:has([data-of="customer"]){ order:4; }
+  .infoCard .oField:has([data-of="dueDate"]){ order:5; }
+  .infoCard .oField:has([data-of="model"])::after{ content:""; position:absolute; left:0; top:20px; bottom:20px; width:1px; background:var(--ln-mid); }
+  .infoCard .oField{ order:6; }   /* 補助 5 項目は帯の後ろ */
+  .infoCard .oField:has([data-of="model"]){ border-top-color:#aebccb; border-bottom-color:#aebccb; box-shadow:0 2px 4px rgba(15,35,65,.08), 0 10px 24px rgba(15,35,65,.08); }
+  .infoCard .oField:has([data-of="model"]) label{ font-size:11.5px; font-weight:500; color:#5b6b80; }
+  .infoCard .oField:has([data-of="model"]) label::before{ content:""; width:17px; height:17px; flex:0 0 auto; margin-right:4px; opacity:.75; background:center / contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6a82' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z'/%3E%3Ccircle cx='7.5' cy='7.5' r='1.5'/%3E%3C/svg%3E"); }
+  .infoCard .oField:has([data-of="model"]) input{ height:auto; font-size:24px; font-weight:750; line-height:1.3; color:#0b2547; background:transparent; border:1px solid transparent; border-radius:4px; padding:0 0 0 27px; box-shadow:none; }
+  .infoCard .oField:has([data-of="model"]) input:hover{ border-color:var(--os-border); }
+  .infoCard .oField:has([data-of="model"]) input:focus{ background:#f7f9fc; border-color:#234c82; box-shadow:0 0 0 2px rgba(35,76,130,.08); }
+  /* 長すぎる値だけ 1 行の「…」（全文はカーソルを当てると出る・入力中は全文） */
+  .oField [data-of="orderNo"], .oField [data-of="model"], .oField [data-of="itemName"], .oField [data-of="customer"], .oField [data-of="dueDate"]{ text-overflow:ellipsis; }
+  /* 強さ：重要＝品名・補助＝客先・納期 */
+  .oField [data-of="itemName"]{ font-size:20px; }
+  .oField [data-of="customer"], .oField [data-of="dueDate"]{ font-size:17px; font-weight:600; color:var(--t-body); }
+  @media (min-width:1101px){
+    /* PC：24 列で幅を配分（社内№ 5・型式・型番 6・品名 5・客先 4・納期 4／補助 5 項目は 5・5・5・4・5） */
+    .infoCard .orderCard{ grid-template-columns:repeat(24, minmax(0, 1fr)); }
+    .infoCard .oField{ grid-column:span 5; }
+    .infoCard .oField:has([data-of="qty"]){ grid-column:span 4; }
+    .infoCard .oField:has([data-of="orderNo"]){ grid-column:span 5; }
+    .infoCard .oField:has([data-of="model"]){ grid-column:span 6; }
+    .infoCard .oField:has([data-of="itemName"]){ grid-column:span 5; }
+    .infoCard .oField:has([data-of="customer"]){ grid-column:span 4; }
+    .infoCard .oField:has([data-of="dueDate"]){ grid-column:span 4; }
+    .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="model"]), .infoCard .oField:has([data-of="itemName"]), .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){ padding-left:22px; padding-right:18px; }
+  }
+  @media (min-width:1101px) and (max-width:1439px){
+    /* 1101〜1439px：値の字下げを外し、社内№・型式・型番を 22px にして、本番最長 16 文字の型式・型番も省略せずに出す */
+    .oField [data-of="orderNo"], .oField [data-of="itemName"], .oField [data-of="customer"], .oField [data-of="dueDate"], .infoCard .oField:has([data-of="model"]) input{ padding-left:0; }
+    .oField [data-of="orderNo"], .infoCard .oField:has([data-of="model"]) input{ font-size:22px; }
+    .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="model"]), .infoCard .oField:has([data-of="itemName"]), .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){ padding-left:18px; padding-right:12px; }
+  }
+  @media (max-width:1100px){
+    /* タブレット：1 段目＝社内№・型式・型番（各 3 列）／2 段目＝品名・客先・納期（各 2 列） */
+    .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="model"]){ grid-column:span 3; }
+    .infoCard .oField:has([data-of="itemName"]), .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){ grid-column:span 2; }
+    .infoCard .oField:has([data-of="model"]){ padding:16px 16px; min-height:96px; }
+    .oField [data-of="orderNo"], .infoCard .oField:has([data-of="model"]) input{ font-size:20px; padding-left:0; }
+    .oField [data-of="itemName"]{ font-size:18px; }
+    .oField [data-of="customer"], .oField [data-of="dueDate"]{ font-size:16px; }
+  }
+  @media (max-width:700px){
+    .infoCard .oField:has([data-of="orderNo"]), .infoCard .oField:has([data-of="model"]), .infoCard .oField:has([data-of="itemName"]),
+    .infoCard .oField:has([data-of="customer"]), .infoCard .oField:has([data-of="dueDate"]){ grid-column:1 / -1; }
+    .infoCard .oField:has([data-of="model"]){ min-height:0; border-right:1px solid #c7d0dc; border-radius:0; }
+    .infoCard .oField:has([data-of="model"])::after{ display:none; }
+  }
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
@@ -1399,14 +1453,14 @@
   function buildOrderCard(){
     const o = state.order;
     orderCard.innerHTML = `
-      <div class="oField"><label>社内№</label><input data-of="orderNo" value="${esc(o.orderNo)}" style="min-width:100px;"></div>
+      <div class="oField"><label>社内№</label><input data-of="orderNo" value="${esc(o.orderNo)}" title="${esc(o.orderNo)}" style="min-width:100px;"></div>
       <div class="oField"><label>受注日</label><input type="date" data-of="orderDate" value="${esc(o.orderDate)}"></div>
       <div class="oField"><label>作成者</label><input data-of="createdBy" value="${esc(o.createdBy)}" style="min-width:90px;"></div>
       <div class="oField"><label>発送日</label><input type="date" data-of="shipDate" value="${esc(o.shipDate)}"></div>
       <div class="oField"><label>納期</label><input type="date" data-of="dueDate" value="${esc(o.dueDate)}"></div>
-      <div class="oField"><label>客先名</label><input data-of="customer" value="${esc(o.customer)}"></div>
-      <div class="oField"><label>型式名（型番）</label><input data-of="model" value="${esc(o.model)}" style="min-width:160px;"></div>
-      <div class="oField"><label>品名</label><input data-of="itemName" value="${esc(o.itemName)}" style="min-width:160px;"></div>
+      <div class="oField"><label>客先名</label><input data-of="customer" value="${esc(o.customer)}" title="${esc(o.customer)}"></div>
+      <div class="oField"><label>型式・型番</label><input data-of="model" value="${esc(o.model)}" title="${esc(o.model)}" style="min-width:160px;"></div>
+      <div class="oField"><label>品名</label><input data-of="itemName" value="${esc(o.itemName)}" title="${esc(o.itemName)}" style="min-width:160px;"></div>
       <div class="oField"><label>数量</label><input data-of="qty" value="${esc(o.qty)}" style="min-width:70px;"></div>
       <div class="oField"><label>組付有無</label>
         <select data-of="assembly">
@@ -1420,6 +1474,7 @@
     const f = e.target.dataset.of;
     if(!f) return;
     state.order[f] = e.target.value;
+    if(e.target.hasAttribute('title')) e.target.title = e.target.value;   // PT-0029：省略表示の全文（カーソルで出す）も合わせる
     save();
   });
   orderCard.addEventListener('change', (e)=>{
