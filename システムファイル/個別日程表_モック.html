@@ -469,11 +469,11 @@
     html:not(.p8print) .orderCard > div:not(.shipBadge):not(.dueBadge) + div:not(.shipBadge):not(.dueBadge)::before{ content:""; position:absolute; left:0; top:18px; bottom:18px; border-left:1px solid #bfc9d5; }
     html:not(.p8print) .orderCard > div:nth-child(1){ min-width:240px; }
     html:not(.p8print) .orderCard > div:nth-child(2){ min-width:300px; }
-    html:not(.p8print) .orderCard > div:nth-child(3){ min-width:260px; }
+    html:not(.p8print) .orderCard > div:nth-child(3){ min-width:260px; }   /* 品名（PT-0030 で追加） */
     html:not(.p8print) .orderCard .oMeta{ font-size:12px; font-weight:500; color:#607086; line-height:1.3; margin-bottom:4px; }
     html:not(.p8print) .orderCard .oNo, html:not(.p8print) .orderCard .oModel{ font-size:21px; font-weight:700; color:#0d274b; line-height:1.3; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    /* 作成日・作成者は補助（一段弱く） */
-    html:not(.p8print) .orderCard > div:nth-child(4) .oModel, html:not(.p8print) .orderCard > div:nth-child(5) .oModel{ font-size:15px; font-weight:600; color:#24364d; }
+    /* 作成日・作成者は補助（一段弱く）。PT-0030 で品名の欄を 3 番目に足したので 5・6 番目 */
+    html:not(.p8print) .orderCard > div:nth-child(5) .oModel, html:not(.p8print) .orderCard > div:nth-child(6) .oModel{ font-size:15px; font-weight:600; color:#24364d; }
     html:not(.p8print) .orderCard .shipBadge, html:not(.p8print) .orderCard .dueBadge{ align-self:center; display:inline-flex; align-items:center; height:38px; padding:0 20px; border-radius:20px; font-size:16px; font-weight:700; }
     html:not(.p8print) .orderCard .shipBadge{ margin-left:auto; margin-right:14px; background:#e9f2ff; color:#1461b9; }
     html:not(.p8print) .orderCard .dueBadge{ background:#fff0df; color:#e46f10; }
@@ -555,7 +555,8 @@
   }
   @media screen{
     /* 2026-11-01 追加調整：操作列を 1 段に・案件情報帯を詰める・確定の説明文は触れた時だけ出す・進捗チェック欄の月帯 */
-    html:not(.p8print) .opBar{ gap:5px; padding:9px 10px; flex-wrap:nowrap; }
+    /* ★PT-0030（2026-11-02）：幅が足りる時は 1 段のまま、足りない時だけ折り返す（1 段固定だと狭い画面で「印刷する（A3）」などが画面の外へ出ていた） */
+    html:not(.p8print) .opBar{ gap:5px; padding:9px 10px; flex-wrap:wrap; }
     html:not(.p8print) .opBar .confirmRow{ position:relative; gap:6px; }
     html:not(.p8print) .confirmPlanBtn{ padding:0 14px; font-size:14px; }
     html:not(.p8print) .opBar .confirmHint{ position:absolute; left:0; top:calc(100% + 6px); z-index:30; display:none; width:320px; max-width:none; padding:8px 10px; font-size:11.5px; line-height:1.5; color:#24364d; background:#fff; border:1px solid #c3cdd8; border-radius:4px; box-shadow:0 4px 12px rgba(15,35,65,.12); }
@@ -589,6 +590,16 @@
     html:not(.p8print) .ganttDatesCell .dateTagRow{ min-width:0; }
     html:not(.p8print) .ganttDatesCell .dateTagCode{ flex:0 0 26px; }
     html:not(.p8print) .ganttSideHead, html:not(.p8print) .ganttSideCell{ min-width:var(--kb-left); max-width:var(--kb-left); }
+  }
+  @media screen and (min-width:1280px){
+    /* ★PT-0030（2026-11-02）：品名の欄を足しても、今までの欄（社内№・型式・図番・客先・作成日・作成者）は省略しない。
+       幅が足りない時に縮めるのは品名だけ（全文はカーソルを当てると出る）。1280px より狭い画面は従来どおり全部の欄を縮める */
+    html:not(.p8print) .orderCard > div:not(.shipBadge):not(.dueBadge){ flex-shrink:0; }
+    html:not(.p8print) .orderCard > div:nth-child(3):not(.shipBadge):not(.dueBadge){ flex-shrink:1; }
+  }
+  @media screen and (min-width:1280px) and (max-width:1599px){
+    /* ★PT-0030：1280〜1599px は各欄の左右の余白を 28px→18px に詰めて、品名に使える幅を増やす（文字の大きさ・並びは変えない） */
+    html:not(.p8print) .orderCard > div:not(.shipBadge):not(.dueBadge){ padding-left:18px; padding-right:18px; }
   }
   @media print{ .checkMonthRow{ display:none !important; } }
   html.p8print .checkMonthRow{ display:none !important; }
@@ -1756,6 +1767,8 @@
       // 未入力でも欄ごと消えないように常に出す（以前は orderNo がある時だけ出していた）。
       '<div><div class="oMeta">社内№</div><div class="oNo">'+esc(o.orderNo||'-')+'</div></div>'
       + '<div><div class="oMeta">型式・図番</div><div class="oModel">'+esc(o.model||'-')+'</div></div>'
+      // ★PT-0030（2026-11-02）：品名（作業票の品名）。長い品名は欄の中で省略されるので、全文はカーソルを当てると出す
+      + '<div><div class="oMeta">品名</div><div class="oModel" title="'+esc(o.itemName||'').replace(/"/g,'&quot;')+'">'+esc(o.itemName||'-')+'</div></div>'
       + '<div><div class="oMeta">客先</div><div class="oModel">'+esc(o.customer||'-')+'</div></div>'
       + '<div><div class="oMeta">作成日</div><div class="oModel">'+esc(o.createdDate ? o.createdDate.slice(5).replace('-','/') : '-')+'</div></div>'
       + '<div><div class="oMeta">作成者</div><div class="oModel">'+esc(o.createdBy||'-')+'</div></div>'
