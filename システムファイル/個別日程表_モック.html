@@ -24,6 +24,13 @@
 
   .wrap{ max-width:1680px; margin:0 auto; padding:20px 20px 60px; }
   :root{ --day-w:30px; }
+  /* ★PT-0008（2026-11-02 NG 是正）：左固定の幅の正本はここ 1 か所（画面・印刷とも同じ値）。部品欄 258px＋DE/SU/PN 欄 156px＝414px、
+     進捗チェック欄の担当者欄も同じ 414px。印刷だけ 280px＋156px＝436px のままだと、画面で置いた付箋が印刷で約 1 日左へずれていた。 */
+  :root{ --kb-left:258px; --kb-dates:156px; }
+  /* ★PT-0008：日付の境界線の色。画面は従来どおり、印刷は縮小されても見えるよう少し濃くする（印刷の見た目だけ） */
+  :root{ --kb-day-line:rgba(20,35,70,.18); }
+  html.p8print{ --kb-day-line:rgba(20,35,70,.42); }
+  @media print{ :root{ --kb-day-line:rgba(20,35,70,.42); } }
 
   .orderCard{
     background:#fff; border-radius:14px; padding:8px 20px; box-shadow:0 2px 10px rgba(20,35,70,.06);
@@ -73,11 +80,11 @@
   .checkScroll{ overflow-x:auto; }
   .checkInner{ min-width:max-content; padding-bottom:3px; }
   .checkHeaderRow{ display:flex; border-bottom:1.5px solid #222; background:#f7f9fc; }
-  .checkSideHead{ flex:0 0 280px; padding:4px 14px; font-size:11.5px; font-weight:700; color:#5b6b84; display:flex; align-items:center; border-right:1.5px solid #222; position:sticky; left:0; z-index:3; background:#f7f9fc; }
+  .checkSideHead{ flex:0 0 var(--kb-left); padding:4px 14px; font-size:11.5px; font-weight:700; color:#5b6b84; display:flex; align-items:center; border-right:1.5px solid #222; position:sticky; left:0; z-index:3; background:#f7f9fc; }
   .checkNameRow{ display:flex; align-items:stretch; height:20px; border-bottom:1px solid #f3f5f9; }
   .checkNameRow:last-child{ border-bottom:none; }
   .checkNameCell{
-    flex:0 0 280px; padding:0 8px 0 14px; font-size:12px; font-weight:700; color:#3a4a63; display:flex;
+    flex:0 0 var(--kb-left); padding:0 8px 0 14px; font-size:12px; font-weight:700; color:#3a4a63; display:flex;
     align-items:center; justify-content:space-between; gap:6px; border-right:1.5px solid #222; position:sticky;
     left:0; z-index:2; background:#fff; box-shadow:2px 0 4px -2px rgba(20,35,70,.15);
   }
@@ -99,7 +106,7 @@
   .checkCell.today{ background:rgba(23,58,104,.07); }
   /* ★PT-0025（2026-10-30 菰田様）：進捗チェック欄の日付を日程表の日付の真上にそろえる。日程表の左は 部品欄 280px＋DE/SU/PN 欄 156px なので、
      DE/SU/PN 欄がある時（作業票とリンク）は担当者欄も同じ 436px にする（日の幅 --day-w と横スクロールの同期は元から共通） */
-  .checkInner.withDates .checkSideHead, .checkInner.withDates .checkNameCell{ flex-basis:436px; }
+  .checkInner.withDates .checkSideHead, .checkInner.withDates .checkNameCell{ flex-basis:calc(var(--kb-left) + var(--kb-dates)); }
 
   .toolRow{ display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
   .monthToggle{ display:flex; gap:4px; background:#fff; border-radius:10px; padding:4px; box-shadow:0 2px 8px rgba(20,35,70,.06); }
@@ -141,10 +148,10 @@
 
   .ganttMonthRow{ display:flex; border-bottom:1px solid #dfe4ec; background:#eef1f6; }
   .ganttHeaderRow{ display:flex; border-bottom:1.5px solid #222; background:#f7f9fc; }
-  .ganttSideHead{ flex:0 0 280px; padding:3px 14px; font-size:12px; font-weight:700; color:#5b6b84; display:flex; align-items:center; border-right:1.5px solid #222; position:sticky; left:0; z-index:3; background:#f7f9fc; }
+  .ganttSideHead{ flex:0 0 var(--kb-left); padding:3px 14px; font-size:12px; font-weight:700; color:#5b6b84; display:flex; align-items:center; border-right:1.5px solid #222; position:sticky; left:0; z-index:3; background:#f7f9fc; }
   .ganttMonthRow .ganttSideHead{ background:#eef1f6; }
   /* ---- DE/SU/PNなど「バーにせず日程だけ入れる」工程の欄（現物の作業票印刷にある、コード＋日付だけの固定ミニ表と同じ考え方）。作業票とリンク中の品番のみ表示 ---- */
-  .ganttDatesHead{ flex:0 0 156px; padding:3px 10px; font-size:10.5px; font-weight:700; color:#5b6b84; display:flex; align-items:center; border-right:1.5px solid #222; position:sticky; left:280px; z-index:3; background:#f7f9fc; }
+  .ganttDatesHead{ flex:0 0 var(--kb-dates); padding:3px 10px; font-size:10.5px; font-weight:700; color:#5b6b84; display:flex; align-items:center; border-right:1.5px solid #222; position:sticky; left:var(--kb-left); z-index:3; background:#f7f9fc; }
   .ganttMonthRow .ganttDatesHead{ background:#eef1f6; }
   .monthCell{ font-size:11.5px; font-weight:700; color:#5b6b84; text-align:center; padding:4px 0; border-right:1.5px solid #8592a6; }
   .ganttDayCell{ width:var(--day-w); flex:0 0 var(--day-w); text-align:center; font-size:11.5px; color:#8592a6; padding:7px 0; }
@@ -154,15 +161,15 @@
 
   .ganttPartGroup{ display:flex; border-bottom:2px solid #e6eaf1; }
   .ganttPartGroup:nth-child(even){ background:#fbfcfe; }
-  .ganttSideCell{ flex:0 0 280px; padding:4px 14px; border-right:1.5px solid #222; display:flex; flex-direction:column; justify-content:center; position:sticky; left:0; z-index:2; background:#fff; box-shadow:2px 0 4px -2px rgba(20,35,70,.15); }
+  .ganttSideCell{ flex:0 0 var(--kb-left); padding:4px 14px; border-right:1.5px solid #222; display:flex; flex-direction:column; justify-content:center; position:sticky; left:0; z-index:2; background:#fff; box-shadow:2px 0 4px -2px rgba(20,35,70,.15); }
   .ganttPartGroup:nth-child(even) .ganttSideCell{ background:#fbfcfe; }
   .ganttSideCell .pNo{ font-size:11px; font-weight:800; color:#e67e22; white-space:pre-line; line-height:1.25; }
   .ganttSideCell .pName{ font-size:12.5px; font-weight:700; color:#1a2233; white-space:pre-line; line-height:1.2; margin-top:1px; }
   .ganttSideCell .pQty{ font-size:11px; color:#7a879c; margin-top:1px; }
   .ganttSideCell .pPrefix{ font-size:10px; color:#a4adbc; margin-top:1px; line-height:1.25; }
   .ganttDatesCell{
-    flex:0 0 156px; padding:4px 10px; border-right:1.5px solid #222; display:flex; flex-direction:column;
-    justify-content:center; gap:2px; position:sticky; left:280px; z-index:2; background:#fff;
+    flex:0 0 var(--kb-dates); padding:4px 10px; border-right:1.5px solid #222; display:flex; flex-direction:column;
+    justify-content:center; gap:2px; position:sticky; left:var(--kb-left); z-index:2; background:#fff;
     box-shadow:2px 0 4px -2px rgba(20,35,70,.15);
   }
   .ganttPartGroup:nth-child(even) .ganttDatesCell{ background:#fbfcfe; }
@@ -421,6 +428,8 @@
   html.p8hd .ganttSideHead, html.p8hd .ganttDatesHead{ padding:1px 8px !important; }
   html.p8hd .ganttSideCell{ padding:1px 8px !important; flex-direction:row !important; flex-wrap:wrap !important; align-items:baseline !important; justify-content:flex-start !important; column-gap:6px !important; row-gap:0 !important; }
   html.p8hd .ganttSideCell .pName, html.p8hd .ganttSideCell .pQty{ margin-top:0 !important; }
+  /* ★PT-0008：高密度のときだけ部品名を 11px に（長い部品名が 2 行に折り返して倍率が 70% を下回らないように）。左固定の幅（414px）は画面と共通のまま */
+  html.p8hd .ganttSideCell .pName{ font-size:11px !important; }
   html.p8hd .ganttDatesCell{ padding:1px 8px !important; flex-direction:row !important; flex-wrap:wrap !important; align-items:center !important; gap:0 6px !important; }
   html.p8hd .ganttDatesCell .dateTagRow{ gap:2px !important; }
   html.p8hd .ganttDatesCell .dateTagCode{ flex:0 0 auto !important; }
@@ -436,7 +445,7 @@
      日付の位置：進捗チェック欄と日程表は 左固定 414px（担当者 414 ／ 部品 258＋DE/SU/PN 156）＋ 1 日幅 --day-w を共通で使う。
      ===================================================================== */
   @media screen{
-    html:not(.p8print){ --kb-left:258px; --kb-dates:156px; }
+    /* 左固定の幅（--kb-left・--kb-dates）は先頭の :root で画面・印刷共通に定義（PT-0008） */
     html:not(.p8print) body{ background:#eef2f6; color:#24364d; font-family:"Noto Sans JP","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; }
     html:not(.p8print) .topbar{ height:58px; background:#102a54; padding:0 32px; gap:14px; }
     html:not(.p8print) .topbar .brand{ font-family:"Segoe UI","Hiragino Sans","Yu Gothic",sans-serif; font-size:27px; font-weight:800; letter-spacing:.02em; gap:0; }
@@ -1812,7 +1821,7 @@
     const dow0 = viewStart.getDay();
     const stops = [];
     const half = DAY_W/2;
-    const boundaryColor = 'rgba(20,35,70,.18)'; // 1日ごとの境界線（はっきり）
+    const boundaryColor = 'var(--kb-day-line)'; // 1日ごとの境界線（はっきり）。色は CSS の --kb-day-line（印刷だけ濃くする・PT-0008）
     const halfColor = 'rgba(20,35,70,.06)'; // 午前／午後の境界線（薄め）
     for(let i=0;i<7;i++){
       const dow = (dow0+i)%7;
@@ -3075,7 +3084,8 @@
     return n;
   }
   // 付箋：画面で置いた部品・日付と同じ位置に来るよう、印刷の間だけ写しの座標を換算して描く（元の付箋データは変えない）
-  function p8MemosForPrint(oldTops, side, ratio){
+  // ★PT-0008：画面の左固定の幅（oldSide）から測った日付の位置を、印刷の左固定の幅（side）からの位置へ換算する
+  function p8MemosForPrint(oldTops, oldSide, side, ratio){
     const groups = p8Groups();
     const map = (x, y)=>{
       let gi = 0;
@@ -3083,7 +3093,7 @@
       const g = groups[gi];
       const off = y - (oldTops[gi] || 0);
       const ny = g ? g.offsetTop + Math.max(0, Math.min(off, g.offsetHeight - 4)) : y;
-      const nx = x > side ? side + (x - side) * ratio : x;
+      const nx = x > oldSide ? side + (x - oldSide) * ratio : x;
       return [nx, ny];
     };
     return memos.map(m=>{
@@ -3100,7 +3110,8 @@
     const st = p8Print = {
       dayW: DAY_W, memos: memos, wrapStyle: wrap.getAttribute('style'),
       scroll: { x: window.scrollX, y: window.scrollY, gantt: ganttScrollEl.scrollLeft, check: checkScrollEl.scrollLeft, header: ganttHeaderScrollEl.scrollLeft },
-      oldTops: p8Groups().map(g=> g.offsetTop)
+      oldTops: p8Groups().map(g=> g.offsetTop),
+      oldSide: p8SideWidth()   // 画面での左固定の幅（付箋の座標はこの基準で保存されている）
     };
     try{
       html.classList.add('p8print');
@@ -3161,7 +3172,7 @@
       // 倍率 1 に戻して、工程記号のかかりと付箋の位置を整えてから、もう一度倍率をかける（どちらも高さは変えない）
       wrap.style.zoom = '';
       const labels = p8FitLabels(s);
-      memos = p8MemosForPrint(st.oldTops, side, d / st.dayW);
+      memos = p8MemosForPrint(st.oldTops, st.oldSide, side, d / st.dayW);
       renderMemoLayer();
       wrap.style.zoom = s;
       st.result = { pattern, pages: k != null ? 2 : 1, scale: s, split: k, dayW: d, fit, labels, tries };
