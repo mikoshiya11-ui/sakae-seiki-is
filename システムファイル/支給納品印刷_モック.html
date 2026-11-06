@@ -99,9 +99,25 @@
     table.pboard thead{ display:table-header-group; }
     table.pboard thead th{ background:#f0f3f8 !important; }
   }
+  /* ---- PT-0027：用紙の選択欄（_printPaper.js）を印刷ボタンのすぐ隣に寄せる（画面だけ。紙には出ない） ---- */
+  .controlBar .ppPaper{ margin-left:auto; }
+  .ppPaper + .printBtn{ margin-left:0; }
+  /* ---- PT-0027：用紙で A4 横を選んだ時だけ（_printPaper.js が <html data-print-paper="A4"> を付ける）。A3 横（標準）は上のまま変えない。
+     文字の大きさは変えず、A4 の印刷幅（281mm）で組み直す。日付の列を少しでも広くするため固定 5 列を狭める（納期はこれ以上狭めると日付が途中で折れる）。
+     列の幅は <col style> に直接書いてあるので !important が要る。
+     表の右端が印刷範囲の右端にちょうど接すると、右端の縦罫線が PDF に描かれない（A3 では起きない）。1px 内側に寄せて描かせる ---- */
+  @media print{
+    html[data-print-paper="A4"] table.pboard col:nth-child(1){ width:100px !important; }
+    html[data-print-paper="A4"] table.pboard col:nth-child(2){ width:80px !important; }
+    html[data-print-paper="A4"] table.pboard col:nth-child(3){ width:84px !important; }
+    html[data-print-paper="A4"] table.pboard col:nth-child(4){ width:44px !important; }
+    html[data-print-paper="A4"] table.pboard col:nth-child(5){ width:112px !important; }
+    html[data-print-paper="A4"] .weekSheet{ padding-right:1px; }
+  }
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
+<script src="_printPaper.js"></script>
 </head>
 <body>
 
@@ -339,6 +355,8 @@
   }
 
   document.getElementById('doPrintBtn').addEventListener('click', ()=> window.print());
+  // PT-0027：印刷する用紙（A3横＝標準／A4横）を印刷ボタンの前で選べるようにする
+  window.sakaePrintPaper.mount({ button: document.getElementById('doPrintBtn'), standard:'A3', options:['A3','A4'], orientation:'landscape', relabelTargets:[document.querySelector('.controlBar .pageText')] });
 
   window.addEventListener('storage', (e)=>{
     if(!e.key) return;

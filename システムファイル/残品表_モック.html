@@ -144,6 +144,20 @@
     tbody tr{ page-break-inside:avoid; }
     tbody tr.checked{ opacity:1; }         /* 薄いと紙で読めないため、印刷では取り消し線だけにする */
     .badge{ border:1px solid #999; }
+    /* ★PT-0027（既存不具合の修正）：表の幅（約 1288px）が A4 横の印刷幅（281mm＝1062px）より広く、右端の列（手配期限の一部・手配・前工程・次工程）が
+       .tableCard の overflow:hidden で紙から切れていた。印刷だけ画面用の最小幅（表 1180px・品名 220px・型式名 170px・工程完了期限 132px）を外し、
+       印刷幅に収める。長い客先名なども収まるよう、セルは折り返してよいことにする（工程完了期限は td.dueCell の nowrap のまま 1 行）。
+       文字の大きさ・画面の表示は変えない */
+    table{ min-width:0; }
+    td.nameCell, th.nameCell, td.modelCell, th.modelCell, td.dueCell, th.dueCell{ min-width:0; }
+    tbody td{ white-space:normal; }
+    /* ★PT-0027：社内No.（左から 2 列目）だけは折り返さない（長い客先名などが混ざると全行の社内No.がハイフンで 2 行に折れていたため） */
+    #tableBody > tr > td:nth-child(2){ white-space:nowrap; }
+  }
+  /* ---- PT-0027：用紙で A3 横を選んだ時だけ（_printPaper.js が <html data-print-paper="A3"> を付ける）。A4 横（標準）は上のまま変えない。
+     標準の A4 横の組み（印刷幅 281mm）のまま 1.4142 倍（A4→A3）して、A3 横の印刷幅（404mm）に収める ---- */
+  @media print{
+    html[data-print-paper="A3"] .wrap{ width:281mm; zoom:1.4142; }
   }
 
   .footNote{ font-size:12.5px; color:#a4adbc; text-align:center; margin-top:20px; line-height:1.7; }
@@ -309,6 +323,7 @@
 </div>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
+<script src="_printPaper.js"></script>
 </head>
 <body>
 
@@ -1330,6 +1345,8 @@
   });
 
   document.getElementById('printBtn').addEventListener('click', ()=>{ window.print(); });
+  // PT-0027：印刷する用紙（A4横＝標準／A3横）を印刷ボタンの前で選べるようにする
+  window.sakaePrintPaper.mount({ button: document.getElementById('printBtn'), standard:'A4', options:['A4','A3'], orientation:'landscape', relabel:true });
 
   document.getElementById('searchBox').addEventListener('input', (e)=>{
     searchTerm = e.target.value.trim();

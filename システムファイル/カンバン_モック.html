@@ -56,11 +56,26 @@
        枠が縮み、ページ下半分が大きく余白化してしまう（実機の印刷プレビューで確認された不具合）---- */
     .sheet{ box-shadow:none; border:1px solid #222; }
   }
+  /* ---- PT-0027：用紙の選択欄（_printPaper.js）を印刷ボタンのすぐ隣に寄せる（画面だけ。紙には出ない） ---- */
+  .screenBar .ppPaper{ margin-left:auto; }
+  .screenBar .ppPaper + button{ margin-left:0; }
+  /* ---- PT-0027：用紙で A3 縦を選んだ時だけ（_printPaper.js が <html data-print-paper="A3"> を付ける）。A4 縦（標準）は上のまま変えない。
+     198mm×285mm の組みのまま 1.4142 倍（A4→A3）して、A3 縦の印刷範囲（285mm×408mm）に収める。上下 2 面と切り取り線の比率はそのまま。
+     拡大後の高さ 403mm は印刷範囲より約 5mm 低いので、切り取り線が紙の中央に来るよう上に 2.5mm 空ける ---- */
+  @media print{
+    html[data-print-paper="A3"] .sheetOuter{ padding-top:2.5mm; }
+    html[data-print-paper="A3"] .sheet{ zoom:1.4142; }
+  }
+  /* ---- PT-0027：区切りの無い長い型式・品名が紙から切れないよう、欄に入らない時だけ途中で折り返す（A4・A3 共通。紙だけ） ---- */
+  @media print{
+    .kanbanPanel .model, .kanbanPanel .itemName{ overflow-wrap:anywhere; }
+  }
   .emptyState{ color:#c0392b; font-size:13px; padding:30px; text-align:center; }
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
 <script src="_workStartPrintCommon.js"></script>
+<script src="_printPaper.js"></script>
 </head>
 <body>
 
@@ -127,6 +142,8 @@
     if(!window.sakaeKeys.isProductKeyOfCase('buhinhyo', e.key, caseCtx)) return;
     render();
   });
+  // PT-0027：印刷する用紙（A4縦＝標準／A3縦）を印刷ボタンの前で選べるようにする
+  window.sakaePrintPaper.mount({ button: document.querySelector('.screenBar button'), standard:'A4', options:['A4','A3'], orientation:'portrait', relabelTargets:[document.querySelector('.screenBar span')] });
 })();
 </script>
 </body>

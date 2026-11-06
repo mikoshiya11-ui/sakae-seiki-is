@@ -349,6 +349,11 @@
     #newOverlay input::placeholder, #newOverlay textarea::placeholder{ color:transparent !important; }
     #newOverlay .pfRegClear{ display:none !important; }
   }
+  /* ---- PT-0027：用紙で A3 縦を選んだ時だけ（_printPaper.js が <html data-print-paper="A3"> を付ける）。A4 縦（標準）は上のまま変えない。
+     標準の A4 縦の組み（印刷幅 198mm）のまま 1.4142 倍（A4→A3）して、A3 縦の印刷幅（285mm）に収める ---- */
+  @media print{
+    html[data-print-paper="A3"] #newOverlay .modal{ width:198mm; zoom:1.4142; }
+  }
 
   /* ---- 詳細パネル ---- */
   .detailBody .drow{ display:flex; padding:8px 0; border-bottom:1px solid #eef1f6; font-size:13px; }
@@ -634,6 +639,7 @@
 <script src="システムファイル/_sakaeSupabaseConfig.js"></script>
 <script src="システムファイル/_sakaeSync.js"></script>
 <script src="システムファイル/_sakaeLocalMerge.js"></script>
+<script src="システムファイル/_printPaper.js"></script>
 </head>
 <body>
 
@@ -2300,6 +2306,8 @@
   // 入力内容が消えてしまう不具合が報告された（工程名を数件入力した時点でメイン画面に戻ってしまう）。
   // 閉じる操作は必ず「×」または「キャンセル」ボタンからのみ行うようにする。
   document.getElementById('printNewBtn').addEventListener('click', ()=>{ window.print(); });
+  // PT-0027：受注連絡書を印刷する用紙（A4縦＝標準／A3縦）を印刷ボタンの前で選べるようにする
+  window.sakaePrintPaper.mount({ button: document.getElementById('printNewBtn'), standard:'A4', options:['A4','A3'], orientation:'portrait' });
 
   function collectTableRows(names, kind){
     return names.map((name, i)=>{
