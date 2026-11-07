@@ -75,6 +75,20 @@
     background:#fff; border-radius:14px; box-shadow:0 2px 10px rgba(20,35,70,.06); overflow:hidden;
   }
   .tableScroll{ overflow-x:auto; }
+  /* ★PT-0032（2026-11-04）：表の上にも横スクロールバーを出す（下端の既存バーは残す。作業票 PT-0007A と同じ方式）。
+     ページを下へ送っても画面の上に貼り付いてついてくる。横にはみ出していない時は hidden で出さない。
+     左右 1px の透明な枠で .tableCard の枠線ぶんをそろえ、動かせる量を表と一致させる。 */
+  .tableTopScroll{
+    position:sticky; top:0; z-index:4; overflow-x:auto; overflow-y:hidden; background:#fff;
+    border-left:1px solid transparent; border-right:1px solid transparent;
+    scrollbar-width:thin; scrollbar-color:#c3cbdb #f0f2f7;
+  }
+  .tableTopScroll::-webkit-scrollbar{ height:11px; }
+  .tableTopScroll::-webkit-scrollbar-track{ background:#f0f2f7; border-radius:6px; }
+  .tableTopScroll::-webkit-scrollbar-thumb{ background:#c3cbdb; border-radius:6px; }
+  .tableTopScroll::-webkit-scrollbar-thumb:hover{ background:#8592a6; }
+  .tableTopScrollInner{ height:1px; }
+  @media print{ .tableTopScroll{ display:none !important; } }
   table{ border-collapse:collapse; width:100%; min-width:1180px; }
   thead th{
     position:sticky; top:0; background:#f7f9fc; border-bottom:1.5px solid #222; text-align:left;
@@ -248,7 +262,8 @@
     .sumChip.danger b{ color:#E12D26; }
 
     .orphanBar{ margin:20px 0 0; }
-    .tableCard{ margin-top:20px; background:#FFFFFF; border:1px solid #B8C7D9; border-radius:8px; box-shadow:0 2px 8px rgba(20,45,80,.05); }
+    .tableArea{ margin-top:20px; }
+    .tableCard{ background:#FFFFFF; border:1px solid #B8C7D9; border-radius:8px; box-shadow:0 2px 8px rgba(20,45,80,.05); }
     table{ min-width:1180px; }
     thead th{ height:50px; padding:0 8px; background:#EEF3F8; border-bottom:1px solid #AFBDCC; font-size:13px; font-weight:700; color:#213A59; }
     thead th:hover{ color:#173B6D; }
@@ -369,8 +384,11 @@
 
     <div class="printTitle" id="printTitle"></div>
 
+    <div class="tableArea">
+    <!-- ★PT-0032：表の上にも横スクロールバー（.tableCard は overflow:hidden で sticky が効かないので外に置く） -->
+    <div class="tableTopScroll" id="tableTopScroll" hidden><div class="tableTopScrollInner" id="tableTopScrollInner"></div></div>
     <div class="tableCard">
-      <div class="tableScroll">
+      <div class="tableScroll" id="tableScroll">
         <table id="dataTable">
           <thead>
             <tr>
@@ -394,6 +412,7 @@
         </table>
       </div>
       <div class="emptyState" id="emptyState" style="display:none;"></div>
+    </div>
     </div>
 
     <div class="footNote">
@@ -706,17 +725,11 @@
     renderDebugPanel();
   });
 
-  // ---- 実際の社内No.採番規則：紙の社内No.（例：35481012-11）は「品番＋枝番」の単純な連結ではなく、
-  // [5桁の基準番号][部品ごとの3桁subNo]-[2桁の任意の枝番] という構成（基準番号と末尾の枝番は同じ受注内の全部品で共通）。
-  // 作業票印刷・実績入力と同じロジックで、部品ごとの正しい社内No.を組み立てる ----
+  // ---- ★PT-0023（テンチョー裁定 A 案）：社内No.は登録された値を一切加工せずそのまま出す。
+  //   部品の枝番（subNo）で書き換えない（5 桁の社内No. 60061-31 が 60001-31 になっていた）。社内No.と部品No.は別情報。
+  //   作業票印刷と同じ表示ルール ----
   function partOrderNo(order, part){
-    const base = ((order && (order.orderNo || order.productNo)) || '').trim();
-    if(!part) return base;
-    const m = base.match(/^(\d+?)(\d{3})-(\d{2})$/);
-    if(m && part.subNo){
-      return m[1] + String(part.subNo).padStart(3,'0') + '-' + m[3];
-    }
-    return base + (part.subNo ? ('-'+part.subNo) : '');
+    return ((order && (order.orderNo || order.productNo)) || '').trim();
   }
 
   // ---- 納品完了にした案件は、残品として追いかける必要がなくなるので残品表から丸ごと外す。
@@ -1425,6 +1438,50 @@
   // 見出しの並び順マーク（HTMLでは工程完了期限に付けてある）を、実際の初期並び順に合わせてから描画する
   applySortHeaderUI();
   render();
+
+  // ---- ★PT-0032：表の上の横スクロールバー（表示だけ。保存値には一切触れない。作業票 PT-0007A と同じ手順） ----
+  //   上のバーの中身の幅を表の scrollWidth に合わせ、上下どちらを動かしても同じ横位置にする。
+  //   上のバー→表の伝播は「利用者が上のバーそのものを操作している間」だけ行う（ホイール・バーのドラッグ・タッチ）。
+  //   表→上のバーで書いた値が遅れて scroll イベントで返ってきても表へは戻さない（連続で動かした時に古い位置へ戻るのを防ぐ）。
+  //   画面幅の変更は ResizeObserver、再描画（タブ・検索・並び替えで行の作り直し）は MutationObserver で拾って幅を測り直す。
+  const tableScrollEl = document.getElementById('tableScroll');
+  const dataTableEl = document.getElementById('dataTable');
+  const topScrollEl = document.getElementById('tableTopScroll');
+  const topScrollInnerEl = document.getElementById('tableTopScrollInner');
+  function syncTopScrollWidth(){
+    const overflow = tableScrollEl.scrollWidth > tableScrollEl.clientWidth + 1;
+    topScrollEl.hidden = !overflow;
+    if(!overflow) return;
+    topScrollInnerEl.style.width = tableScrollEl.scrollWidth + 'px';
+    topScrollEl.scrollLeft = tableScrollEl.scrollLeft;
+  }
+  let topUserUntil = 0, topPointerDown = false;
+  const markTopUser = ()=>{ topUserUntil = performance.now() + 800; };
+  const topUserActive = ()=> topPointerDown || performance.now() <= topUserUntil;
+  topScrollEl.addEventListener('wheel', markTopUser, { passive:true });
+  topScrollEl.addEventListener('touchstart', markTopUser, { passive:true });
+  topScrollEl.addEventListener('pointerdown', ()=>{ topPointerDown = true; markTopUser(); });
+  window.addEventListener('pointerup', ()=>{ if(topPointerDown){ topPointerDown = false; markTopUser(); } }, true);
+  window.addEventListener('pointercancel', ()=>{ if(topPointerDown){ topPointerDown = false; markTopUser(); } }, true);
+  const endTopUser = ()=>{ topUserUntil = 0; topPointerDown = false; };   // 表の側を操作し始めたら、動かし元は表へ移る
+  ['wheel', 'pointerdown', 'touchstart'].forEach((t)=> tableScrollEl.addEventListener(t, endTopUser, { passive:true }));
+  topScrollEl.addEventListener('scroll', ()=>{
+    if(!topUserActive()) return;   // 表の側から書いた値のこだま＝伝えない
+    if(Math.abs(tableScrollEl.scrollLeft - topScrollEl.scrollLeft) >= 1) tableScrollEl.scrollLeft = topScrollEl.scrollLeft;
+  });
+  tableScrollEl.addEventListener('scroll', ()=>{
+    if(topUserActive()) return;    // 上のバーが動かし元の間は書き戻さない
+    if(Math.abs(topScrollEl.scrollLeft - tableScrollEl.scrollLeft) >= 1) topScrollEl.scrollLeft = tableScrollEl.scrollLeft;
+  });
+  if(window.ResizeObserver){
+    const topScrollRO = new ResizeObserver(syncTopScrollWidth);
+    topScrollRO.observe(tableScrollEl);
+    topScrollRO.observe(dataTableEl);
+  } else {
+    window.addEventListener('resize', syncTopScrollWidth);
+  }
+  new MutationObserver(syncTopScrollWidth).observe(dataTableEl, { childList:true, subtree:true });
+  syncTopScrollWidth();
 })();
 </script>
 </body>

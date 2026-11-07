@@ -605,13 +605,46 @@
   @media (min-width:701px) and (max-width:1100px){
     .resultsArea{ --lv-cols:118px minmax(100px,1.4fr) minmax(80px,1fr) 92px 76px 214px 28px; }
     .resultsArea:has(.resultGrid.listView) .lvHead, .resultGrid.listView .card{ column-gap:12px; padding:0 12px; }
-    .lvHead span:nth-child(6){ display:none; }
+    .lvHead .lvhNote{ display:none; }   /* PT-0031：見出しに型式・型番を足したので番号でなく名前で指す */
     .resultGrid.listView .card .lvNote{ display:none; }
     .resultGrid.listView .card .cardMainRow{ grid-column:6; }
     .resultGrid.listView .card .cardDelBtn{ grid-column:7; }
     .resultGrid.listView .card .productNo{ font-size:14px; }
     .resultGrid.listView .card .cardMainBtn{ padding:0 10px; font-size:12.5px; }
     .resultGrid.listView .card .cardMainBtn svg{ display:none; }
+  }
+  /* ★PT-0031（2026-11-02 裁定）：一覧表示に型式・型番。強さ＝最重要（社内No.・型式・型番）／重要（品名）／補助（客先・納期）。表示だけ */
+  .lvhModel, .lvhModelPre, .card .lvItemModel{ display:none; }
+  .resultGrid.listView .card .lvItemName{ display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  @media (min-width:1101px){
+    /* PC：社内No. の次に「型式・型番」の列（1280px 以上は備考あり・1101〜1279px は備考を出さず列を詰める） */
+    .resultsArea{ --lv-cols:130px minmax(170px,1.5fr) minmax(100px,1.1fr) minmax(80px,.9fr) 108px 96px minmax(60px,.8fr) 262px 30px; }
+    .lvHead .lvhModel{ display:block; }
+    .resultGrid.listView .card .lvModel{ grid-column:2; font-size:14.5px; font-weight:700; color:#0d274b; }
+    .resultGrid.listView .card .lvItem{ grid-column:3; }
+    .resultGrid.listView .card .lvCustomer{ grid-column:4; }
+    .resultGrid.listView .card .lvDue{ grid-column:5; }
+    .resultGrid.listView .card .badge.inprogress, .resultGrid.listView .card .badge.done{ grid-column:6; }
+    .resultGrid.listView .card .lvNote{ grid-column:7; }
+    .resultGrid.listView .card .cardMainRow{ grid-column:8; }
+    .resultGrid.listView .card .cardDelBtn{ grid-column:9; }
+  }
+  @media (min-width:1101px) and (max-width:1279px){
+    .resultsArea{ --lv-cols:130px minmax(170px,1.5fr) minmax(100px,1.1fr) minmax(80px,.9fr) 108px 96px 214px 28px; }
+    .resultsArea:has(.resultGrid.listView) .lvHead, .resultGrid.listView .card{ column-gap:12px; padding:0 12px; }
+    .lvHead .lvhNote, .resultGrid.listView .card .lvNote{ display:none; }
+    .resultGrid.listView .card .cardMainRow{ grid-column:7; }
+    .resultGrid.listView .card .cardDelBtn{ grid-column:8; }
+    .resultGrid.listView .card .cardMainBtn{ padding:0 10px; font-size:12.5px; }
+    .resultGrid.listView .card .cardMainBtn svg{ display:none; }
+  }
+  @media (min-width:701px) and (max-width:1100px){
+    /* タブレット：列は増やさない。品名の欄を 2 段（上＝型式・型番・下＝品名） */
+    .lvHead .lvhModelPre{ display:inline; }
+    .resultGrid.listView .card .lvModel{ display:none; }
+    .resultGrid.listView .card .lvItem{ white-space:normal; line-height:1.3; padding:4px 0; }
+    .resultGrid.listView .card .lvItemModel{ display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:700; color:#0d274b; }
+    .resultGrid.listView .card .lvItemName{ font-size:12.5px; font-weight:500; color:#24364d; }
   }
   /* 状態 */
   .badge{ display:inline-flex; align-items:center; height:28px; padding:0 14px; border-radius:14px; font-size:12px; font-weight:700; }
@@ -710,7 +743,7 @@
       </div>
     </div>
     <!-- ★TOP 業務ホーム化（2026-11-01）：一覧表示の列見出し（一覧表示の時だけ出す） -->
-    <div class="lvHead" aria-hidden="true"><span>社内No.</span><span>品名</span><span>客先</span><span>納期</span><span>状態</span><span>備考</span><span></span></div>
+    <div class="lvHead" aria-hidden="true"><span>社内No.</span><span class="lvhModel">型式・型番</span><span class="lvhItem"><span class="lvhModelPre">型式・型番／</span>品名</span><span>客先</span><span>納期</span><span>状態</span><span class="lvhNote">備考</span><span></span></div>
     <div class="resultGrid listView" id="resultGrid"></div>
   </div>
 
@@ -1647,7 +1680,9 @@
       const mainLabel = buhinExists ? '作業票を開く' : '作業票を作成する';
       const lvNote = (r.isTemplate ? '⭐ ひな形　' : '') + String(r.note || '').split(/\r?\n/)[0];
       return '<div class="card" data-id="'+r0.id+'">'
-        + '<span class="lvCell lvItem">'+esc(r.itemName || r.modelName || '(名称未設定)')+'</span><span class="lvCell lvCustomer">'+esc(r.customer||'—')+'</span><span class="lvCell lvDue">'+esc(r.dueDate ? String(fmtDate(r.dueDate)).replace(/-/g,'/') : '—')+'</span><span class="lvCell lvNote">'+esc(lvNote || '—')+'</span>'
+        // ★PT-0031（2026-11-02）：一覧に型式・型番（PC は 社内No. の次の列／タブレットは品名の欄の上段）。表示順は作業票と同じ 社内№→型式・型番→品名→客先→納期
+        + '<span class="lvCell lvModel" title="'+esc(r.modelName||'')+'">'+esc(r.modelName || '—')+'</span>'
+        + '<span class="lvCell lvItem"><span class="lvItemModel" title="'+esc(r.modelName||'')+'">'+esc(r.modelName || '—')+'</span><span class="lvItemName" title="'+esc(r.itemName||'')+'">'+esc(r.itemName || (r.modelName ? '—' : '(名称未設定)'))+'</span></span><span class="lvCell lvCustomer">'+esc(r.customer||'—')+'</span><span class="lvCell lvDue">'+esc(r.dueDate ? String(fmtDate(r.dueDate)).replace(/-/g,'/') : '—')+'</span><span class="lvCell lvNote">'+esc(lvNote || '—')+'</span>'
         + '<div class="cardTop"><span class="productNo">'+esc(r.orderNo)+'</span><span class="badgeRow">'+tplBadge+statusBadge+'<button type="button" class="cardDelBtn" data-role="delCard" title="削除">✕</button></span></div>'
         + '<div class="modelName">'+esc(r.modelName || r.itemName || '(名称未設定)')+'</div>'
         // 上の行が型式を出せている時だけ、その下に品名も出す。

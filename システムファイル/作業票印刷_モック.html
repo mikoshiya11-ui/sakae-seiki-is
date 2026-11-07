@@ -322,6 +322,32 @@
     backLinkTopEl.href = window.sakaeCase.withCase('作業票_モック.html', caseCtx);
   }
 
+  // ★PT-0026（2026-11-02 NG 是正）：「作業票へ戻る」で作業票のタブを増やさない。
+  //   この画面は作業票から新しいタブで開かれる。元の作業票のタブ（同じ案件）が残っていれば、そのタブへ戻してこの印刷タブを閉じる。
+  //   元のタブが無い・閉じられている・別の画面や別の案件に移っている時は、このタブの中で作業票へ移動する（リンクの既定の動き）。
+  function backToOpenerSagyohyo(e){
+    let op = null;
+    try{
+      op = window.opener;
+      if(op && !op.closed && op.location.origin === location.origin
+         && /作業票_モック\.html$/.test(decodeURIComponent(op.location.pathname))){
+        const q = new URLSearchParams(op.location.search);
+        const same = caseCtx.recordId ? q.get('recordId') === caseCtx.recordId : q.get('productNo') === (caseCtx.productNo || '');
+        if(!same) op = null;
+      }else{
+        op = null;
+      }
+    }catch(err){ op = null; }   // 元のタブの中身を読めない時は使わない
+    if(!op) return;             // このタブの中で作業票へ
+    e.preventDefault();
+    const href = e.currentTarget.href;
+    try{ op.focus(); }catch(err){}
+    window.close();
+    // ブラウザがこのタブを閉じなかった時は、このタブの中で作業票へ移動する（タブは増やさない）
+    setTimeout(()=>{ if(!window.closed) location.href = href; }, 300);
+  }
+  if(backLinkTopEl) backLinkTopEl.addEventListener('click', backToOpenerSagyohyo);
+
   const CODE_COLORS = {
     'NC1':'#2563eb','NC2':'#2563eb','NC3':'#2563eb','NC4':'#2563eb','NC5':'#2563eb','NC':'#2563eb','NCM':'#1d4ed8',
     'LA':'#7c3aed','MI':'#0d9488','JG':'#ea580c','EW':'#be185d',
@@ -414,22 +440,12 @@
     return '令和'+yLabel+'年'+(dateObj.getMonth()+1)+'月'+dateObj.getDate()+'日';
   }
 
-  // ---- 表示する「NO.」（紙の社内No.表示）は、実際の採番ルールに合わせる：
-  // 「5桁の製品品番＋3桁の部品品番（各部品ごとの枝番／subNo）＋2桁の任意コード」という桁構成で、
-  // urlProductNo（例：35481000-11）はASSY（枝番000）の値として渡ってくるので、真ん中の3桁だけを
-  // その部品自身のsubNoに置き換えて、部品ごとの本当の社内No.を再現する（例：subNo=001なら49171001-11）。
-  // ※これはあくまで「紙に印字する読みやすい表示」のためのもの。バーコード自体（ticketBarcodeSvg）は
-  // urlProductNoをそのまま使い、部品はsubNoを別セグメントとして持つ形式で組み立てるので、
-  // ここの表示とバーコードの中身が文字として一致しなくても、実績入力側の照合には影響しない ----
+  // ---- 表示する「NO.」（紙の社内No.表示）★PT-0023（テンチョー裁定 A 案）：
+  // 登録された社内No.を一切加工せずそのまま出す（部品の枝番 subNo で書き換えない。工程別残品表と同じ表示ルール）。
+  // 案件の社内No.（order.orderNo）を使い、無いときだけ従来の urlProductNo。
+  // バーコード（ticketBarcodeSvg）は P＋工程ID で、この表示とは無関係（実績入力の照合は変わらない） ----
   function partOrderNo(part){
-    const base = (urlProductNo || '').trim();
-    if(!part) return base;
-    const m = base.match(/^(\d+?)(\d{3})-(\d{2})$/);
-    if(m && part.subNo){
-      return m[1] + String(part.subNo).padStart(3,'0') + '-' + m[3];
-    }
-    // 採番ルールに当てはまらない品番（デモ品番など）は、品番の末尾にそのまま部品の社内No（枝番）を足して区別する
-    return base + (part.subNo ? ('-'+part.subNo) : '');
+    return ((state.order && state.order.orderNo) || urlProductNo || '').trim();
   }
 
   // ---- 現物では着手欄に日付が印字済み・完成欄は完了時に手書きで記入する空欄、という並びだったため、

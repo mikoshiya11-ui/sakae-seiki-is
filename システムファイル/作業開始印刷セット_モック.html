@@ -102,6 +102,33 @@
   document.getElementById('backLink').setAttribute('href', backUrl);
   document.getElementById('backLink2').setAttribute('href', backUrl);
 
+  // ★PT-0026（2026-11-02 NG 是正）：「作業票へ戻る」で作業票のタブを増やさない。
+  //   この画面は作業票から新しいタブで開かれる。元の作業票のタブ（同じ案件）が残っていれば、そのタブへ戻してこの印刷タブを閉じる。
+  //   元のタブが無い・閉じられている・別の画面や別の案件に移っている時は、このタブの中で作業票へ移動する（リンクの既定の動き）。
+  function backToOpenerSagyohyo(e){
+    let op = null;
+    try{
+      op = window.opener;
+      if(op && !op.closed && op.location.origin === location.origin
+         && /作業票_モック\.html$/.test(decodeURIComponent(op.location.pathname))){
+        const q = new URLSearchParams(op.location.search);
+        const same = caseCtx.recordId ? q.get('recordId') === caseCtx.recordId : q.get('productNo') === (caseCtx.productNo || '');
+        if(!same) op = null;
+      }else{
+        op = null;
+      }
+    }catch(err){ op = null; }   // 元のタブの中身を読めない時は使わない
+    if(!op) return;             // このタブの中で作業票へ
+    e.preventDefault();
+    const href = e.currentTarget.href;
+    try{ op.focus(); }catch(err){}
+    window.close();
+    // ブラウザがこのタブを閉じなかった時は、このタブの中で作業票へ移動する（タブは増やさない）
+    setTimeout(()=>{ if(!window.closed) location.href = href; }, 300);
+  }
+  document.getElementById('backLink').addEventListener('click', backToOpenerSagyohyo);
+  document.getElementById('backLink2').addEventListener('click', backToOpenerSagyohyo);
+
   const infoGrid = document.getElementById('infoGrid');
   const setList = document.getElementById('setList');
 

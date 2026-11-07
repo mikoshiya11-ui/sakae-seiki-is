@@ -453,21 +453,17 @@
     const m = String(code||'').match(/^[A-Za-z0-9]+/);
     return m ? m[0] : '';
   }
-  // ---- 手動選択でも、バーコード読み取りと同じ「紙に印字されてる部品ごとの番号」を画面に表示するための計算 ----
-  function displayNoFor(orderProductNo, part){
-    const base = (orderProductNo||'').trim();
-    const m = base.match(/^(\d+?)(\d{3})-(\d{2})$/);
-    if(m && part && part.subNo){
-      return m[1] + String(part.subNo).padStart(3,'0') + '-' + m[3];
-    }
-    return base + (part && part.subNo ? ('-'+part.subNo) : '');
+  // ---- ★PT-0023（テンチョー裁定 A 案）：画面と今後の実績ログに出す社内No.は、登録された社内No.を一切加工せずそのまま。
+  //   部品の枝番（subNo）で書き換えない（工程別残品表・作業票印刷と同じ表示ルール）。部品は partCode（subNo）で別に持つ。
+  //   照合（工程ID・旧形式の読み取り）には使わない表示用の値。過去の実績ログの displayNo は書き換えない ----
+  function displayNoFor(order){
+    return ((order && (order.orderNo || order.productNo)) || '').trim();
   }
   // ---- 画面と実績ログで使う「対象1件」の形。どの画面でも同じ作り方をする ----
   function makeMatch(bs, part, proc){
     return {
-      // productNoは案件を紐づけるための内部キー（例：35481000-11）。displayNoは実際に紙に印字されてる
-      // 部品ごとの番号（例：35481001-11）。画面には読み取った番号と同じdisplayNoの方を出して迷わないようにする
-      productNo: bs.order.productNo || '', displayNo: displayNoFor(bs.order.productNo, part),
+      // productNoは案件を紐づけるための内部キー（例：35481000-11）。displayNoは画面・実績ログに出す登録された社内No.
+      productNo: bs.order.productNo || '', displayNo: displayNoFor(bs.order),
       customerName: bs.order.customer||'', modelName: bs.order.model||'',
       partId: part.id, partCode: part.subNo||part.code||'', partName: part.name||'',
       procId: proc.id, processCode: proc.code||'', processIdent: proc.ident||'',
@@ -502,9 +498,7 @@
       if(!part) return;
       (part.processes||[]).forEach(proc=>{
         if(barcodeSafeCode(proc.code)===processCode){
-          const m = makeMatch(bs, part, proc);
-          m.displayNo = base + subNoDigits + '-' + suffix;
-          out.push(m);
+          out.push(makeMatch(bs, part, proc));
         }
       });
     });
