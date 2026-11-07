@@ -21,7 +21,7 @@
   }
   .screenBar button:hover{ filter:brightness(1.08); }
 
-  @page{ size: A5 landscape; margin: 5mm; }
+  @page{ size: A4 landscape; margin: 5mm; }
 
   .sheetOuter{ display:flex; justify-content:center; padding:18px; }
   .sheet{
@@ -96,17 +96,29 @@
     .sheetOuter{ padding:0; }
     .sheet{ box-shadow:none; border:1px solid #222; width:auto; height:auto; }
   }
+  /* ---- PT-0027：用紙の選択欄（_printPaper.js）を印刷ボタンのすぐ隣に寄せる（画面だけ。紙には出ない） ---- */
+  .screenBar .ppPaper{ margin-left:auto; }
+  .screenBar .ppPaper + button{ margin-left:0; }
+  /* ---- PT-0027：標準は A4 横。mm で組んだ A5 横の組みを拡大して、用紙いっぱいに使う（工程行が伸びて手書き欄が広がる）。
+     A4 横は 200mm×140mm の組みを 1.4142 倍、A3 横は 2 倍にする。
+     A5 横を選んだ時（_printPaper.js が <html data-print-paper="A5"> を付ける）は、従来の A5 の印刷のまま ---- */
+  @media print{
+    .sheet{ zoom:1.4142; width:200mm; height:140mm; }
+    html[data-print-paper="A3"] .sheet{ zoom:2; }
+    html[data-print-paper="A5"] .sheet{ zoom:1; width:auto; height:auto; }
+  }
   .emptyState{ color:#c0392b; font-size:13px; padding:30px; text-align:center; }
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
 <script src="_workStartPrintCommon.js"></script>
+<script src="_printPaper.js"></script>
 </head>
 <body>
 
   <div class="screenBar">
     <a href="#" id="backLink">← 作業開始印刷セットへ戻る</a>
-    <span>作業票表紙（A5横）</span>
+    <span>作業票表紙（A4横）</span>
     <button type="button" onclick="window.print()">🖨 印刷</button>
   </div>
 
@@ -243,6 +255,8 @@
     if(!window.sakaeKeys.isProductKeyOfCase('buhinhyo', e.key, caseCtx)) return;
     render();
   });
+  // PT-0027：印刷する用紙（A4横＝標準／A5横／A3横）を印刷ボタンの前で選べるようにする
+  window.sakaePrintPaper.mount({ button: document.querySelector('.screenBar button'), standard:'A4', options:['A4','A5','A3'], orientation:'landscape', noteSizes:'A4／A5／A3', relabelTargets:[document.querySelector('.screenBar span')] });
 })();
 </script>
 </body>

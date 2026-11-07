@@ -27,6 +27,7 @@ window.sakaePrintPaper = (function(){
   // opt: { button, standard:'A4', options:['A4','A3'], orientation:'landscape'|'portrait', relabel:true|false }
   //   relabel … 印刷ボタンの文字・説明に「A4横」などがあれば、選んだ用紙に合わせて書き換える
   //   relabelTargets … 任意。画面の用紙表記の要素の配列。文字の中の「A3横」などを、選んだ用紙に合わせて書き換える
+  //   noteSizes … 任意。案内文に出す用紙の並び。省略時は「A4／A3」
   function mount(opt){
     if(mounted) throw new Error('sakaePrintPaper.mount は 1 画面に 1 回だけ');
     mounted = true;
@@ -53,7 +54,7 @@ window.sakaePrintPaper = (function(){
     // 画面の用紙選択だけでは、実機プリンターの用紙は切り替わらない（ページからは指定できない）ので、常に案内を出す（紙には出さない）
     const note = document.createElement('span');
     note.className = 'ppPaperNote';
-    note.textContent = '印刷時は、印刷ダイアログの『用紙サイズ』も画面で選んだA4／A3に合わせてください。';
+    note.textContent = '印刷時は、印刷ダイアログの『用紙サイズ』も画面で選んだ' + (opt.noteSizes || 'A4／A3') + 'に合わせてください。';
     btn.parentNode.insertBefore(note, wrap);
 
     const btnTexts = opt.relabel ? Array.from(btn.childNodes).filter(n=> n.nodeType === 3) : [];
