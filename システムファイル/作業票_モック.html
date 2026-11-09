@@ -1482,6 +1482,7 @@
     if(!f) return;
     state.order[f] = e.target.value;
     save();
+    if(f === 'assembly') buildParts();   // PT-0033：組付有無で行番号の始まり（0／1）が変わる
   });
 
   // ---- 部品テーブル ----
@@ -1558,9 +1559,12 @@
 
   function buildParts(){
     let html = '';
+    // ★PT-0033（2026-11-09）：組付「無」の案件は 000（組付け品）が無く部品が 001 から始まるので、行番号も 1 から（No.0 を出さない）。
+    //   組付「有」は従来どおり 0 から（No.0＝000 の組付け品）。表示だけで、保存データ・社内No.・並び順は変えない
+    const noBase = (state.order && state.order.assembly === '無') ? 1 : 0;
     state.parts.forEach((part,idx)=>{
       html += '<tr data-idx="'+idx+'">';
-      html += '<td class="noCell"><div class="noWrap"><span class="noNum">'+idx+'</span><button type="button" class="delBtn" data-role="delPart" title="削除">✕</button></div></td>';
+      html += '<td class="noCell"><div class="noWrap"><span class="noNum">'+(idx + noBase)+'</span><button type="button" class="delBtn" data-role="delPart" title="削除">✕</button></div></td>';
       html += '<td><input class="cellInput" data-field="subNo" value="'+esc(part.subNo)+'"></td>';
       html += '<td><input class="cellInput" data-field="code" value="'+esc(part.code)+'"></td>';
       html += '<td><input class="cellInput" data-field="name" value="'+esc(part.name)+'"></td>';
