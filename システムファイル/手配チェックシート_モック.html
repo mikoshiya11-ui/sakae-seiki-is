@@ -52,13 +52,10 @@
   /* 原本に合わせ、目安・期限・完了日・確認は狭く、手順を広く取る（2026-08-19 現場要望） */
   table.checkTable col.cItem{ width:20%; }
   table.checkTable col.cDays{ width:6%; }
-  /* ★PT-0027（既存不具合の修正）：期限の日付「2026/10/20」（10 文字・約 18.5mm）が 7% の列（文字の入る幅 約 14mm）からはみ出し、
-     隣の「完了日」の罫線に重なっていた。期限を 10%、手順を 54%→51% にし、期限のセルは折り返さない。ほかの 4 列はそのまま */
-  table.checkTable col.cDeadline{ width:10%; }
-  table.checkTable td.deadlineCell{ white-space:nowrap; }
+  table.checkTable col.cDeadline{ width:7%; }
   table.checkTable col.cDone{ width:7%; }
   table.checkTable col.cCheck{ width:6%; }
-  table.checkTable col.cProc{ width:51%; }
+  table.checkTable col.cProc{ width:54%; }
   /* 完了日・確認は印刷後に手書きするため、入力欄を置かない空欄 */
   table.checkTable td.handwriteCell{ }
   /* 手順欄：枠線を出さず、セル全体を使って入力できるようにする */
@@ -158,7 +155,7 @@
       return '<tr data-key="'+def.key+'">'
         + '<td class="itemCell">'+esc(def.label)+'</td>'
         + '<td>'+(def.days!=null ? def.days+'日' : '－')+'</td>'
-        + '<td class="deadlineCell">'+esc(P.fmtDateJp(deadline))+'</td>'
+        + '<td>'+esc(P.fmtDateJp(deadline))+'</td>'
         + '<td class="handwriteCell"></td>'
         + '<td class="handwriteCell"></td>'
         + '<td class="procCell"><input type="text" data-field="procedure" value="'+esc(it.procedure||'')+'"></td>'

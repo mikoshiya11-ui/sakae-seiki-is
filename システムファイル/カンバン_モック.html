@@ -66,10 +66,6 @@
     html[data-print-paper="A3"] .sheetOuter{ padding-top:2.5mm; }
     html[data-print-paper="A3"] .sheet{ zoom:1.4142; }
   }
-  /* ---- PT-0027：区切りの無い長い型式・品名が紙から切れないよう、欄に入らない時だけ途中で折り返す（A4・A3 共通。紙だけ） ---- */
-  @media print{
-    .kanbanPanel .model, .kanbanPanel .itemName{ overflow-wrap:anywhere; }
-  }
   .emptyState{ color:#c0392b; font-size:13px; padding:30px; text-align:center; }
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
