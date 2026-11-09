@@ -229,6 +229,9 @@
        0.90 倍＝上下左右の余白が各 14.8mm までなら 1 枚に収まる（余白 0 なら紙の上下左右に約 15mm の白）。中の配置（PT-0013 の比率）は変えない。
        zoom は自分の余白や移動量も縮めるため、上の余白と紙送り補正は倍率で割って指定する。余白が大きすぎて入らない時は上へはみ出させず、従来どおり次の紙へ回す（max）。 */
     :root{ --pt-print-scale:0.90; }
+    /* ★PT-0027：用紙で A4 横を選んだ時だけ（_printPaper.js が <html data-print-paper="A4"> と @page の size を付ける。余白 0 は上の @page を引き継ぐ）。
+       A3 横（標準）の組み・倍率は変えず、帳票全体を A3→A4 の比率（0.7071）でさらに縮めて A4 横の中央に置く（配置・比率は A3 と同じ） */
+    html[data-print-paper="A4"]{ --pt-print-scale:calc(0.90 * 0.70711); }
     .slipSheet{ zoom:var(--pt-print-scale); margin:max(0mm, calc((100vh / var(--pt-print-scale) - 297mm) / 2)) auto 0;
       transform:translateY(calc(var(--pt-print-offset-y) / var(--pt-print-scale))); }
     /* 左右のパネル：左 0〜208.15（内余白 左6・右4.15）／切り線の目印の点線帯 208.15〜211.85（中心 210）／右 211.85〜420（内余白 左4.15・右6） */
@@ -260,6 +263,7 @@
 </style>
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
+<script src="_printPaper.js"></script>
 </head>
 <body>
 
@@ -669,6 +673,8 @@
   }
 
   document.getElementById('printBtn').addEventListener('click', ()=> window.print());
+  // PT-0027：印刷する用紙（A3横＝標準／A4横）を印刷ボタンの前で選べるようにする。選んだ用紙は保存しない（開き直すと A3横）
+  window.sakaePrintPaper.mount({ button: document.getElementById('printBtn'), standard:'A3', options:['A3','A4'], orientation:'landscape', relabel:true });
 
   render();
 })();
