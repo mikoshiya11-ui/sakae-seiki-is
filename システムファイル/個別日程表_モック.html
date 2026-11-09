@@ -406,6 +406,28 @@
   /* 表示期間より前から始まるバーは、画面では左の欄の下に隠れている。印刷でも左の欄へはみ出させない（左端だけ切る） */
   html.p8print .ganttRows{ clip-path:inset(-4px -4000px -4px 0); }
   html.p8print .p8hdr{ break-before:page; }
+  /* ★PT-0027：A4 横の印刷だけ。日付の列が狭い時は、日付の数字を列の幅に収まる大きさにする（列の幅・バーの位置は変えない）。
+     2 桁の数字の幅は文字の大きさの約 1.3 倍あるので 1.4 で割る。列の幅は印刷後 2.5mm 以上なので、数字は印刷後 5.06pt 以上になる。A3 横には効かない（data-print-paper は A3 では付かない） */
+  html[data-print-paper="A4"].p8print .ganttDayCell{ font-size:min(11.5px, calc(var(--day-w) / 1.4)) !important; }
+  @media print{ html[data-print-paper="A4"] .ganttDayCell{ font-size:min(11.5px, calc(var(--day-w) / 1.4)) !important; } }
+  /* ★PT-0027（試験実装）：A4 横で読める大きさにならない時は、帳票を印刷せず、理由と対処の案内 1 枚だけを印刷する */
+  .p8ngNotice{ display:none; }
+  html.p8a4ng body > *:not(.p8ngNotice){ display:none !important; }
+  html.p8a4ng .p8ngNotice{ display:block; padding:24px 28px; border:2px solid #c0392b; border-radius:10px; color:#1a2233; font-size:15px; line-height:1.7; max-width:900px; break-inside:avoid; }
+  .p8ngNotice h2{ margin:0 0 10px; font-size:20px; color:#c0392b; }
+  .p8ngNotice ul{ margin:6px 0 10px 1.2em; padding:0; }
+  .p8a4Hint{ font-size:12px; font-weight:700; color:#c0392b; }
+  /* ★PT-0027：A4 横の印刷の安全網（JS に頼らない）。A4 の帳票は、可否判定の全検査を通った時に JS が付ける p8a4ok がある時だけ印刷する。
+     未判定（beforeprint が動かない）・判定中（例外で止まった）・判定 NG は、帳票を隠す。NG の案内（.p8ngNotice）が無い時は、代わりの案内の文字を出す。
+     A3 横（data-print-paper が付かない）には効かない */
+  @media print{
+    html[data-print-paper="A4"]:not(.p8a4ok) body > *:not(.p8ngNotice){ display:none !important; }
+    html[data-print-paper="A4"]:not(.p8a4ok):not(:has(.p8ngNotice)) body::before{
+      content:"A4横では、この個別日程表を印刷できませんでした（読める大きさかを確かめる前に印刷の準備が止まりました）。日程表の中身は印刷していません。用紙を「A3横」に切り替えるか、表示期間を短くしてから、もう一度印刷してください。";
+      display:block; padding:24px 28px; border:2px solid #c0392b; border-radius:10px; color:#1a2233; font-size:15px; line-height:1.7; max-width:900px;
+    }
+  }
+  @media print{ .p8a4Hint{ display:none !important; } }
   .p8hdrLine{ display:flex; gap:14px; align-items:baseline; font-size:12px; font-weight:700; color:#173a68; padding:2px 10px; }
   .p8hdrLine .p8hdrModel{ color:#2a3446; }
   .p8hdrLine .p8hdrDue{ color:#c9720d; }
@@ -610,6 +632,7 @@
 <script src="_sakaeSupabaseConfig.js"></script>
 <script src="_sakaeSync.js"></script>
 <script src="_sakaeLocalMerge.js"></script>
+<script src="_printPaper.js"></script>
 </head>
 <body>
 
@@ -671,7 +694,7 @@
       </div>
       <button type="button" class="addMemoBtn" id="addPartBtn2" title="作業票に戻らず、この日程表から新しい部品を追加します">＋ 部品を追加</button>
       <button type="button" class="addMemoBtn" id="addMemoBtn">＋ メモを追加</button>
-      <button type="button" class="printBtn" id="printBtn" title="A3サイズで印刷します（印刷前に表示期間・ズームを整えてください）">🖨 印刷する（A3）</button>
+      <button type="button" class="printBtn" id="printBtn" title="A3横サイズで印刷します（印刷前に表示期間・ズームを整えてください）">🖨 印刷する（A3横）</button>
       <span class="toolHelp" style="font-size:12.5px; color:#a4adbc;">土日はグレー表示／バーの右端の位置が作業票の工程日付（終了・納期）になります（ドラッグで移動、右クリックで新規設置・編集・削除）／各日の中央の縦線が午前・午後の区切りです／付箋メモは自由な位置・サイズで配置できます（ハンドルをドラッグで移動、右下でリサイズ、クリックで編集、右クリックで削除）</span>
     </div>
     </div>
@@ -2975,7 +2998,11 @@
 
   // ---- A3印刷：印刷前に表示期間・ズームを整えてもらい、そのままブラウザの印刷ダイアログを開く ----
   const printBtnEl = document.getElementById('printBtn');
-  if(printBtnEl) printBtnEl.addEventListener('click', ()=> window.print());
+  if(printBtnEl) printBtnEl.addEventListener('click', ()=>{ if(!p8A4Gate()) return; window.print(); });
+  // PT-0027：印刷する用紙（A3横＝標準／A4横）を印刷ボタンの前で選べるようにする。選んだ用紙は保存しない（開き直すと A3横）
+  if(printBtnEl) window.sakaePrintPaper.mount({ button: printBtnEl, standard:'A3', options:['A3','A4'], orientation:'landscape', relabel:true });
+  // 用紙を選んだ時も、A4 なら幅の条件を確かめて案内を出す（画面だけ。印刷物・保存値は変えない）
+  { const sel = printBtnEl && printBtnEl.parentNode.querySelector('.ppPaper select'); if(sel) sel.addEventListener('change', ()=> p8A4Gate()); }
 
   // ---- PT-0008：A3 印刷の自動最適化（A3 横・最大 2 枚・内容を削らない）----
   // 印刷の直前（beforeprint）に、印刷と同じ見た目（html.p8print）で中身の高さを実測し、次の順で印刷方法を選ぶ。
@@ -2987,9 +3014,16 @@
   // 印刷が終わったら（afterprint）すべて元に戻す。印刷の操作で業務データ・端末の保存値は一切書かない。
   // ※以前の applyPrintScale は「A3 1 枚＝1910×1300px」を前提にしていたが、実際の A3 横（余白 10mm）は 1512×1047px で、
   //   部品の多い案件は小さく縮んだうえ 2 枚目へこぼれていた（PT-0008）。
-  const P8_PAGE_W = 1511;           // A3 横・余白 10mm の印刷可能幅（96dpi 換算 1511.8px）
-  const P8_PAGE_H = 1040;           // 同じく高さ 1046.9px から、縮小時の端数（枠線・行の高さ）のための余裕を引いた値
-  const P8_FILL_W = 1500;           // 日付の列幅を決める時の横幅（右端に少し余裕を残す）
+  // PT-0027：印刷の寸法は用紙ごと。A3 横は従来の値のまま。A4 横（余白 10mm）の印刷可能域は 277×190mm＝1046.9×718.1px で、
+  //   A3 と同じ考え方（幅は端数を切り捨て・高さは 6.9px の余裕・配置幅は右端に約 10px の余裕）で決めた値。印刷のたびに選んだ用紙で切り替える
+  const P8_DIMS = { A3:{ W:1511, H:1040, FILL:1500 }, A4:{ W:1046, H:711, FILL:1036 } };
+  let P8_PAGE_W = P8_DIMS.A3.W;     // A3 横・余白 10mm の印刷可能幅（96dpi 換算 1511.8px）
+  let P8_PAGE_H = P8_DIMS.A3.H;     // 同じく高さ 1046.9px から、縮小時の端数（枠線・行の高さ）のための余裕を引いた値
+  let P8_FILL_W = P8_DIMS.A3.FILL;  // 日付の列幅を決める時の横幅（右端に少し余裕を残す）
+  function p8UsePaper(){
+    const d = P8_DIMS[document.documentElement.getAttribute('data-print-paper') === 'A4' ? 'A4' : 'A3'];
+    P8_PAGE_W = d.W; P8_PAGE_H = d.H; P8_FILL_W = d.FILL;
+  }
   const P8_DAY_MIN_PRINT = 9.45;    // 日付 1 列の印刷後の最小幅（2.5mm）
   const P8_DAY_MAX = 52;            // 日付 1 列の最大幅（画面の拡大の上限と同じ）
   const P8_SCALE_MIN = 0.70;        // 読める大きさの下限（標準＝画面と同じ大きさの 70%）
@@ -3117,8 +3151,82 @@
       return c;
     });
   }
+  // ---- PT-0027：A4 横の可否判定 ----
+  // 静的判定（画面を変えない・読むだけ）：PT-0008 の式で、幅だけで決まる倍率の上限（wcap）を出す。上限が 70% 未満なら、縦・記号に関係なく 70% 未満が確実。
+  //   縦（部品数）・工程記号の重なりは静的には決めない（印刷時の判定で見る）。A3 の時は何もしない
+  function p8A4Static(){
+    const days = Math.max(1, currentUnitCount()), side = p8SideWidth(), D = P8_DIMS.A4;
+    const wcap = Math.min(1, (D.FILL - P8_DAY_MIN_PRINT * days) / side);
+    return { ok: wcap >= P8_SCALE_MIN, wcap, days };
+  }
+  // 倍率の表示：切り捨てて小数 1 桁（例 0.6991 → 69.9%）。判定（s < 0.70）とは別で、表示が判定と食い違わないようにするため
+  function p8Pct(x){ return (Math.floor(x * 1000) / 10).toFixed(1) + '%'; }
+  function p8A4Gate(){
+    let hint = document.getElementById('p8a4Hint');
+    if(document.documentElement.getAttribute('data-print-paper') !== 'A4'){ if(hint) hint.remove(); return true; }
+    const r = p8A4Static();
+    if(r.ok){ if(hint) hint.remove(); return true; }
+    if(!hint && printBtnEl){ hint = document.createElement('span'); hint.id = 'p8a4Hint'; hint.className = 'p8a4Hint'; printBtnEl.insertAdjacentElement('afterend', hint); }
+    if(hint) hint.textContent = 'A4横では表示期間 ' + r.days + ' 日を読める大きさで印刷できません（最大 ' + p8Pct(Math.max(0, r.wcap)) + '）。用紙を A3横に切り替えるか、表示期間を短くしてください。';
+    return false;
+  }
+  // 印刷時の判定（A4 の時だけ）：p8BeforePrint が並べ終えた後の実際の見た目を測る。並べ直しはしない（p8BeforePrint は呼ばない）
+  function p8A4Check(L){
+    const html = document.documentElement, s = L.s, reasons = [];
+    const v = { scale: s, minLabelPt: null, minDayPt: null, labelOverlap: 0, dayOverflow: 0, fit: L.fit };
+    try{
+      if(s < P8_SCALE_MIN) reasons.push('文字の倍率 ' + p8Pct(s) + '（70% 未満）');
+      if(L.fit.width > P8_PAGE_W + 0.5 || L.fit.page1 > P8_PAGE_H + 0.5 || L.fit.page2 > P8_PAGE_H + 0.5) reasons.push('紙の印刷できる範囲を超える（右端または下端が欠ける）');
+      let minL = Infinity;
+      ganttInner.querySelectorAll('.track').forEach(t=>{
+        const bars = Array.prototype.slice.call(t.querySelectorAll('.bar')).map(b=>({ b, l: parseFloat(b.style.left)||0, w: parseFloat(b.style.width)||0 })).sort((a,b)=> a.l - b.l);
+        bars.forEach((x, i)=>{
+          const lab = x.b.querySelector('.barLabel');
+          if(!lab || !lab.textContent.trim() || !lab.getClientRects().length) return;
+          minL = Math.min(minL, parseFloat(getComputedStyle(lab).fontSize) * s * 0.75);
+          const nx = bars[i+1];
+          if(!nx || x.l + x.w > nx.l + 0.5) return;   // 日程そのものが重なるバーは対象外（PT-0008 と同じ）
+          if(p8Rect(lab).right > p8Rect(nx.b).left + 0.5) v.labelOverlap++;
+        });
+      });
+      if(minL < Infinity) v.minLabelPt = +minL.toFixed(2);
+      if(v.minLabelPt != null && v.minLabelPt < 5) reasons.push('工程記号の文字 ' + v.minLabelPt + 'pt（5pt 未満）');
+      if(v.labelOverlap) reasons.push('工程記号が隣のバーに重なる（' + v.labelOverlap + ' か所）');
+      let minD = Infinity;
+      document.querySelectorAll('.ganttHeaderRow .ganttDayCell').forEach(c=>{
+        const r = document.createRange(); r.selectNodeContents(c);
+        if(r.getBoundingClientRect().width > p8Rect(c).width + 0.5) v.dayOverflow++;
+        minD = Math.min(minD, parseFloat(getComputedStyle(c).fontSize) * s * 0.75);
+      });
+      if(minD < Infinity) v.minDayPt = +minD.toFixed(2);
+      if(v.dayOverflow) reasons.push('日付の数字が隣の日にはみ出す（' + v.dayOverflow + ' か所）');
+      if(v.minDayPt != null && v.minDayPt < 5) reasons.push('日付の数字 ' + v.minDayPt + 'pt（5pt 未満）');
+    }catch(e){
+      reasons.push('読める大きさかを判定できなかった');
+    }
+    if(reasons.length) p8A4Block(reasons);
+    else html.classList.add('p8a4ok');   // 判定 OK：倍率・文字の大きさ・重なり・印刷範囲の全検査を通った時だけ（CSS の印刷許可の条件）
+    return { ng: reasons.length > 0, reasons, values: v };
+  }
+  // A4 で読める大きさにならない・判定できない時：帳票を印刷せず、理由と対処の案内 1 枚だけを印刷する（印刷後に p8AfterPrint が外す）
+  function p8A4Block(reasons){
+    const html = document.documentElement;
+    {
+      html.classList.add('p8a4ng');
+      const old = document.getElementById('p8ngNotice'); if(old) old.remove();
+      const n = document.createElement('div');
+      n.className = 'p8ngNotice'; n.id = 'p8ngNotice';
+      n.innerHTML = '<h2>A4横では、この個別日程表を読める大きさで印刷できません</h2>'
+        + '<div>理由</div><ul>' + reasons.map(x=> '<li>' + esc(x) + '</li>').join('') + '</ul>'
+        + '<div>対処：用紙を「A3横」に切り替えて印刷するか、表示期間を短くしてから、もう一度印刷してください。</div>'
+        + '<div style="margin-top:8px; font-size:12px; color:#5b6b84;">（この案内だけが印刷されています。日程表の中身は印刷していません）</div>';
+      document.body.appendChild(n);
+    }
+  }
   function p8BeforePrint(){
+    document.documentElement.classList.remove('p8a4ok');   // PT-0027：判定 OK は、この印刷の判定が終わるまで付けない
     if(p8Print) p8AfterPrint();
+    p8UsePaper();
     const html = document.documentElement, wrap = document.querySelector('.wrap');
     const st = p8Print = {
       dayW: DAY_W, memos: memos, wrapStyle: wrap.getAttribute('style'),
@@ -3189,13 +3297,21 @@
       renderMemoLayer();
       wrap.style.zoom = s;
       st.result = { pattern, pages: k != null ? 2 : 1, scale: s, split: k, dayW: d, fit, labels, tries };
+      if(P8_PAGE_W === P8_DIMS.A4.W) st.result.a4 = p8A4Check(L);   // PT-0027：A4 の時だけ判定（A3 の記録は従来のまま）
       window.__sakaeKobetsuPrint = st.result;   // 印刷結果の記録（試験・確認用。保存はしない）
     }catch(e){
       console.error('[PT-0008] 印刷の自動調整に失敗したため、通常の印刷に戻します', e);
       p8AfterPrint();
+      // PT-0027：A4 の時は、通常の見た目のままでは A4 に収まるか分からないため、帳票は印刷せず案内だけにする（A3 は従来どおり通常の印刷）
+      if(P8_PAGE_W === P8_DIMS.A4.W){
+        p8A4Block(['印刷の準備に失敗したため、読める大きさかを判定できなかった']);
+        window.__sakaeKobetsuPrint = { a4: { ng: true, reasons: ['印刷の準備に失敗したため、読める大きさかを判定できなかった'], values: null } };
+      }
     }
   }
   function p8AfterPrint(){
+    document.documentElement.classList.remove('p8a4ng', 'p8a4ok');
+    { const ng = document.getElementById('p8ngNotice'); if(ng) ng.remove(); }   // PT-0027：A4 の NG 案内を外す（例外の後も含めて必ず）
     const st = p8Print;
     if(!st) return;
     p8Print = null;
