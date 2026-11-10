@@ -72,6 +72,11 @@
   .slipSideLabel .slipSideNo{ font-size:11px; font-weight:700; color:#c0392b; letter-spacing:.04em; text-orientation:sideways; }
   /* 工程が13以上あって2枚目以降ができた時の「2/3枚目」表示 */
   .slipSideLabel .slipSidePage{ font-size:10px; font-weight:700; color:#5b6b84; letter-spacing:.04em; text-orientation:sideways; }
+  /* ★PT-0013 再対応（2026-11-10・榮製機様）：右上（作業票（控））は A5 に切って左端全体に綴じ穴を開けるため、
+     左端の縦帯（作業票（控）・赤字の NO.）が穴で見えなくなる。控の側だけ、縦帯を右端へ移す（左右反転）。
+     帯の幅・本体の幅・4 分割の切り位置・左の作業票（チケット側）は変えない。 */
+  .slipPanel.slipPanelCopy{ flex-direction:row-reverse; }
+  .slipPanel.slipPanelCopy .slipSideLabel{ border-right:none; border-left:1.5px solid #222; }
 
   /* slipMainと下段（タグ or チケット）を縦に積む入れ物 */
   .slipBody{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
@@ -237,6 +242,7 @@
     .slipSheet > .divider{ flex:0 0 3.7mm; }
     /* 縦書きの帯：幅 6.5mm（本体との間 0.5mm）。文字は上から 7mm より下（印刷できる範囲の内側）から積む */
     .slipSideLabel{ flex:0 0 6.5mm; margin-right:0.5mm; padding-top:7mm; box-sizing:border-box; }
+    .slipPanel.slipPanelCopy .slipSideLabel{ margin-right:0; margin-left:0.5mm; }   /* PT-0013 再対応：控は帯が右端（本体との間 0.5mm は左側に） */
     /* 上の区画：紙の上 7mm から 137.5mm（下端 144.5＝切り線の 4mm 上）。行の高さは罫線（1px）込みで足し合わせて 137.5mm に収める */
     .slipMain{ flex:0 0 auto; height:137.5mm; padding:0; margin-top:7mm; box-sizing:border-box; display:flex; flex-direction:column; }
     .slipTopRow{ flex:1 1 auto; }
@@ -666,7 +672,7 @@
       + '<div class="slipSideLabel"><span class="slipSideTitle">作業票</span><span class="slipSideNo">NO. '+no+'</span>'+pageTag+'</div>'
       + '<div class="slipBody">'+slipMainHtml(part, list)+ticketSheetHtml(part, list)+'</div>'
       + '</div>';
-    const rightPanel = '<div class="slipPanel">'
+    const rightPanel = '<div class="slipPanel slipPanelCopy">'
       + '<div class="slipSideLabel"><span class="slipSideTitle">作業票（控）</span><span class="slipSideNo">NO. '+no+'</span>'+pageTag+'</div>'
       + '<div class="slipBody">'+slipMainHtml(part, list)+tagSheetHtml(part)+'</div>'
       + '</div>';

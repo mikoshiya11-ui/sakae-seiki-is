@@ -385,7 +385,8 @@
   // トップ画面のカードと同じ見え方にするため、作業票側（bs.order）の値を優先して重ねる。
   // 社内No.・客先・型式・納期・品名の正本は常にこちら側で、この画面は持たない。
   function productsFromRecords(){
-    return loadRecords().map(r=>{
+    // ★PT-0036（2026-11-10・榮製機様）：納品完了（status==='done'）の案件は出さない（工程別残品表と同じ基準）。保存データは消さない
+    return loadRecords().filter(r=> r && r.status !== 'done').map(r=>{
       const ref = caseRef(r);
       const o = loadBuhinOrder(ref) || {};
       return {

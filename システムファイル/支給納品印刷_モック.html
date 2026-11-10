@@ -184,7 +184,8 @@
     return null;
   }
   function productsFromRecords(){
-    return loadRecords().map(r=>{
+    // ★PT-0036（2026-11-10・榮製機様）：納品完了（status==='done'）の案件は出さない（工程別残品表と同じ基準）。保存データは消さない
+    return loadRecords().filter(r=> r && r.status !== 'done').map(r=>{
       const o = loadBuhinOrder(r.productNo) || {};
       return {
         productNo: r.productNo || '',
