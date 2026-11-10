@@ -403,6 +403,10 @@
   }
   function sortedProcesses(part){
     return (part.processes||[]).filter(p=>!PRINT_HIDDEN_CODES[p.code]).sort((a,b)=>{
+      // ★PT-0034（2026-11-10・榮製機様の回答）：日付が未定の段取り（SU）は、工程表・完了チケットの先頭に出す
+      //   （SU はほぼ全部品で最初の工程。日付が決まった SU と、SU 以外の工程の並びは今までどおり）
+      const suA = a.code==='SU' && !a.date, suB = b.code==='SU' && !b.date;
+      if(suA !== suB) return suA ? -1 : 1;
       const da = a.date || '';
       const db = b.date || '';
       if(!da && !db) return 0;
@@ -451,7 +455,8 @@
   //   「製品 5 桁＋部品 3 桁-2 桁」（例 45262000-21・000 は組付け品）→ 真ん中 3 桁を部品の枝番に（45262001-21）。
   //   「製品 5 桁-2 桁」（例 60121-31・組付けない製品）→ 5 桁の後ろに部品の枝番（60121001-31）。
   //   どちらの形でもない番号（仮番など）と、枝番が 3 桁以内の数字でない部品は、登録された社内No.のまま。
-  //   左右の「NO.」と控えタグの社内No.は、代表の社内No.（partOrderNo＝登録値のまま）。バーコードは P＋工程ID で無関係。
+  //   ★PT-0033 再対応（2026-11-10・榮製機様 NG 回答「1枚ごと全てに 001、002、003～」）：
+  //   左右の「NO.」と控えタグの社内No.も、チケットと同じ部品ごとの社内No.にする。バーコードは P＋工程ID で無関係。
   function partTicketNo(part){
     const base = partOrderNo(part);
     const sub = String((part && part.subNo) || '').trim();
@@ -570,7 +575,7 @@
   // ---- 右側下段：控えタグ（社内No／品名／型式／数量。現物では8枚とも同じ内容） ----
   function tagSheetHtml(part){
     const tagHtml = '<div class="tagBox">'
-      + '<div class="tagRow"><span class="tagLabel">社内No.</span><span class="tagVal tagNoVal">'+esc(partOrderNo(part)||'―')+'</span></div>'
+      + '<div class="tagRow"><span class="tagLabel">社内No.</span><span class="tagVal tagNoVal">'+esc(partTicketNo(part)||'―')+'</span></div>'
       + '<div class="tagRow"><span class="tagLabel">品名</span><span class="tagVal">'+esc(part.name||'―')+'</span><span class="tagQtyLabel">数量</span></div>'
       + '<div class="tagRow"><span class="tagLabel">型式</span><span class="tagVal">'+esc(order.model||'―')+'</span><span class="tagQtyVal">'+esc(part.qty||'―')+'</span></div>'
       + '</div>';
@@ -655,7 +660,7 @@
   // ---- A3横1枚＝左パネル（作業票＋完了チケット）＋右パネル（作業票（控）＋控えタグ） ----
   // 工程が13以上あって複数ページになる時は、pageIdx/pageCountを渡して側ラベルに「2/3枚目」を出す
   function slipSheetHtml(part, list, pageIdx, pageCount){
-    const no = esc(partOrderNo(part)||urlProductNo||'―');
+    const no = esc(partTicketNo(part)||urlProductNo||'―');
     const pageTag = pageCount>1 ? '<span class="slipSidePage">'+pageIdx+'/'+pageCount+'枚目</span>' : '';
     const leftPanel = '<div class="slipPanel">'
       + '<div class="slipSideLabel"><span class="slipSideTitle">作業票</span><span class="slipSideNo">NO. '+no+'</span>'+pageTag+'</div>'
