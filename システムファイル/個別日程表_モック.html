@@ -31,6 +31,14 @@
   :root{ --kb-day-line:rgba(20,35,70,.18); }
   html.p8print{ --kb-day-line:rgba(20,35,70,.42); }
   @media print{ :root{ --kb-day-line:rgba(20,35,70,.42); } }
+  /* ★PT-0008 再対応（2026-11-10・榮製機様 再NG「日付の線が所々薄い」）：
+     背景のグラデーションで描いた日付の線は、印刷（PDF）では 1pt＝1 画素の粗い画像になり、プリンターで拡大・縮小すると
+     日によって線が欠けて薄くなる。印刷の時（html.p8print）だけ、日付の線を本物の線（ベクター）で描き、背景側の線は消す。
+     線の太さ・色（--kb-day-line）は今までどおり。画面の見た目は変えない。 */
+  :root{ --kb-day-line-bg:var(--kb-day-line); }
+  html.p8print{ --kb-day-line-bg:transparent; }
+  .p8dayLines{ position:absolute; top:0; bottom:0; left:0; display:flex; pointer-events:none; }
+  .p8dayLines > i{ flex:0 0 var(--day-w); box-sizing:border-box; border-left:1px solid var(--kb-day-line); }
 
   .orderCard{
     background:#fff; border-radius:14px; padding:8px 20px; box-shadow:0 2px 10px rgba(20,35,70,.06);
@@ -1857,7 +1865,7 @@
     const dow0 = viewStart.getDay();
     const stops = [];
     const half = DAY_W/2;
-    const boundaryColor = 'var(--kb-day-line)'; // 1日ごとの境界線（はっきり）。色は CSS の --kb-day-line（印刷だけ濃くする・PT-0008）
+    const boundaryColor = 'var(--kb-day-line-bg)'; // 1日ごとの境界線（はっきり）。色は CSS の --kb-day-line（印刷だけ濃くする・PT-0008）。印刷中は線（.p8dayLines）で描くので背景側は透明
     const halfColor = 'rgba(20,35,70,.06)'; // 午前／午後の境界線（薄め）
     for(let i=0;i<7;i++){
       const dow = (dow0+i)%7;
@@ -2059,6 +2067,7 @@
         const conflictIds = computeConflictIds(bars);
         html += '<div class="ganttRow">';
         html += '<div class="track" data-role="track" data-part="'+pIdx+'" data-row="'+rIdx+'" data-unit-count="'+unitCount+'" style="width:'+totalDayWidth+'px;">';
+        if(document.documentElement.classList.contains('p8print')) html += '<div class="p8dayLines" aria-hidden="true">'+'<i></i>'.repeat(unitCount)+'</div>';   // PT-0008 再対応：印刷中だけ日付の線を本物の線で（バーより下）
         html += bars.map(b=>buildBarHtml(pIdx,rIdx,b,conflictIds.has(b.id))).join('');
         html += '</div>';
         html += '</div>';
