@@ -1532,6 +1532,10 @@
     if(!shown.length) return '<span style="color:#c7cfdc;font-size:11px;">未設定</span>';
     // 日程の若い順（未設定の日付は末尾）に並べ替えて表示する
     const sorted = shown.slice().sort((a,b)=>{
+      // ★PT-0034 再対応（2026-11-10・榮製機様 NG）：日付が未定の段取り（SU）は、作業票の画面でも先頭に出す
+      //   （作業票印刷の sortedProcesses と同じ規則。日付が決まった SU と、SU 以外の工程の並びは今までどおり）
+      const suA = a.code==='SU' && !a.date, suB = b.code==='SU' && !b.date;
+      if(suA !== suB) return suA ? -1 : 1;
       const da = a.date || '';
       const db = b.date || '';
       if(!da && !db) return 0;
@@ -2051,6 +2055,9 @@
     // 元の並び順(originalIndex)を持たせた写しを作り、その写しだけを並べる（原配列は破壊的 sort しない）
     return list.map((p, originalIndex)=>({ p, originalIndex })).sort((a,b)=>{
       const ka = ppDateKey(a.p.date), kb = ppDateKey(b.p.date);
+      // ★PT-0034 再対応：日付が未定の SU は「工程を編集」でも先頭（作業票の工程欄・作業票印刷と同じ）。SU が複数なら元の並び順
+      const suA = a.p.code==='SU' && !ka, suB = b.p.code==='SU' && !kb;
+      if(suA !== suB) return suA ? -1 : 1;
       if(ka && kb){
         if(ka !== kb) return ka < kb ? -1 : 1;
         const pa = a.p.ampm==='PM' ? 1 : 0;
