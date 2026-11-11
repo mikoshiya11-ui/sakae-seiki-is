@@ -55,6 +55,9 @@
     background:#fff3e0; color:#c9720d; font-weight:700; font-size:13px;
     padding:5px 16px; border-radius:20px; white-space:nowrap;
   }
+  /* ★PT-0037（2026-11-11）：発送日が無い時は発送の札を出さない。右へ寄せていたのは発送の札（margin-left:auto）なので、
+     その時だけ納期の札を右へ寄せる（画面・印刷とも） */
+  .orderCard .dueBadge.dueBadgeAlone{ margin-left:auto; }
 
   .checkCard{
     background:#fff; border-radius:14px; box-shadow:0 2px 10px rgba(20,35,70,.06); overflow:hidden; margin-bottom:16px;
@@ -1791,7 +1794,8 @@
     if(pageNameEl) pageNameEl.textContent = '個別日程表' + ((buhinState.order && buhinState.order.orderNo) ? '（社内No.：' + buhinState.order.orderNo + '）' : '');
     if(!orderCardEl) return;
     const o = buhinState.order || {};
-    const shipBadge = o.shipDate ? ('発送：' + o.shipDate.slice(5).replace('-','/')) : '発送：未定';
+    // ★PT-0037（2026-11-11・榮製機様）：発送しない型もあるため、発送日が無い時は「発送：未定」を出さない（発送日を入れたら出る）
+    const shipBadge = o.shipDate ? ('発送：' + o.shipDate.slice(5).replace('-','/')) : '';
     const dueBadge = o.dueDate ? ('納期：' + o.dueDate.slice(5).replace('-','/')) : '納期：未定';
     orderCardEl.innerHTML =
       // 案件品番の欄は出さない（社内No.と紛らわしいため）。社内No.は案件の顔になるので、
@@ -1803,8 +1807,8 @@
       + '<div><div class="oMeta">客先</div><div class="oModel">'+esc(o.customer||'-')+'</div></div>'
       + '<div><div class="oMeta">作成日</div><div class="oModel">'+esc(o.createdDate ? o.createdDate.slice(5).replace('-','/') : '-')+'</div></div>'
       + '<div><div class="oMeta">作成者</div><div class="oModel">'+esc(o.createdBy||'-')+'</div></div>'
-      + '<div class="shipBadge">'+esc(shipBadge)+'</div>'
-      + '<div class="dueBadge">'+esc(dueBadge)+'</div>';
+      + (shipBadge ? '<div class="shipBadge">'+esc(shipBadge)+'</div>' : '')
+      + '<div class="dueBadge'+(shipBadge ? '' : ' dueBadgeAlone')+'">'+esc(dueBadge)+'</div>';
   }
   renderOrderCard();
 
