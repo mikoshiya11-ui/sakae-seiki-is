@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>質問箱｜SAKAE SEIKI-OS</title>
+<!-- SAKAE-QA-01 質問箱の一覧（2026-11-12）。
+     ★Supabase の入口（public.qa_*）だけを使う。_sakaeSync.js・kv_store・localStorage の業務データには触れない。
+     ★質問と回答の文字は _qaBox.js がエスケープしてから出す。 -->
+<link rel="stylesheet" href="_issueCountermeasures.css">
+<link rel="stylesheet" href="_qaBox.css">
+<style>
+  body{ background:#F3F6FA; color:#304861; }
+  .topbar{ height:62px; padding:0 30px; gap:0; flex-wrap:nowrap; background:#102F5F; }
+  .topbar .backLink{ color:#FFFFFF; font-size:15px; font-weight:600; margin-right:18px; }
+  .topbar .who{ margin-left:auto; margin-right:18px; font-size:12px; color:#BFD0E6; }
+  .topbar .brand{ display:flex; align-items:baseline; font-size:18px; font-weight:800; letter-spacing:.01em; white-space:nowrap; }
+  .topbar .brand .sakae{ color:#FFFFFF; }
+  .topbar .brand .os{ color:#F28A21; }
+  .topbar .sep{ display:inline-block; width:0; height:24px; border-left:1px solid #5D77A3; margin:0 18px; }
+  .topbar .pageName{ color:#FFFFFF; font-size:17px; font-weight:700; white-space:nowrap; }
+  .pageHead{ max-width:1100px; margin:0 auto; padding:22px 30px 0; text-align:left; display:flex; align-items:center; gap:14px; }
+  .pageHead .ptAccent{ width:7px; height:44px; background:#F28A21; border-radius:2px; flex:0 0 auto; }
+  .pageTitle{ font-size:30px; font-weight:800; color:#102F5F; letter-spacing:.02em; line-height:1.2; margin:0; }
+  .pageLead{ font-size:13px; color:#58708A; margin:4px 0 0; }
+  @media (max-width:768px){
+    .topbar{ padding:0 16px; }
+    .topbar .brand, .topbar .sep, .topbar .backTop{ display:none; }
+    .pageHead{ padding:16px 16px 0; }
+    .pageTitle{ font-size:24px; }
+  }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <a class="backLink" href="問題点対策表.html">← 問題点対策表へ</a>
+    <a class="backLink backTop" href="../SAKAE SEIKI-iS.html">トップへ</a>
+    <span class="who" id="whoAmI"></span>
+    <span class="brand"><span class="sakae">SAKAE SEIKI-</span><span class="os">OS</span></span>
+    <span class="sep" aria-hidden="true"></span>
+    <span class="pageName">質問箱</span>
+  </div>
+  <header class="pageHead">
+    <span class="ptAccent" aria-hidden="true"></span>
+    <div>
+      <h1 class="pageTitle">💬 質問箱</h1>
+      <p class="pageLead">使い方で分からないことを書くと、ハンチョー（AI）が答えます。答えられないことは担当の見越に確認します。</p>
+    </div>
+  </header>
+
+  <div class="qaWrap">
+    <section class="qaAskArea" id="qaAskArea">
+      <h2>質問する</h2>
+      <textarea id="qaAskText" class="qaText" rows="3" maxlength="1000" placeholder="使い方で分からないことを書いてください（1000 字まで）"></textarea>
+      <div class="qaBoxRow"><span class="qaBoxMsg" id="qaAskMsg" role="status"></span><button class="qaBtn" id="qaAskSend" type="button">送る</button></div>
+    </section>
+
+    <div class="qaTools" id="qaTools" style="display:none">
+      <button type="button" data-status="" class="active">すべて</button>
+      <button type="button" data-status="NEW">受付</button>
+      <button type="button" data-status="ANSWERED">回答あり</button>
+      <button type="button" data-status="ESCALATED">確認中</button>
+      <button type="button" data-status="CLOSED">終了</button>
+      <label><input type="checkbox" id="qaMine"> 自分の質問だけ</label>
+      <span class="qaCount" id="qaCount"></span>
+    </div>
+
+    <main id="qaMain">
+      <div id="qaList"><p class="qaNone">読み込んでいます…</p></div>
+    </main>
+  </div>
+
+  <script src="_sakaeSupabaseConfig.js"></script>
+  <script src="_qaBox.js"></script>
+  <script>window.SakaeQA.mountPage();</script>
+</body>
+</html>

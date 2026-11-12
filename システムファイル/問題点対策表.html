@@ -8,6 +8,7 @@
      ★接続先は _issueTarget.js で固定（本番表のみ）。実行時の切替は持たない（DEV 表へは到達しない）。
      ★_sakaeSync.js は読み込まない（kv_store／localStorage の業務データに触れないため）。 -->
 <link rel="stylesheet" href="_issueCountermeasures.css">
+<link rel="stylesheet" href="_qaBox.css">
 <style>
   /* ==== 2026-11-01 問題点対策表 DESIGN 改修（この画面の見た目だけ・JS/登録/編集/状態/検索/CSV/保存は不変） ==== */
   body{ background:#F3F6FA; color:#304861; }
@@ -100,11 +101,13 @@
     <span class="pageName">問題点対策表</span>
   </div>
   <!-- ★画面を開いた瞬間に「問題点対策表」と分かることを最優先（2026-09-28 UI 是正）。表記は SAKAE SEIKI-OS に統一 -->
-  <header class="pageHead">
+  <header class="pageHead withQa">
     <span class="ptAccent" aria-hidden="true"></span>
     <svg class="ptIcon" viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2.5" width="6" height="3" rx="1"/><path d="M8.5 10.5h7M8.5 14h7M8.5 17.5h4.5"/></svg>
     <h1 class="pageTitle">問題点対策表</h1>
     <p class="pageSub">SAKAE SEIKI-OS</p>
+    <!-- ★SAKAE-QA-01 質問箱（右上）。利用権限が確認できてから _qaBox.js が中身を作る -->
+    <aside class="qaBox" id="qaBox" style="display:none" aria-label="質問箱"></aside>
   </header>
 
   <div class="wrap">
@@ -199,6 +202,7 @@
 
   <script src="_sakaeSupabaseConfig.js"></script>
   <script src="_issueTarget.js"></script>
+  <script src="_qaBox.js"></script>
   <script src="_issueCountermeasures.js"></script>
 </body>
 </html>

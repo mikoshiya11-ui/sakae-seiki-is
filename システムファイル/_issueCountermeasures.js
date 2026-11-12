@@ -126,6 +126,8 @@
     }
 
     ungate();
+    // ★SAKAE-QA-01：利用権限が確認できたことを質問箱（_qaBox.js）へ知らせる。質問箱は同じクライアントを使い、別のログイン状態を作らない
+    try{ document.dispatchEvent(new CustomEvent('sakae:authorized', { detail:{ sb } })); }catch(e){}
     restorePrefs();
     bindUI();
     await reload();

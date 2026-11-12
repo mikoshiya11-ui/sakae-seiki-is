@@ -1,0 +1,69 @@
+/* SAKAE 質問箱（SAKAE-QA-01）。問題点対策表の右上の箱と、質問箱.html の一覧で共通。
+   配色は問題点対策表（ネイビー #173B6D・オレンジ #F28A21）に合わせる。 */
+.qaBox{ margin-left:auto; width:380px; max-width:100%; background:#FFFFFF; border:1px solid #C9D5E1; border-radius:8px;
+  padding:10px 12px; box-shadow:0 2px 6px rgba(20,45,80,.06); font-size:13px; color:#304861; }
+.qaBoxHead{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.qaBoxTitle{ font-size:15px; font-weight:800; color:#102F5F; }
+.qaBoxCount{ margin-left:auto; font-size:12px; font-weight:700; color:#A56610; }
+.qaText{ width:100%; box-sizing:border-box; resize:vertical; min-height:44px; padding:8px 10px; border:1px solid #C4D1DE; border-radius:6px;
+  font:inherit; font-size:13px; color:#304861; background:#FFFFFF; }
+.qaText:focus{ outline:none; border-color:#173B6D; box-shadow:0 0 0 3px rgba(23,59,109,.12); }
+.qaBoxRow{ display:flex; align-items:center; gap:8px; margin-top:6px; }
+.qaBoxMsg{ flex:1 1 auto; font-size:12px; color:#1F7A3D; line-height:1.4; }
+.qaBoxMsg.bad{ color:#C8261E; }
+.qaBtn{ flex:0 0 auto; height:34px; padding:0 16px; border:1px solid #173B6D; border-radius:6px; background:#173B6D; color:#FFFFFF;
+  font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+.qaBtn.sub{ background:#FFFFFF; color:#173B6D; }
+.qaBtn:disabled{ opacity:.55; cursor:default; }
+.qaRecent{ list-style:none; margin:8px 0 0; padding:0; border-top:1px solid #E1E7EE; }
+.qaRecent li{ border-bottom:1px solid #EEF2F6; }
+.qaRecent li a{ display:flex; align-items:center; gap:8px; padding:5px 2px; color:#304861; text-decoration:none; }
+.qaRecent li a:hover{ background:#F1F6FB; }
+.qaRecent .qaSnip{ flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.qaNo{ font-weight:800; color:#123F83; white-space:nowrap; }
+.qaNone{ color:#7A879C; font-size:12px; padding:6px 2px; }
+.qaBoxFoot{ text-align:right; margin-top:6px; }
+.qaAll{ font-size:12px; font-weight:700; color:#173B6D; text-decoration:none; }
+.qaAll:hover{ text-decoration:underline; }
+.qaSt{ display:inline-flex; align-items:center; height:22px; padding:0 9px; border-radius:11px; font-size:11px; font-weight:700; white-space:nowrap; flex:0 0 auto; }
+.qaSt-NEW{ background:#FFF2DA; color:#A56610; }
+.qaSt-ANSWERED{ background:#E4F3E8; color:#1F7A3D; }
+.qaSt-ESCALATED{ background:#E6EFFA; color:#173B6D; }
+.qaSt-CLOSED{ background:#EEF1F6; color:#58708A; }
+
+/* 問題点対策表の見出しの右に置く。狭い画面では見出しの下に回す */
+.pageHead.withQa{ flex-wrap:wrap; }
+@media (max-width:900px){
+  .pageHead.withQa .qaBox{ margin-left:0; width:100%; flex:1 1 100%; }
+}
+
+/* ---- 質問箱.html ---- */
+.qaWrap{ max-width:1100px; margin:0 auto; padding:18px 30px 48px; }
+.qaAskArea{ background:#FFFFFF; border:1px solid #C9D5E1; border-radius:8px; padding:12px 14px; margin-bottom:16px; }
+.qaAskArea h2{ margin:0 0 6px; font-size:15px; color:#102F5F; }
+.qaTools{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:12px; }
+.qaTools button{ height:34px; padding:0 14px; border:1px solid #CBD6E2; border-radius:6px; background:#FFFFFF; color:#173B6D; font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+.qaTools button.active{ background:#173B6D; border-color:#173B6D; color:#FFFFFF; }
+.qaTools label{ font-size:13px; font-weight:700; color:#304861; display:inline-flex; align-items:center; gap:4px; margin-left:8px; }
+.qaTools .qaCount{ margin-left:auto; font-size:12px; color:#58708A; }
+.qaCard{ background:#FFFFFF; border:1px solid #C4D0DC; border-radius:8px; padding:12px 14px; margin-bottom:12px; box-shadow:0 2px 7px rgba(20,45,80,.05); }
+.qaCard.qaFocus{ border-color:#F28A21; box-shadow:0 0 0 3px rgba(242,138,33,.18); }
+.qaCardHead{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:6px; }
+.qaMeta{ font-size:12px; color:#58708A; }
+.qaBody{ white-space:pre-wrap; word-break:break-word; font-size:14px; line-height:1.7; color:#2A3446; }
+.qaAns{ margin-top:10px; padding:8px 12px; border-left:4px solid #173B6D; background:#F4F7FB; border-radius:0 6px 6px 0; }
+.qaAns-AI{ border-left-color:#2E7D9A; background:#F1F8FB; }
+.qaAns-HUMAN{ border-left-color:#F28A21; background:#FFF8EE; }
+.qaAns-ESC{ border-left-color:#7A879C; background:#F2F4F8; }
+.qaAnsOld{ opacity:.7; }
+.qaAnsWho{ font-size:12px; font-weight:800; color:#173B6D; display:flex; gap:8px; align-items:baseline; }
+.qaAnsFix{ font-weight:700; color:#A56610; }
+.qaAnsAt{ margin-left:auto; font-weight:500; color:#7A879C; }
+.qaAnsText{ white-space:pre-wrap; word-break:break-word; font-size:13.5px; line-height:1.7; color:#2A3446; margin-top:2px; }
+.qaCardActions{ margin-top:8px; text-align:right; }
+.qaAnswerForm{ margin-top:10px; padding-top:10px; border-top:1px dashed #C9D5E1; }
+.qaBlock{ background:#FFFFFF; border:1px solid #C9D5E1; border-radius:8px; padding:20px; }
+.qaBlock h2{ margin:0 0 8px; font-size:16px; color:#C8261E; }
+@media (max-width:768px){
+  .qaWrap{ padding:14px 10px 32px; }
+}
