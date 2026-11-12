@@ -29,9 +29,10 @@
 @media (max-width:1600px){ .qaBox.qaBand{ margin:6px 30px 0; } }
 .qaBand .qaBoxTitle{ flex:0 0 auto; font-size:14px; white-space:nowrap; }
 .qaBand .qaBandInput{ flex:1 1 320px; min-width:0; display:flex; align-items:flex-start; gap:8px; }
-.qaBand .qaBandText{ flex:1 1 auto; min-width:0; height:34px; min-height:34px; padding:7px 10px; resize:none; line-height:1.4; overflow-y:auto; }
+/* 1 行の時はスクロールの矢印を出さない（書いている間だけ縦に送れる） */
+.qaBand .qaBandText{ flex:1 1 auto; min-width:0; height:34px; min-height:34px; padding:7px 10px; resize:none; line-height:1.4; overflow-y:hidden; }
 /* 書いている間だけ 3 行（帯の中で広がる）。離れたら 1 行に戻る */
-.qaBand .qaBandText:focus{ height:72px; }
+.qaBand .qaBandText:focus{ height:72px; overflow-y:auto; }
 .qaBand .qaBoxCount{ flex:0 0 auto; margin-left:0; font-size:12px; white-space:nowrap; }
 .qaBand .qaBoxCount:empty{ display:none; }
 .qaBand .qaAll{ flex:0 0 auto; white-space:nowrap; }

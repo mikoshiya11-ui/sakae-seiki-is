@@ -3,7 +3,8 @@
 *{ box-sizing:border-box; }
 body{
   margin:0; background:#f4f6fa; color:#2a3446;
-  font-family:"Hiragino Sans","Yu Gothic",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  /* TOP・作業票・個別日程表と同じ並び（2026-11-13 テンチョー：フォントをそろえる） */
+  font-family:"Noto Sans JP","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
   font-size:13.5px; line-height:1.7;
 }
 .topbar{
