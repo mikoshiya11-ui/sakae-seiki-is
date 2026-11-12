@@ -14,7 +14,10 @@
 --   ・答えられる人＝ private.sakae_qa_answerers に載っている人だけ。専用ログイン（qa-hancho-sakae@…）は許可リストに入れず、ここにだけ載せる。
 --   ・回答の種類は答える人に登録した種類（AI／HUMAN）と一致しないと書けない＝AI の回答を人の回答として出せない。
 --   ・回数の制限：1 人 1 分に 3 件・1 日（日本時間）50 件。
---   ・14 日で「終了」は qa_list が返す表示だけ（定期の処理は作らない）。
+--   ・14 日で「終了」は qa_list が返す表示だけ（定期の処理は作らない）。終了（解決・14 日）には AI は答えず、確認中にもしない。
+--   ・AI は「確認中にしたあと人が答えていないもの」「人が最後に答えたもの」には答えない。解決（qa_resolve）は本人と HUMAN だけ。
+--   ・1 問あたりの記録は 20 件まで。
+--   （2026-11-12 イインチョー審査 CONDITIONAL PASS の是正を反映）
 
 -- ===== 1. 答えられる人 =====
 create table if not exists private.sakae_qa_answerers (
@@ -24,6 +27,8 @@ create table if not exists private.sakae_qa_answerers (
   created_at timestamptz not null default now()
 );
 revoke all on table private.sakae_qa_answerers from public, anon, authenticated;
+-- RLS 有効・policy なし＝関数（定義者）以外からは読めない・書けない（イインチョー LOW）
+alter table private.sakae_qa_answerers enable row level security;
 
 create or replace function private.qa_answerer_kind()
 returns text
@@ -63,6 +68,8 @@ create table if not exists public.qa_answer_log (
   kind        text check (kind is null or kind in ('AI','HUMAN')),
   text        text check (text is null or char_length(text) <= 2000),
   actor_uid   uuid references auth.users(id) on delete set null,
+  -- 記録した時点の名義（答える人の表の label）を写して残す。あとで人を外しても名義は変わらない（イインチョー LOW）
+  label       text check (label is null or char_length(label) <= 40),
   created_at  timestamptz not null default now()
 );
 create index if not exists qa_answer_log_q_idx on public.qa_answer_log (question_id, id);
@@ -93,7 +100,7 @@ as $$
     'answer', q.answer,
     'answer_kind', q.answer_kind,
     -- 回答した人の表示名（答える人の表の label。例：見越（ミコシヤ））。答える人を表から外したあとは null（画面は種類で出す）
-    'answer_label', (select a.label from public.qa_answer_log l join private.sakae_qa_answerers a on a.user_id = l.actor_uid
+    'answer_label', (select l.label from public.qa_answer_log l
                       where l.question_id = q.id and l.action = 'ANSWER' order by l.id desc limit 1),
     'answered_at', q.answered_at,
     -- 確認中の理由は答える人向けのメモ。答える人以外には返さない
@@ -103,15 +110,35 @@ as $$
     'created_at', q.created_at,
     'updated_at', q.updated_at,
     'answers', coalesce((
-      select jsonb_agg(jsonb_build_object('action', l.action, 'kind', l.kind, 'label', a.label,
+      select jsonb_agg(jsonb_build_object('action', l.action, 'kind', l.kind, 'label', l.label,
                                     'text', case when l.action = 'ESCALATE' and private.qa_answerer_kind() is null then null else l.text end,
                                     'at', l.created_at) order by l.id)
-      from public.qa_answer_log l left join private.sakae_qa_answerers a on a.user_id = l.actor_uid and l.action <> 'RESOLVE'
+      from public.qa_answer_log l
       where l.question_id = q.id
     ), '[]'::jsonb)
   );
 $$;
 revoke all on function private.qa_row_json(public.qa_questions) from public, anon, authenticated;
+
+-- 答える人の表示名（記録に写す）
+create or replace function private.qa_answerer_label()
+returns text
+language sql stable security definer
+set search_path = ''
+as $$
+  select a.label from private.sakae_qa_answerers a where a.user_id = (select auth.uid());
+$$;
+revoke all on function private.qa_answerer_label() from public, anon, authenticated;
+
+-- 表示上の終了（解決済み、または回答から 14 日を過ぎた回答済み）
+create or replace function private.qa_is_closed(q public.qa_questions)
+returns boolean
+language sql stable security definer
+set search_path = ''
+as $$
+  select q.status = 'CLOSED' or (q.status = 'ANSWERED' and q.answered_at < now() - interval '14 days');
+$$;
+revoke all on function private.qa_is_closed(public.qa_questions) from public, anon, authenticated;
 
 -- ===== 4. 入口 =====
 -- 画面用：自分が質問できるか・答えられるか
@@ -224,12 +251,15 @@ begin
   if v_uid is null then raise exception 'qa: not allowed' using errcode = '42501'; end if;
   select * into v_row from public.qa_questions where qno = p_qno for update;
   if not found then raise exception 'qa: not found' using errcode = 'P0002'; end if;
-  if not ((v_row.asker_uid = v_uid and coalesce(private.is_sakae_authorized_user(), false)) or private.qa_answerer_kind() is not null) then
+  -- 解決にできるのは質問した本人と人（HUMAN）の答える人だけ。AI は使えない（確認中を AI が解決→回答で回避できないように・イインチョー HIGH）
+  -- null が混ざると判定が素通りになるので、全体を coalesce で false に倒す（asker_uid が null＝質問者が消えた行など）
+  if not coalesce((v_row.asker_uid = v_uid and private.is_sakae_authorized_user()) or private.qa_answerer_kind() = 'HUMAN', false) then
     raise exception 'qa: not allowed' using errcode = '42501';
   end if;
   if v_row.status <> 'CLOSED' then
     update public.qa_questions set status = 'CLOSED', closed_at = now(), updated_at = now() where id = v_row.id returning * into v_row;
-    insert into public.qa_answer_log (question_id, action, actor_uid) values (v_row.id, 'RESOLVE', v_uid);
+    insert into public.qa_answer_log (question_id, action, kind, label, actor_uid)
+    values (v_row.id, 'RESOLVE', private.qa_answerer_kind(), private.qa_answerer_label(), v_uid);
   end if;
   return private.qa_row_json(v_row);
 end;
@@ -248,13 +278,17 @@ begin
   if (select auth.uid()) is null or private.qa_answerer_kind() is null then
     raise exception 'qa: not allowed' using errcode = '42501';
   end if;
-  select coalesce(jsonb_agg(private.qa_row_json(q) order by q.updated_at, q.id), '[]'::jsonb) into v_items
+  -- NEW は件数の枠の外で全部（最大 1000）を先に並べ、そのあとに p_since より後に変わったもの（最大 200・古い順）。本部の取りこぼし防止（イインチョー LOW）
+  select coalesce(jsonb_agg(x.j order by x.grp, x.updated_at, x.id), '[]'::jsonb) into v_items
   from (
-    select * from public.qa_questions
-    where status = 'NEW' or updated_at > coalesce(p_since, '-infinity'::timestamptz)
-    order by updated_at, id
-    limit 200
-  ) q;
+    (select 0 as grp, q.updated_at, q.id, private.qa_row_json(q) as j
+       from public.qa_questions q where q.status = 'NEW' order by q.id limit 1000)
+    union all
+    (select 1 as grp, q.updated_at, q.id, private.qa_row_json(q) as j
+       from public.qa_questions q
+      where q.status <> 'NEW' and q.updated_at > coalesce(p_since, '-infinity'::timestamptz)
+      order by q.updated_at, q.id limit 200)
+  ) x;
   return jsonb_build_object('now', now(), 'items', v_items);
 end;
 $$;
@@ -270,6 +304,9 @@ declare
   v_kind text := private.qa_answerer_kind();
   v_text text := btrim(coalesce(p_answer, ''));
   v_row  public.qa_questions;
+  v_esc  bigint;
+  v_hum  bigint;
+  v_closed boolean;
 begin
   if v_uid is null or v_kind is null then raise exception 'qa: not allowed' using errcode = '42501'; end if;
   if p_kind is distinct from v_kind then raise exception 'qa: kind mismatch' using errcode = '42501'; end if;
@@ -278,16 +315,36 @@ begin
   end if;
   select * into v_row from public.qa_questions where qno = p_qno for update;
   if not found then raise exception 'qa: not found' using errcode = 'P0002'; end if;
-  -- 確認中（人が答える番）のものに AI は答えない（本部 2026-11-12）
-  if v_row.status = 'ESCALATED' and v_kind = 'AI' then
-    raise exception 'qa: escalated question is for a human answer' using errcode = '22023', hint = 'ESCALATED_HUMAN_ONLY';
+  -- 1 問あたりの記録は 20 件まで（暴走よけ・イインチョー MEDIUM）
+  if (select count(*) from public.qa_answer_log l where l.question_id = v_row.id) >= 20 then
+    raise exception 'qa: too many records for one question' using errcode = 'P0001', hint = 'LOG_LIMIT';
   end if;
+  if v_kind = 'AI' then
+    select max(l.id) into v_esc from public.qa_answer_log l where l.question_id = v_row.id and l.action = 'ESCALATE';
+    select max(l.id) into v_hum from public.qa_answer_log l where l.question_id = v_row.id and l.action = 'ANSWER' and l.kind = 'HUMAN';
+    -- 確認中にしたあと人が答えていないものに AI は答えない。状態が何であっても（解決・終了にしてからの回避を防ぐ・イインチョー HIGH）
+    if v_row.status = 'ESCALATED' or (v_esc is not null and (v_hum is null or v_hum < v_esc)) then
+      raise exception 'qa: escalated question is for a human answer' using errcode = '22023', hint = 'ESCALATED_HUMAN_ONLY';
+    end if;
+    -- 人が答えたあとに AI は追記しない（イインチョー MEDIUM）
+    if v_hum is not null and v_hum = (select max(l.id) from public.qa_answer_log l where l.question_id = v_row.id and l.action = 'ANSWER') then
+      raise exception 'qa: a human has answered' using errcode = '22023', hint = 'HUMAN_ANSWERED';
+    end if;
+    -- 終了（解決・14 日）したものに AI は答えない。人の追記はできる
+    if private.qa_is_closed(v_row) then
+      raise exception 'qa: closed question is for a human answer' using errcode = '22023', hint = 'CLOSED_HUMAN_ONLY';
+    end if;
+  end if;
+  -- 表示上の終了（解決・14 日）に人が追記したら、状態を CLOSED に揃える（追記で「回答あり」に戻らない）
+  v_closed := private.qa_is_closed(v_row);
   update public.qa_questions
      set answer = v_text, answer_kind = v_kind, answered_at = now(),
-         status = case when status = 'CLOSED' then 'CLOSED' else 'ANSWERED' end,
+         status = case when v_closed then 'CLOSED' else 'ANSWERED' end,
+         closed_at = case when v_closed then coalesce(closed_at, now()) else closed_at end,
          updated_at = now()
    where id = v_row.id returning * into v_row;
-  insert into public.qa_answer_log (question_id, action, kind, text, actor_uid) values (v_row.id, 'ANSWER', v_kind, v_text, v_uid);
+  insert into public.qa_answer_log (question_id, action, kind, label, text, actor_uid)
+  values (v_row.id, 'ANSWER', v_kind, private.qa_answerer_label(), v_text, v_uid);
   return private.qa_row_json(v_row);
 end;
 $$;
@@ -308,11 +365,16 @@ begin
   if v_why is not null and char_length(v_why) > 500 then v_why := left(v_why, 500); end if;
   select * into v_row from public.qa_questions where qno = p_qno for update;
   if not found then raise exception 'qa: not found' using errcode = 'P0002'; end if;
-  if v_row.status = 'CLOSED' then raise exception 'qa: already closed' using errcode = '22023'; end if;
+  -- 終了（解決・14 日を過ぎた回答済み）は確認中にしない（表示と揃える）
+  if private.qa_is_closed(v_row) then raise exception 'qa: already closed' using errcode = '22023'; end if;
+  if (select count(*) from public.qa_answer_log l where l.question_id = v_row.id) >= 20 then
+    raise exception 'qa: too many records for one question' using errcode = 'P0001', hint = 'LOG_LIMIT';
+  end if;
   update public.qa_questions
      set status = 'ESCALATED', escalate_reason = v_why, escalated_at = now(), updated_at = now()
    where id = v_row.id returning * into v_row;
-  insert into public.qa_answer_log (question_id, action, kind, text, actor_uid) values (v_row.id, 'ESCALATE', v_kind, v_why, v_uid);
+  insert into public.qa_answer_log (question_id, action, kind, label, text, actor_uid)
+  values (v_row.id, 'ESCALATE', v_kind, private.qa_answerer_label(), v_why, v_uid);
   return private.qa_row_json(v_row);
 end;
 $$;

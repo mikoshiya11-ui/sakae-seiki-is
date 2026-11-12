@@ -32,6 +32,9 @@
     if(/RATE_MINUTE|3 per minute/.test(m+h)) return '続けて送れるのは 1 分に 3 件までです。少し待ってから送ってください。';
     if(/RATE_DAY|50 per day/.test(m+h)) return '今日送れる質問は 50 件までです。明日また送ってください。';
     if(/ESCALATED_HUMAN_ONLY/.test(m+h)) return '確認中の質問には、人が答えます（AI では答えられません）。';
+    if(/HUMAN_ANSWERED/.test(m+h)) return '人が答えたあとの質問には、AI は追記できません。';
+    if(/CLOSED_HUMAN_ONLY/.test(m+h)) return '終了した質問には、AI は答えられません。';
+    if(/LOG_LIMIT/.test(m+h)) return 'この質問への回答・記録が多すぎます（20 件まで）。新しい質問として送ってください。';
     if(/body must be/.test(m)) return '質問は 1〜' + MAX_BODY + ' 字で書いてください。';
     if(/answer must be/.test(m)) return '回答は 1〜' + MAX_ANSWER + ' 字で書いてください。';
     if(/not allowed|42501|permission/.test(m)) return 'この操作をする権限がありません。';
@@ -86,10 +89,15 @@
         '<li><a href="'+LIST_PAGE+'#'+encodeURIComponent(q.qno)+'"><span class="qaNo">'+esc(q.qno)+'</span>'
         + '<span class="qaSnip">'+esc(q.body)+'</span>'+statusBadge(q.status)+'</a></li>').join('')
         : '<li class="qaNone">まだ質問はありません</li>';
-      // 回答待ちがある間だけ、画面が見えているときに見直す
-      clearTimeout(timer);
-      if(open) timer = setTimeout(()=>{ if(document.visibilityState === 'visible') refresh(); else timer = setTimeout(refresh, POLL_MS); }, POLL_MS);
+      // 回答待ちがある間だけ、画面が見えているときに見直す（見えていない間は止め、見えたら再開する）
+      clearTimeout(timer); timer = null; waiting = open > 0;
+      if(waiting && document.visibilityState === 'visible') timer = setTimeout(refresh, POLL_MS);
     }
+    let waiting = false;
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState === 'visible'){ if(waiting && !timer) refresh(); }
+      else { clearTimeout(timer); timer = null; }
+    });
 
     async function send(){
       if(busy) return;
@@ -141,7 +149,8 @@
     const canAnswer = !!me.answer_kind;
     if(!me.can_ask) $('qaAskArea').style.display = 'none';
 
-    const st = { status:'', mine:false, list:[], timer:null };
+    // drafts：書きかけの回答（質問番号ごと）。一覧を作り直しても消さない（イインチョー MEDIUM）
+    const st = { status:'', mine:false, list:[], timer:null, drafts:{} };
     const setMsg = (id, t, bad)=>{ const el=$(id); if(!el) return; el.textContent = t || ''; el.classList.toggle('bad', !!bad); };
 
     function cardHtml(q){
@@ -152,7 +161,10 @@
         + '<div class="qaBody">'+esc(q.body)+'</div>'
         + answersHtml(q);
       if(canResolve) h += '<div class="qaCardActions"><button class="qaBtn sub" type="button" data-act="resolve">解決した</button></div>';
-      if(canAnswer && q.stored_status !== 'CLOSED'){
+      const ansLog = (q.answers || []).filter(a=> a.action === 'ANSWER');
+      const lastAns = ansLog.length ? ansLog[ansLog.length - 1] : null;
+      const aiBlocked = me.answer_kind === 'AI' && (q.stored_status === 'ESCALATED' || (lastAns && lastAns.kind === 'HUMAN'));
+      if(canAnswer && q.status !== 'CLOSED' && !aiBlocked){
         h += '<div class="qaAnswerForm">'
           + '<textarea class="qaText" rows="3" maxlength="'+MAX_ANSWER+'" data-role="answer" placeholder="回答を書く（'+esc(who(me.answer_kind, null))+'として出ます）"></textarea>'
           + '<div class="qaBoxRow"><span class="qaBoxMsg" data-role="msg"></span>'
@@ -162,16 +174,28 @@
       return h + '</article>';
     }
 
+    // 書きかけの回答欄にフォーカスがある間は、自動の見直しで作り直さない
+    const editing = ()=>{ const a = document.activeElement; return !!(a && a.matches && a.matches('#qaList textarea[data-role="answer"]')); };
+    function schedule(){
+      clearTimeout(st.timer); st.timer = null;
+      if(document.visibilityState !== 'visible') return;
+      if(st.list.some(q=> q.status === 'NEW')) st.timer = setTimeout(()=>{ if(editing()) schedule(); else load(); }, POLL_MS);
+    }
+    document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible'){ if(!st.timer) schedule(); } else { clearTimeout(st.timer); st.timer = null; } });
     async function load(){
       let list;
       try{ list = await rpc(sb, 'qa_list', { p_status: st.status || null, p_mine: st.mine, p_limit: 200 }); }
       catch(e){ $('qaList').innerHTML = '<p class="qaNone">質問を読み込めませんでした。再読込してください。</p>'; return; }
       st.list = list;
       $('qaList').innerHTML = list.length ? list.map(cardHtml).join('') : '<p class="qaNone">該当する質問はありません。</p>';
+      // 書きかけの回答を戻す
+      $('qaList').querySelectorAll('textarea[data-role="answer"]').forEach(t=>{ const no = t.closest('.qaCard').getAttribute('data-qno'); if(st.drafts[no]) t.value = st.drafts[no]; });
       $('qaCount').textContent = list.length + ' 件';
-      if(location.hash){ const el = document.getElementById(decodeURIComponent(location.hash.slice(1))); if(el){ el.classList.add('qaFocus'); } }
-      clearTimeout(st.timer);
-      if(list.some(q=> q.status === 'NEW')) st.timer = setTimeout(()=>{ if(document.visibilityState === 'visible') load(); }, POLL_MS);
+      if(location.hash){
+        let id = ''; try{ id = decodeURIComponent(location.hash.slice(1)); }catch(e){ id = ''; }
+        const el = id ? document.getElementById(id) : null; if(el){ el.classList.add('qaFocus'); }
+      }
+      schedule();
     }
 
     // 絞り込み
@@ -192,6 +216,11 @@
       finally{ $('qaAskSend').disabled = false; }
     });
 
+    // 書きかけの回答を覚えておく
+    $('qaList').addEventListener('input', (e)=>{
+      const t = e.target; if(!t.matches('textarea[data-role="answer"]')) return;
+      st.drafts[t.closest('.qaCard').getAttribute('data-qno')] = t.value;
+    });
     // カードの操作（解決・回答・確認中）
     $('qaList').addEventListener('click', async (e)=>{
       const b = e.target.closest('button[data-act]'); if(!b) return;
@@ -208,6 +237,7 @@
           const t = card.querySelector('[data-role="answer"]').value.trim();
           if(!t){ say('回答を書いてください。', true); b.disabled = false; return; }
           await rpc(sb, 'qa_answer', { p_qno: qno, p_answer: t, p_kind: me.answer_kind });
+          delete st.drafts[qno];
         }else if(act === 'escalate'){
           const why = window.prompt('確認中にする理由（答える人向けのメモ・画面には出ません）', '');
           if(why === null){ b.disabled = false; return; }
