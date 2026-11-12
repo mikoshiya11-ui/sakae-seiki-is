@@ -1,6 +1,6 @@
 // ============================================================================
 // SAKAE 質問箱（SAKAE-QA-01・2026-11-12）
-//   ・問題点対策表の右上の「💬 質問箱」（mountBox）と、一覧の画面 質問箱.html（mountPage）。
+//   ・問題点対策表の見出しの下の「💬 質問箱」の帯（mountBox）と、一覧の画面 質問箱.html（mountPage）。
 //   ・Supabase の入口（public.qa_*）だけを使う。表を直接読み書きしない。kv_store・localStorage の業務データ・_sakaeSync.js は使わない。
 //   ・質問と回答の文字はすべてデータとして扱い、画面へは esc() してから出す（HTML として解釈させない）。
 //   ・回答の表示：AI＝「ハンチョー（AI）の回答」／人＝答える人の表の名前（例：見越（ミコシヤ））／確認中＝「すみません、担当の見越に確認します。」
@@ -74,8 +74,8 @@
     // 横長の帯：［💬 質問箱｜書く欄｜送る｜件数｜すべて見る →］を 1 行に。最近の質問の一覧は置かず、件数だけ出す（2026-11-13 テンチョー決定）
     root.innerHTML =
         '<span class="qaBoxTitle">💬 質問箱</span>'
-      + '<textarea id="qaBoxText" class="qaText qaBandText" rows="1" maxlength="'+MAX_BODY+'" placeholder="使い方で分からないことを書いてください"></textarea>'
-      + '<button class="qaBtn" id="qaBoxSend" type="button">送る</button>'
+      + '<div class="qaBandInput"><textarea id="qaBoxText" class="qaText qaBandText" rows="1" maxlength="'+MAX_BODY+'" placeholder="使い方で分からないことを書いてください（Ctrl+Enter でも送れます）"></textarea>'
+      + '<button class="qaBtn" id="qaBoxSend" type="button">送る</button></div>'
       + '<span class="qaBoxCount" id="qaBoxCount"></span>'
       + '<a href="'+LIST_PAGE+'" class="qaAll">すべて見る →</a>'
       + '<div class="qaBoxMsg" id="qaBoxMsg" role="status"></div>';
@@ -84,7 +84,13 @@
     async function refresh(){
       let list;
       try{ list = await rpc(sb, 'qa_list', { p_mine:true, p_limit:100 }); }
-      catch(e){ $('qaBoxCount').textContent = '読み込めませんでした'; return; }
+      catch(e){
+        // 読めなかった時も、回答待ちがあれば次の見直しを張り直す（古いタイマーが残って止まらないように・イインチョー指摘 5）
+        $('qaBoxCount').textContent = '読み込めませんでした';
+        clearTimeout(timer); timer = null;
+        if(waiting && document.visibilityState === 'visible') timer = setTimeout(refresh, POLL_MS);
+        return;
+      }
       // 自分の質問の件数（終了は数えない）
       const n = (st)=> list.filter(q=> q.status === st).length;
       const open = n('NEW');
@@ -121,6 +127,8 @@
       root.style.display = '';
       $('qaBoxSend').addEventListener('click', send);
       $('qaBoxText').addEventListener('keydown', (e)=>{ if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); send(); } });
+      // 書いている間だけ 3 行に広げる（CSS の :focus）。離れたら 1 行に戻し、1 行目が見えるよう先頭へ戻す（書いた文は残す・テンチョー決定 2026-11-13）
+      $('qaBoxText').addEventListener('blur', (e)=>{ e.target.scrollTop = 0; });
       await refresh();
     })();
     return { refresh };

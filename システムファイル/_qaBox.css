@@ -28,8 +28,10 @@
 .qaBox.qaBand{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; width:auto; max-width:1540px; margin:6px auto 0; padding:3px 10px; box-sizing:border-box; }
 @media (max-width:1600px){ .qaBox.qaBand{ margin:6px 30px 0; } }
 .qaBand .qaBoxTitle{ flex:0 0 auto; font-size:14px; white-space:nowrap; }
-.qaBand .qaBandText{ flex:1 1 240px; min-width:0; height:34px; min-height:34px; padding:7px 10px; resize:none; line-height:1.4; }
-.qaBand .qaBandText:focus{ height:34px; }
+.qaBand .qaBandInput{ flex:1 1 320px; min-width:0; display:flex; align-items:flex-start; gap:8px; }
+.qaBand .qaBandText{ flex:1 1 auto; min-width:0; height:34px; min-height:34px; padding:7px 10px; resize:none; line-height:1.4; overflow-y:auto; }
+/* 書いている間だけ 3 行（帯の中で広がる）。離れたら 1 行に戻る */
+.qaBand .qaBandText:focus{ height:72px; }
 .qaBand .qaBoxCount{ flex:0 0 auto; margin-left:0; font-size:12px; white-space:nowrap; }
 .qaBand .qaBoxCount:empty{ display:none; }
 .qaBand .qaAll{ flex:0 0 auto; white-space:nowrap; }
@@ -40,11 +42,13 @@
   .qaBand .qaBoxTitle{ order:1; }
   .qaBand .qaBoxCount{ order:2; }
   .qaBand .qaAll{ order:3; margin-left:auto; }
-  .qaBand .qaBandText{ order:4; flex:1 1 calc(100% - 90px); }
-  .qaBand #qaBoxSend{ order:5; }
+  .qaBand .qaBoxCount{ flex:1 1 auto; min-width:0; white-space:normal; }
+  /* 書く欄と送るは必ず同じ段（件数が長くても送るだけが落ちない・イインチョー指摘 3） */
+  .qaBand .qaBandInput{ order:4; flex:1 1 100%; }
   .qaBand > .qaBoxMsg{ order:6; }
 }
-@media (max-width:900px){ .qaBox.qaBand{ margin:6px 10px 0; padding:6px 10px; } }
+/* 表（.wrap）の左右の余白が 10px になるのは 768px 以下（問題点対策表.html）。帯も同じ境目にそろえる（イインチョー指摘 1） */
+@media (max-width:768px){ .qaBox.qaBand{ margin:6px 10px 0; padding:6px 10px; } }
 
 /* ---- 質問箱.html ---- */
 .qaWrap{ max-width:1100px; margin:0 auto; padding:18px 30px 48px; }
