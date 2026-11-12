@@ -81,10 +81,25 @@
     btnEl.disabled = true;
   }
 
+  // ログイン後の行き先。?next= は「同じサイトの、榮製機OS のフォルダの中のページ」だけ受け付ける。
+  // よそのサイト（https://…・//…）や javascript: などは捨てて TOP へ戻す（外へ飛ばす・命令を動かす悪用を防ぐ）。
+  // 正しい呼び出し元（_sakaeSync.js・_issueCountermeasures.js・_qaBox.js）は location.pathname + location.search を渡す。
   function nextUrl(){
-    const params = new URLSearchParams(location.search);
-    const next = params.get('next');
-    return next || '../SAKAE SEIKI-iS.html';
+    const DEFAULT_NEXT = '../SAKAE SEIKI-iS.html';
+    const raw = new URLSearchParams(location.search).get('next');
+    if(!raw) return DEFAULT_NEXT;
+    try{
+      const u = new URL(raw, location.href);
+      if(u.protocol !== 'https:' && u.protocol !== 'http:') return DEFAULT_NEXT;
+      if(u.origin !== location.origin) return DEFAULT_NEXT;
+      const root = new URL('../', location.href).pathname;   // 榮製機OS のフォルダ（公開版では /sakae-seiki-is/）
+      if(u.pathname.indexOf(root) !== 0) return DEFAULT_NEXT;
+      // 「//」で始まると、返した文字がよそのサイトの住所として読まれる（サイトが住所の直下に置かれた時。イインチョー LOW-1）
+      if(u.pathname.indexOf('//') === 0) return DEFAULT_NEXT;
+      return u.pathname + u.search + u.hash;
+    }catch(e){
+      return DEFAULT_NEXT;
+    }
   }
 
   const scriptEl = document.createElement('script');
