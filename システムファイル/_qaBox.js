@@ -34,7 +34,7 @@
     if(/ESCALATED_HUMAN_ONLY/.test(m+h)) return '確認中の質問には、人が答えます（AI では答えられません）。';
     if(/HUMAN_ANSWERED/.test(m+h)) return '人が答えたあとの質問には、AI は追記できません。';
     if(/CLOSED_HUMAN_ONLY/.test(m+h)) return '終了した質問には、AI は答えられません。';
-    if(/LOG_LIMIT/.test(m+h)) return 'この質問への回答・記録が多すぎます（20 件まで）。新しい質問として送ってください。';
+    if(/LOG_LIMIT/.test(m+h)) return 'この質問への回答・記録が上限に達しました。新しい質問として送ってください。';
     if(/body must be/.test(m)) return '質問は 1〜' + MAX_BODY + ' 字で書いてください。';
     if(/answer must be/.test(m)) return '回答は 1〜' + MAX_ANSWER + ' 字で書いてください。';
     if(/not allowed|42501|permission/.test(m)) return 'この操作をする権限がありません。';

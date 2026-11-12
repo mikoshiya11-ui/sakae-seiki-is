@@ -16,7 +16,7 @@
 --   ・回数の制限：1 人 1 分に 3 件・1 日（日本時間）50 件。
 --   ・14 日で「終了」は qa_list が返す表示だけ（定期の処理は作らない）。終了（解決・14 日）には AI は答えず、確認中にもしない。
 --   ・AI は「確認中にしたあと人が答えていないもの」「人が最後に答えたもの」には答えない。解決（qa_resolve）は本人と HUMAN だけ。
---   ・1 問あたりの記録は 20 件まで。
+--   ・1 問あたりの記録は AI が 20 件・人（HUMAN）が 40 件まで（AI が枠を埋めても人は答えられる）。確認中を重ねて記録しない。人が最後に答えた質問を AI は確認中に戻さない。
 --   （2026-11-12 イインチョー審査 CONDITIONAL PASS の是正を反映）
 
 -- ===== 1. 答えられる人 =====
@@ -315,8 +315,8 @@ begin
   end if;
   select * into v_row from public.qa_questions where qno = p_qno for update;
   if not found then raise exception 'qa: not found' using errcode = 'P0002'; end if;
-  -- 1 問あたりの記録は 20 件まで（暴走よけ・イインチョー MEDIUM）
-  if (select count(*) from public.qa_answer_log l where l.question_id = v_row.id) >= 20 then
+  -- 1 問あたりの記録の上限：AI は 20 件・人（HUMAN）は 40 件（AI が枠を埋めても人は答えられる・イインチョー再審査 A）
+  if (select count(*) from public.qa_answer_log l where l.question_id = v_row.id) >= (case when v_kind = 'AI' then 20 else 40 end) then
     raise exception 'qa: too many records for one question' using errcode = 'P0001', hint = 'LOG_LIMIT';
   end if;
   if v_kind = 'AI' then
@@ -367,7 +367,18 @@ begin
   if not found then raise exception 'qa: not found' using errcode = 'P0002'; end if;
   -- 終了（解決・14 日を過ぎた回答済み）は確認中にしない（表示と揃える）
   if private.qa_is_closed(v_row) then raise exception 'qa: already closed' using errcode = '22023'; end if;
-  if (select count(*) from public.qa_answer_log l where l.question_id = v_row.id) >= 20 then
+  -- すでに確認中なら記録を足さず、そのまま返す（イインチョー再審査 A）
+  if v_row.status = 'ESCALATED' then
+    return private.qa_row_json(v_row);
+  end if;
+  -- 人が最後に答えた質問を AI が確認中に戻すことはしない（イインチョー再審査 C）
+  if v_kind = 'AI' and exists (
+       select 1 from public.qa_answer_log l
+        where l.question_id = v_row.id and l.action = 'ANSWER' and l.kind = 'HUMAN'
+          and l.id = (select max(l2.id) from public.qa_answer_log l2 where l2.question_id = v_row.id and l2.action = 'ANSWER')) then
+    raise exception 'qa: a human has answered' using errcode = '22023', hint = 'HUMAN_ANSWERED';
+  end if;
+  if (select count(*) from public.qa_answer_log l where l.question_id = v_row.id) >= (case when v_kind = 'AI' then 20 else 40 end) then
     raise exception 'qa: too many records for one question' using errcode = 'P0001', hint = 'LOG_LIMIT';
   end if;
   update public.qa_questions
