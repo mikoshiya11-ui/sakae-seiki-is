@@ -1,8 +1,7 @@
-/* SAKAE 質問箱（SAKAE-QA-01）。問題点対策表の右上の箱と、質問箱.html の一覧で共通。
+/* SAKAE 質問箱（SAKAE-QA-01）。問題点対策表の見出しの下の帯と、質問箱.html の一覧で共通。
    配色は問題点対策表（ネイビー #173B6D・オレンジ #F28A21）に合わせる。 */
-.qaBox{ margin-left:auto; width:380px; max-width:100%; background:#FFFFFF; border:1px solid #C9D5E1; border-radius:8px;
-  padding:10px 12px; box-shadow:0 2px 6px rgba(20,45,80,.06); font-size:13px; color:#304861; }
-.qaBoxHead{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.qaBox{ background:#FFFFFF; border:1px solid #C9D5E1; border-radius:8px;
+  box-shadow:0 2px 6px rgba(20,45,80,.06); font-size:13px; color:#304861; }
 .qaBoxTitle{ font-size:15px; font-weight:800; color:#102F5F; }
 .qaBoxCount{ margin-left:auto; font-size:12px; font-weight:700; color:#A56610; }
 .qaText{ width:100%; box-sizing:border-box; resize:vertical; min-height:44px; padding:8px 10px; border:1px solid #C4D1DE; border-radius:6px;
@@ -15,14 +14,8 @@
   font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
 .qaBtn.sub{ background:#FFFFFF; color:#173B6D; }
 .qaBtn:disabled{ opacity:.55; cursor:default; }
-.qaRecent{ list-style:none; margin:8px 0 0; padding:0; border-top:1px solid #E1E7EE; }
-.qaRecent li{ border-bottom:1px solid #EEF2F6; }
-.qaRecent li a{ display:flex; align-items:center; gap:8px; padding:5px 2px; color:#304861; text-decoration:none; }
-.qaRecent li a:hover{ background:#F1F6FB; }
-.qaRecent .qaSnip{ flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .qaNo{ font-weight:800; color:#123F83; white-space:nowrap; }
 .qaNone{ color:#7A879C; font-size:12px; padding:6px 2px; }
-.qaBoxFoot{ text-align:right; margin-top:6px; }
 .qaAll{ font-size:12px; font-weight:700; color:#173B6D; text-decoration:none; }
 .qaAll:hover{ text-decoration:underline; }
 .qaSt{ display:inline-flex; align-items:center; height:22px; padding:0 9px; border-radius:11px; font-size:11px; font-weight:700; white-space:nowrap; flex:0 0 auto; }
@@ -31,11 +24,27 @@
 .qaSt-ESCALATED{ background:#E6EFFA; color:#173B6D; }
 .qaSt-CLOSED{ background:#EEF1F6; color:#58708A; }
 
-/* 問題点対策表の見出しの右に置く。狭い画面では見出しの下に回す */
-.pageHead.withQa{ flex-wrap:wrap; }
-@media (max-width:900px){
-  .pageHead.withQa .qaBox{ margin-left:0; width:100%; flex:1 1 100%; }
+/* 問題点対策表の横長の帯（qaBand・2026-11-13 テンチョー決定）：見出しのすぐ下に 1 行。表と同じ幅にそろえる */
+.qaBox.qaBand{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; width:auto; max-width:1540px; margin:6px auto 0; padding:3px 10px; box-sizing:border-box; }
+@media (max-width:1600px){ .qaBox.qaBand{ margin:6px 30px 0; } }
+.qaBand .qaBoxTitle{ flex:0 0 auto; font-size:14px; white-space:nowrap; }
+.qaBand .qaBandText{ flex:1 1 240px; min-width:0; height:34px; min-height:34px; padding:7px 10px; resize:none; line-height:1.4; }
+.qaBand .qaBandText:focus{ height:34px; }
+.qaBand .qaBoxCount{ flex:0 0 auto; margin-left:0; font-size:12px; white-space:nowrap; }
+.qaBand .qaBoxCount:empty{ display:none; }
+.qaBand .qaAll{ flex:0 0 auto; white-space:nowrap; }
+.qaBand > .qaBoxMsg{ flex:1 1 100%; margin-top:0; }
+.qaBand > .qaBoxMsg:empty{ display:none; }
+/* タブレット・スマホ：1 段目＝見出し・件数・すべて見る／2 段目＝書く欄・送る */
+@media (max-width:1000px){
+  .qaBand .qaBoxTitle{ order:1; }
+  .qaBand .qaBoxCount{ order:2; }
+  .qaBand .qaAll{ order:3; margin-left:auto; }
+  .qaBand .qaBandText{ order:4; flex:1 1 calc(100% - 90px); }
+  .qaBand #qaBoxSend{ order:5; }
+  .qaBand > .qaBoxMsg{ order:6; }
 }
+@media (max-width:900px){ .qaBox.qaBand{ margin:6px 10px 0; padding:6px 10px; } }
 
 /* ---- 質問箱.html ---- */
 .qaWrap{ max-width:1100px; margin:0 auto; padding:18px 30px 48px; }

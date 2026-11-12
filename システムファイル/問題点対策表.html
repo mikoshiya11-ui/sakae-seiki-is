@@ -101,14 +101,14 @@
     <span class="pageName">問題点対策表</span>
   </div>
   <!-- ★画面を開いた瞬間に「問題点対策表」と分かることを最優先（2026-09-28 UI 是正）。表記は SAKAE SEIKI-OS に統一 -->
-  <header class="pageHead withQa">
+  <header class="pageHead">
     <span class="ptAccent" aria-hidden="true"></span>
     <svg class="ptIcon" viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2.5" width="6" height="3" rx="1"/><path d="M8.5 10.5h7M8.5 14h7M8.5 17.5h4.5"/></svg>
     <h1 class="pageTitle">問題点対策表</h1>
     <p class="pageSub">SAKAE SEIKI-OS</p>
-    <!-- ★SAKAE-QA-01 質問箱（右上）。利用権限が確認できてから _qaBox.js が中身を作る -->
-    <aside class="qaBox" id="qaBox" style="display:none" aria-label="質問箱"></aside>
   </header>
+  <!-- ★SAKAE-QA-01 質問箱（見出しのすぐ下の横長の帯・2026-11-13）。利用権限が確認できてから _qaBox.js が中身を作る -->
+  <aside class="qaBox qaBand" id="qaBox" style="display:none" aria-label="質問箱"></aside>
 
   <div class="wrap">
     <div id="summaryArea" class="summary"></div>

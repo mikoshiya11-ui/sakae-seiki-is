@@ -66,29 +66,30 @@
   }
 
   // ============================================================================
-  // ① 問題点対策表の右上の箱
+  // ① 問題点対策表の見出しの下の帯
   // ============================================================================
   function mountBox(sb, root){
     if(!root) return;
     let me = null, timer = null, busy = false;
+    // 横長の帯：［💬 質問箱｜書く欄｜送る｜件数｜すべて見る →］を 1 行に。最近の質問の一覧は置かず、件数だけ出す（2026-11-13 テンチョー決定）
     root.innerHTML =
-        '<div class="qaBoxHead"><span class="qaBoxTitle">💬 質問箱</span><span class="qaBoxCount" id="qaBoxCount"></span></div>'
-      + '<textarea id="qaBoxText" class="qaText" rows="2" maxlength="'+MAX_BODY+'" placeholder="使い方で分からないことを書いてください"></textarea>'
-      + '<div class="qaBoxRow"><span class="qaBoxMsg" id="qaBoxMsg" role="status"></span><button class="qaBtn" id="qaBoxSend" type="button">送る</button></div>'
-      + '<ul class="qaRecent" id="qaRecent"></ul>'
-      + '<div class="qaBoxFoot"><a href="'+LIST_PAGE+'" class="qaAll">すべて見る →</a></div>';
+        '<span class="qaBoxTitle">💬 質問箱</span>'
+      + '<textarea id="qaBoxText" class="qaText qaBandText" rows="1" maxlength="'+MAX_BODY+'" placeholder="使い方で分からないことを書いてください"></textarea>'
+      + '<button class="qaBtn" id="qaBoxSend" type="button">送る</button>'
+      + '<span class="qaBoxCount" id="qaBoxCount"></span>'
+      + '<a href="'+LIST_PAGE+'" class="qaAll">すべて見る →</a>'
+      + '<div class="qaBoxMsg" id="qaBoxMsg" role="status"></div>';
     const msg = (t, bad)=>{ const el=$('qaBoxMsg'); el.textContent = t || ''; el.classList.toggle('bad', !!bad); };
 
     async function refresh(){
       let list;
-      try{ list = await rpc(sb, 'qa_list', { p_mine:true, p_limit:3 }); }
-      catch(e){ $('qaRecent').innerHTML = '<li class="qaNone">質問を読み込めませんでした</li>'; return; }
-      const open = list.filter(q=> q.status === 'NEW').length;
-      $('qaBoxCount').textContent = open ? ('回答待ち ' + open) : '';
-      $('qaRecent').innerHTML = list.length ? list.map(q=>
-        '<li><a href="'+LIST_PAGE+'#'+encodeURIComponent(q.qno)+'"><span class="qaNo">'+esc(q.qno)+'</span>'
-        + '<span class="qaSnip">'+esc(q.body)+'</span>'+statusBadge(q.status)+'</a></li>').join('')
-        : '<li class="qaNone">まだ質問はありません</li>';
+      try{ list = await rpc(sb, 'qa_list', { p_mine:true, p_limit:100 }); }
+      catch(e){ $('qaBoxCount').textContent = '読み込めませんでした'; return; }
+      // 自分の質問の件数（終了は数えない）
+      const n = (st)=> list.filter(q=> q.status === st).length;
+      const open = n('NEW');
+      $('qaBoxCount').textContent = [['回答待ち', open], ['回答あり', n('ANSWERED')], ['確認中', n('ESCALATED')]]
+        .filter(p=> p[1] > 0).map(p=> p[0] + ' ' + p[1]).join('・');
       // 回答待ちがある間だけ、画面が見えているときに見直す（見えていない間は止め、見えたら再開する）
       clearTimeout(timer); timer = null; waiting = open > 0;
       if(waiting && document.visibilityState === 'visible') timer = setTimeout(refresh, POLL_MS);
