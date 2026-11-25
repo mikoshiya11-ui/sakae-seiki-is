@@ -124,6 +124,10 @@
   }
   html.p8print .checkNameRow{ border-bottom-color:var(--kb-day-line) !important; }
   html.p8print .checkCell{ border-right-color:var(--kb-day-line) !important; }
+  /* ★PT-0039 追加（2026-11-25・アヤコさん指示）：日程表の工程の行の横線（.ganttRow・#f3f5f9）も、印刷の時だけ同じ濃さにする。
+     部品の境目・月の行・外枠は変えない。画面の見た目は変えない。 */
+  @media print{ .ganttRow{ border-bottom-color:var(--kb-day-line) !important; } }
+  html.p8print .ganttRow{ border-bottom-color:var(--kb-day-line) !important; }
   /* ★PT-0025（2026-10-30 菰田様）：進捗チェック欄の日付を日程表の日付の真上にそろえる。日程表の左は 部品欄 280px＋DE/SU/PN 欄 156px なので、
      DE/SU/PN 欄がある時（作業票とリンク）は担当者欄も同じ 436px にする（日の幅 --day-w と横スクロールの同期は元から共通） */
   .checkInner.withDates .checkSideHead, .checkInner.withDates .checkNameCell{ flex-basis:calc(var(--kb-left) + var(--kb-dates)); }
