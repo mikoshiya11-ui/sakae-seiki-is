@@ -70,6 +70,12 @@
   .sumChip b{ color:#173a68; font-size:14px; }
   .sumChip.warn b{ color:#c9720d; }
   .sumChip.danger b{ color:#c0392b; }
+  /* PT-0038：期限超過の件数は押せるボタン（押すと期限超過だけ）。見た目は他の件数と同じ丸に、押せる印として赤い枠 */
+  :where(button.sumChip){ border:1.5px solid transparent; font:inherit; color:inherit; cursor:pointer; }   /* :where＝強さ0。タブレット用の .sumChip の大きさ指定を邪魔しない */
+  button.sumChip.overChip{ border-color:#f1b8b1; }
+  button.sumChip.overChip:hover{ border-color:#c0392b; }
+  button.sumChip.overChip.active{ background:#fdecea; border-color:#c0392b; color:#c0392b; font-weight:700; }
+  .overChipX{ margin-left:4px; font-size:.85em; }
 
   .tableCard{
     background:#fff; border-radius:14px; box-shadow:0 2px 10px rgba(20,35,70,.06); overflow:hidden;
@@ -1020,6 +1026,10 @@
   let sortKey = defaultSortKeyFor(currentProc);
   let sortAsc = true;
   let searchTerm = '';
+  // PT-0038：「期限超過 ○件」を押すと、期限超過（工程完了期限が過ぎた）の行だけにする。もう一度押すと元に戻す。
+  // 数え方は上の件数と同じ（daysUntil(procDue) < 0）。この状態で印刷ボタンを押すと、その一覧だけが刷られる
+  let overOnly = false;
+  function isOverRow(r){ const d = daysUntil(r.procDue); return d!==null && d<0; }
 
   // 手動✓の保存（loadChecks／saveChecks）は廃止（SAKAE-ZANPIN-DONE）。左端✓は行の isDone（工程完了状態）だけから描く。
 
@@ -1234,6 +1244,7 @@
         (r.model||'').toLowerCase().includes(t)
       );
     }
+    if(overOnly) rows = rows.filter(isOverRow);   // PT-0038
     if(sortKey === CASE_SORT_KEY){
       rows.sort((a,b)=> compareCaseOrder(a, b) * (sortAsc ? 1 : -1));
       return rows;
@@ -1266,6 +1277,8 @@
     }
     renderTabs();
 
+    // PT-0038：このタブに期限超過が無くなったら（完了・タブ切替など）、絞り込みは自動で外す
+    if(overOnly && !rowsForGroup(DATA, currentProc).some(isOverRow)) overOnly = false;
     const rows = getRows();
     const allRows = rowsForGroup(DATA, currentProc);
 
@@ -1339,15 +1352,18 @@
       const stamp = d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0');
       titleEl.textContent = '工程残品表　' + (currentProc ? procLabel(currentProc) : '')
         + '　（' + rows.length + '件）　印刷日 ' + stamp
+        + (overOnly ? '　期限超過のみ' : '')
         + (searchTerm ? '　絞り込み「'+searchTerm+'」' : '');
     }
 
-    const overCount = allRows.filter(r=>{ const d=daysUntil(r.procDue); return d!==null && d<0; }).length;
+    const overCount = allRows.filter(isOverRow).length;
     const soonCount = allRows.filter(r=>{ const d=daysUntil(r.procDue); return d!==null && d>=0 && d<=2; }).length;
     summaryRow.innerHTML =
       '<span class="sumChip">全<b>'+allRows.length+'</b>件</span>' +
       (soonCount ? '<span class="sumChip warn">期限間近 <b>'+soonCount+'</b>件</span>' : '') +
-      (overCount ? '<span class="sumChip danger">期限超過 <b>'+overCount+'</b>件</span>' : '');
+      (overCount ? (overOnly
+        ? '<button type="button" class="sumChip danger overChip active" id="overChip" aria-pressed="true" title="もう一度押すと、全部の行に戻します">期限超過だけ表示中 <b>'+overCount+'</b>件 <span class="overChipX">✕ 解除</span></button>'
+        : '<button type="button" class="sumChip danger overChip" id="overChip" aria-pressed="false" title="押すと、期限超過の行だけにします（そのまま印刷できます）">期限超過 <b>'+overCount+'</b>件</button>') : '');
   }
 
   function applySortHeaderUI(){
@@ -1368,6 +1384,13 @@
   document.getElementById('printBtn').addEventListener('click', ()=>{ window.print(); });
   // PT-0027：印刷する用紙（A4横＝標準／A3横）を印刷ボタンの前で選べるようにする
   window.sakaePrintPaper.mount({ button: document.getElementById('printBtn'), standard:'A4', options:['A4','A3'], orientation:'landscape', relabel:true });
+
+  // PT-0038：「期限超過 ○件」を押すと期限超過だけ／もう一度押すと元に戻す
+  summaryRow.addEventListener('click', (e)=>{
+    if(!e.target.closest('#overChip')) return;
+    overOnly = !overOnly;
+    render();
+  });
 
   document.getElementById('searchBox').addEventListener('input', (e)=>{
     searchTerm = e.target.value.trim();

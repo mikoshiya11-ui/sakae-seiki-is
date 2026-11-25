@@ -123,6 +123,9 @@
   table.procTable td.noCodeCell{ width:10.95%; padding:0; }
   table.procTable td.hoursStackCell{ width:9.27%; padding:0; }
   table.procTable td.startCell{ width:7.58%; padding:0; }
+  /* PT-0040：着手欄の「午前」。欄が狭い（A3で約53px）ので、日付より小さい文字にして左右の余白も詰める */
+  table.procTable td.startCell .cellLine{ padding-left:3px; padding-right:3px; }
+  .ampmTag{ font-size:8px; font-weight:700; margin-left:1px; }
   table.procTable td.finishCell{ width:7.58%; padding:0; }
   .cellLine{ height:15px; padding:1px 6px; font-size:10px; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .cellLineTop{ color:#c7cfdc; border-bottom:1px dashed transparent; }
@@ -435,6 +438,8 @@
     return p[0]+'/'+p[1]+'/'+p[2] + (ampm==='PM' ? '午後' : (ampm==='AM' ? '午前' : ''));
   }
   // 工程表の小さいセル（着手など）は現物と同じく年（西暦）を出さず月/日だけにする
+  // 作業票の画面（作業票_モック.html の DATE_ONLY_CODES）と同じ：1日単位の工程で、午前/午後を出さない
+  const DATE_ONLY_CODES = { 'DE':true, 'SU':true, 'PN':true };
   function fmtDateShort(s){
     if(!s) return '';
     const p = String(s).split('-').map(Number);
@@ -548,11 +553,14 @@
       if(p){
         const hoursTxt = WORK_HOUR_CODES[p.code] ? (p.hours!=null && p.hours!=='' ? esc(p.hours)+'h' : '') : '';
         const startDate = p.date ? fmtDateShort(p.date) : '';
+        // PT-0040：工程が午前（正午締め）の時だけ日付の横に「午前」を付ける。作業票の画面の「半」と同じ決まり
+        // （午後は付けない・DE・SU・PN は日付だけの工程なので付けない）。欄が狭いので「午前」だけ小さい文字
+        const startAm = (p.date && p.ampm==='AM' && !DATE_ONLY_CODES[p.code]) ? '<span class="ampmTag">午前</span>' : '';
         rowsHtml += '<tr>'
           + sketchTd
           + '<td class="machineCell"><div class="cellLine cellLineTop dotted"></div><div class="cellLine cellLineBottom">'+esc(p.machine||'')+'</div></td>'
           + '<td class="noCodeCell"><div class="noCodeWrap"><span class="tinyNo">'+no+'</span><span class="codeSwatch" style="background:'+colorOf(p.code)+';"></span>'+esc(procDisplay(p))+'</div></td>'
-          + '<td class="startCell"><div class="cellLine cellLineTop dotted"></div><div class="cellLine cellLineBottom">'+esc(startDate)+'</div></td>'
+          + '<td class="startCell"><div class="cellLine cellLineTop dotted"></div><div class="cellLine cellLineBottom">'+esc(startDate)+startAm+'</div></td>'
           + '<td class="finishCell"><div class="cellLine cellLineTop dotted"></div><div class="cellLine cellLineBottom"></div></td>'
           + '<td class="hoursStackCell">'
             + '<div class="cellLine cellLineTop dotted"></div>'
